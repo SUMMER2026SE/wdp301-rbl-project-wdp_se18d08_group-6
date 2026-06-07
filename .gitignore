@@ -1,4 +1,5 @@
-﻿dist
+.next
+dist
 backend/dist
 frontend/.next
 node_modules
