@@ -1,0 +1,21 @@
+{
+  "name": "co-phuc-rental-erp",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.5.1",
+  "scripts": {
+    "dev:frontend": "pnpm --dir frontend dev",
+    "dev:backend": "pnpm --dir backend dev",
+    "build:frontend": "pnpm --dir frontend build",
+    "build:backend": "pnpm --dir backend build",
+    "typecheck:frontend": "pnpm --dir frontend typecheck",
+    "typecheck:backend": "pnpm --dir backend typecheck",
+    "lint:frontend": "pnpm --dir frontend lint",
+    "lint:backend": "pnpm --dir backend lint",
+    "test:frontend": "pnpm --dir frontend test",
+    "test:backend": "pnpm --dir backend test",
+    "test": "pnpm test:frontend && pnpm test:backend",
+    "ci:frontend": "pnpm --dir frontend lint && pnpm --dir frontend typecheck && pnpm --dir frontend test && pnpm --dir frontend build",
+    "ci:backend": "pnpm --dir backend prisma:generate && pnpm --dir backend lint && pnpm --dir backend typecheck && pnpm --dir backend test && pnpm --dir backend build"
+  }
+}

@@ -1,0 +1,155 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AppRole {
+  customer
+  staff
+  manager_owner
+  admin
+
+  @@map("app_role")
+}
+
+enum AssetStatus {
+  available
+  reserved
+  rented
+  inspection_pending
+  laundry
+  maintenance
+  damaged
+  retired
+  lost
+
+  @@map("asset_status")
+}
+
+enum BookingStatus {
+  draft
+  pending_confirmation
+  confirmed
+  awaiting_payment
+  paid
+  preparing
+  ready_for_pickup
+  delivering
+  renting
+  returned
+  inspection_pending
+  completed
+  cancelled
+  rejected
+  overdue
+
+  @@map("booking_status")
+}
+
+model UserAccount {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  role         AppRole   @default(customer)
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  profile      Profile?
+  bookings     Booking[]
+
+  @@map("user_accounts")
+}
+
+model Profile {
+  id        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String      @unique @map("user_id") @db.Uuid
+  fullName  String?     @map("full_name")
+  phone     String?
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime    @default(now()) @map("updated_at") @db.Timestamptz(6)
+  user      UserAccount @relation(fields: [userId], references: [id])
+
+  @@map("profiles")
+}
+
+model GarmentCategory {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String    @unique
+  description String?
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  garments    Garment[]
+
+  @@map("garment_categories")
+}
+
+model Garment {
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  categoryId    String?          @map("category_id") @db.Uuid
+  name          String
+  description   String?
+  sizeLabel     String?          @map("size_label")
+  color         String?
+  dailyPrice    Decimal          @default(0) @map("daily_price") @db.Decimal(12, 2)
+  depositAmount Decimal          @default(0) @map("deposit_amount") @db.Decimal(12, 2)
+  isActive      Boolean          @default(true) @map("is_active")
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  category      GarmentCategory? @relation(fields: [categoryId], references: [id])
+  assets        GarmentAsset[]
+  bookingItems  BookingItem[]
+
+  @@map("garments")
+}
+
+model GarmentAsset {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  garmentId     String        @map("garment_id") @db.Uuid
+  assetCode     String        @unique @map("asset_code")
+  status        AssetStatus   @default(available)
+  conditionNote String?       @map("condition_note")
+  purchaseCost  Decimal?      @map("purchase_cost") @db.Decimal(12, 2)
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime      @default(now()) @map("updated_at") @db.Timestamptz(6)
+  garment       Garment       @relation(fields: [garmentId], references: [id])
+  bookingItems  BookingItem[]
+
+  @@map("garment_assets")
+}
+
+model Booking {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId      String        @map("customer_id") @db.Uuid
+  status          BookingStatus @default(pending_confirmation)
+  rentalStartDate DateTime      @map("rental_start_date") @db.Date
+  rentalEndDate   DateTime      @map("rental_end_date") @db.Date
+  pickupMethod    String        @default("store_pickup") @map("pickup_method")
+  rentalTotal     Decimal       @default(0) @map("rental_total") @db.Decimal(12, 2)
+  depositTotal    Decimal       @default(0) @map("deposit_total") @db.Decimal(12, 2)
+  penaltyTotal    Decimal       @default(0) @map("penalty_total") @db.Decimal(12, 2)
+  note            String?
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime      @default(now()) @map("updated_at") @db.Timestamptz(6)
+  customer        UserAccount   @relation(fields: [customerId], references: [id])
+  items           BookingItem[]
+
+  @@map("bookings")
+}
+
+model BookingItem {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId      String        @map("booking_id") @db.Uuid
+  garmentId      String        @map("garment_id") @db.Uuid
+  garmentAssetId String?       @map("garment_asset_id") @db.Uuid
+  dailyPrice     Decimal       @default(0) @map("daily_price") @db.Decimal(12, 2)
+  depositAmount  Decimal       @default(0) @map("deposit_amount") @db.Decimal(12, 2)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  booking        Booking       @relation(fields: [bookingId], references: [id])
+  garment        Garment       @relation(fields: [garmentId], references: [id])
+  garmentAsset   GarmentAsset? @relation(fields: [garmentAssetId], references: [id])
+
+  @@map("booking_items")
+}

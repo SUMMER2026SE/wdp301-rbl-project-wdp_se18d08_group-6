@@ -1,0 +1,6 @@
+-- Security model for MVP:
+-- The browser does not query Supabase directly.
+-- Next.js calls the Node.js/NestJS backend.
+-- The backend connects to Supabase PostgreSQL through DATABASE_URL and enforces RBAC/JWT in API guards.
+-- RLS policies are not used in the MVP because Supabase Auth is not the authentication authority.
+-- Before real production, review DB user privileges and avoid exposing direct database credentials to the client.
