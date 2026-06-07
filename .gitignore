@@ -1,0 +1,12 @@
+﻿dist
+backend/dist
+frontend/.next
+node_modules
+.env
+.env.local
+.env.*.local
+.vercel
+.DS_Store
+Thumbs.db
+*.log
+*.tsbuildinfo

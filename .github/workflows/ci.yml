@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  push:
+    branches:
+      - main
+      - develop
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.1
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm --dir frontend lint
+
+      - name: Typecheck
+        run: pnpm --dir frontend typecheck
+
+      - name: Test
+        run: pnpm --dir frontend test
+
+      - name: Build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:4000/api
+        run: pnpm --dir frontend build
+
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres?sslmode=disable
+      JWT_SECRET: ci-only-secret
+      FRONTEND_URL: http://localhost:3000
+      PORT: 4000
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.1
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --dir backend prisma:generate
+
+      - name: Lint
+        run: pnpm --dir backend lint
+
+      - name: Typecheck
+        run: pnpm --dir backend typecheck
+
+      - name: Test
+        run: pnpm --dir backend test
+
+      - name: Build
+        run: pnpm --dir backend build
