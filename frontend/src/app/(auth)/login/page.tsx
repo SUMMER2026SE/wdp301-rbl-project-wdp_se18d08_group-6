@@ -48,7 +48,12 @@ export default function LoginPage() {
       });
 
       if (!result.success || !result.data) {
-        setError(result.message ?? "Login failed");
+        // Nếu email chưa xác thực, chuyển hướng sang trang nhập OTP
+        if (result.message === "EMAIL_NOT_VERIFIED") {
+          router.push(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`);
+          return;
+        }
+        setError(result.message ?? "Email hoặc mật khẩu không đúng.");
         return;
       }
 
@@ -60,42 +65,62 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="mx-auto max-w-md px-4 py-12">
-      <h1 className="text-2xl font-semibold text-ink">Login</h1>
-      <p className="mt-2 text-sm text-slate-600">Sign in through the Node.js backend API.</p>
-      <form onSubmit={handleSubmit} className="mt-6 space-y-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <label className="block text-sm font-medium text-slate-700">
-          Email
-          <input
-            className="focus-ring mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            required
-          />
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Password
-          <input
-            className="focus-ring mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-          />
-        </label>
-        {error ? <p className="text-sm text-red-700">{error}</p> : null}
-        <button
-          className="focus-ring w-full rounded-md bg-ink px-4 py-2 font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-          type="submit"
-          disabled={loading}
-        >
-          {loading ? "Signing in..." : "Login"}
-        </button>
-      </form>
-      <p className="mt-4 text-sm text-slate-600">
-        No account yet? <Link className="font-medium text-lotus" href="/register">Register</Link>
-      </p>
+    <div
+      className="flex min-h-screen items-center justify-center bg-cover bg-center bg-no-repeat p-4"
+      style={{ backgroundImage: "url('/images/bg-ao-dai.png')" }}
+    >
+      <div className="w-full max-w-md overflow-hidden rounded-3xl border border-white/40 bg-white/60 p-8 shadow-[0_8px_32px_0_rgba(31,41,51,0.15)] backdrop-blur-xl">
+        <div className="mb-8 text-center">
+          <h1 className="font-serif text-4xl font-bold text-ink">Đăng nhập</h1>
+          <p className="mt-2 text-sm text-slate-700">Chào mừng trở lại! Vui lòng đăng nhập để tiếp tục.</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-800">Email</label>
+            <input
+              className="w-full rounded-xl border border-white/50 bg-white/50 px-4 py-3 text-ink placeholder-slate-500 shadow-sm backdrop-blur-sm transition-all duration-300 focus:border-lotus focus:bg-white/80 focus:outline-none focus:ring-4 focus:ring-lotus/20"
+              type="email"
+              placeholder="nhap.email@example.com"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-800">Mật khẩu</label>
+            <input
+              className="w-full rounded-xl border border-white/50 bg-white/50 px-4 py-3 text-ink placeholder-slate-500 shadow-sm backdrop-blur-sm transition-all duration-300 focus:border-lotus focus:bg-white/80 focus:outline-none focus:ring-4 focus:ring-lotus/20"
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+            />
+          </div>
+          
+          {error ? (
+            <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 border border-red-200">
+              {error}
+            </div>
+          ) : null}
+          
+          <button
+            className="w-full rounded-xl bg-lotus px-4 py-3.5 font-medium text-white shadow-lg shadow-lotus/30 transition-all duration-300 hover:bg-lotus/90 focus:outline-none focus:ring-4 focus:ring-lotus/20 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+            type="submit"
+            disabled={loading}
+          >
+            {loading ? "Đang xử lý..." : "Đăng nhập"}
+          </button>
+        </form>
+
+        <p className="mt-8 text-center text-sm text-slate-700">
+          Chưa có tài khoản?{" "}
+          <Link className="font-semibold text-lotus transition-colors hover:text-lotus/80 hover:underline" href="/register">
+            Đăng ký ngay
+          </Link>
+        </p>
+      </div>
     </div>
   );
 }

@@ -5,6 +5,8 @@ import { CurrentUser } from "./decorators/current-user.decorator";
 import { Roles } from "./decorators/roles.decorator";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
+import { ResendOtpDto } from "./dto/resend-otp.dto";
+import { VerifyEmailDto } from "./dto/verify-email.dto";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { RolesGuard } from "./guards/roles.guard";
 import { AuthService } from "./auth.service";
@@ -16,6 +18,16 @@ export class AuthController {
   @Post("register")
   register(@Body() body: RegisterDto) {
     return this.authService.register(body);
+  }
+
+  @Post("verify-email")
+  verifyEmail(@Body() body: VerifyEmailDto) {
+    return this.authService.verifyEmail(body);
+  }
+
+  @Post("resend-otp")
+  resendOtp(@Body() body: ResendOtpDto) {
+    return this.authService.resendVerificationCode(body.email);
   }
 
   @Post("login")

@@ -36,7 +36,7 @@ describe("Header", () => {
   it("renders public navigation links for guests", () => {
     render(<Header />);
 
-    expect(screen.getByRole("link", { name: "Co Phuc ERP" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: "Cổ Phục ERP" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("link", { name: "Catalog" })).toHaveAttribute("href", "/catalog");
     expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute("href", "/dashboard");
     expect(screen.getByRole("link", { name: "Login" })).toHaveAttribute("href", "/login");

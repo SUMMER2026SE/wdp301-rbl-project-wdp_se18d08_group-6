@@ -15,7 +15,7 @@ export function Header() {
     <header className="border-b border-slate-200 bg-white">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4">
         <Link href="/" className="text-base font-semibold tracking-wide text-ink">
-          Co Phuc ERP
+          Cổ Phục ERP
         </Link>
         <nav className="flex flex-wrap items-center justify-end gap-2 text-sm">
           <Link href="/catalog" className="rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100">
