@@ -1,7 +1,7 @@
 "use client";
 
-import { FormEvent, useState } from "react";
 import Link from "next/link";
+import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 
@@ -11,83 +11,188 @@ type RegisterResult = {
   role: string;
 };
 
+const benefitItems = [
+  { icon: "calendar_today", label: "Đặt lịch nhanh chóng" },
+  { icon: "local_shipping", label: "Theo dõi đơn hàng" },
+  { icon: "magic_button", label: "Thử đồ ảo AI" },
+];
+
 export default function RegisterPage() {
   const router = useRouter();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+
+    const trimmedName = fullName.trim();
+    const trimmedEmail = email.trim().toLowerCase();
+
+    if (trimmedName.length < 4) {
+      setError("Họ và tên chưa hợp lệ.");
+      return;
+    }
+
+    if (password.length < 8) {
+      setError("Mật khẩu cần có ít nhất 8 ký tự.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError("Mật khẩu xác nhận chưa khớp.");
+      return;
+    }
+
     setLoading(true);
 
     try {
       const result = await apiRequest<RegisterResult>("/auth/register", {
         method: "POST",
-        body: JSON.stringify({ fullName, email, password }),
+        body: JSON.stringify({ fullName: trimmedName, email: trimmedEmail, password }),
       });
 
       if (!result.success) {
-        setError(result.message ?? "Registration failed");
+        setError(result.message ?? "Đăng ký thất bại.");
         return;
       }
 
-      router.push("/login");
+      router.push(`/login?registered=1&email=${encodeURIComponent(trimmedEmail)}`);
+    } catch {
+      setError("Không thể kết nối đến hệ thống đăng ký.");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="mx-auto max-w-md px-4 py-12">
-      <h1 className="text-2xl font-semibold text-ink">Register</h1>
-      <p className="mt-2 text-sm text-slate-600">Create a customer account through the backend API.</p>
-      <form onSubmit={handleSubmit} className="mt-6 space-y-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <label className="block text-sm font-medium text-slate-700">
-          Full name
-          <input
-            className="focus-ring mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
-            value={fullName}
-            onChange={(event) => setFullName(event.target.value)}
-            required
-          />
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Email
-          <input
-            className="focus-ring mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            required
-          />
-        </label>
-        <label className="block text-sm font-medium text-slate-700">
-          Password
-          <input
-            className="focus-ring mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
-            type="password"
-            minLength={8}
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-          />
-        </label>
-        {error ? <p className="text-sm text-red-700">{error}</p> : null}
-        <button
-          className="focus-ring w-full rounded-md bg-lotus px-4 py-2 font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-          type="submit"
-          disabled={loading}
-        >
-          {loading ? "Creating account..." : "Register"}
-        </button>
-      </form>
-      <p className="mt-4 text-sm text-slate-600">
-        Already have an account? <Link className="font-medium text-lotus" href="/login">Login</Link>
-      </p>
-    </div>
+    <main className="flex min-h-screen bg-[#fff8f6]">
+      <section className="relative hidden min-h-screen overflow-hidden md:block md:w-1/2 lg:w-3/5">
+        <img
+          alt="Cổ Phục Rental"
+          className="absolute inset-0 h-full w-full object-cover"
+          src="https://lh3.googleusercontent.com/aida-public/AB6AXuBCdYyqGTfQnuRqFD-y9kVntrYQAgRK7rpVTrV7Z74z6DLaCvh8FZkvGIWeQOhI48Dpinw1M-GjDLsMYORDoQLE8-mMY6i4bWg3s7CN2izGDDNAJ6i-1zxSPmZ60EJLrOE-X1Kj93BX8ioVTJkpfV6mI5Z4UjoDd48TjE0PvGnzcoYr4e-9EZ0sqGbm_CfCa74jP6wDxg7yZiYV0WTjXYao1g9EtMPWobFDY4S-dhW1KrcIa5qvf8-K3TUVMALTNxWD7pgxajlFRQct"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/32 via-black/8 to-transparent" />
+        <div className="absolute bottom-0 left-0 w-full p-12 text-white">
+          <h1 className="font-display text-5xl tracking-tight">Cổ Phục Rental</h1>
+          <p className="mt-4 max-w-lg text-lg leading-8 text-white/90">Gìn giữ vẻ đẹp nghìn năm qua từng tà áo.</p>
+        </div>
+      </section>
+
+      <section className="flex min-h-screen w-full items-center justify-center overflow-y-auto bg-[#fff8f6] px-4 py-16 md:w-1/2 md:px-12 lg:w-2/5">
+        <div className="w-full max-w-md space-y-10">
+          <div className="mb-8 text-center md:hidden">
+            <h1 className="font-display text-4xl text-lotus">Cổ Phục Rental</h1>
+          </div>
+
+          <div className="space-y-4 text-center md:text-left">
+            <h2 className="font-display text-5xl font-semibold text-lotus">Tham Gia Hành Trình Di Sản</h2>
+            <p className="text-base leading-8 text-[#5a403c]">
+              Tạo tài khoản để trải nghiệm dịch vụ cho thuê trang phục cao cấp và công nghệ thử đồ AI độc bản.
+            </p>
+          </div>
+
+          <form className="space-y-6" onSubmit={handleSubmit}>
+            <div className="space-y-4">
+              <div className="relative">
+                <input
+                  id="fullname"
+                  className="peer block w-full border-0 border-b border-sand bg-transparent px-0 py-3 text-ink placeholder-transparent focus:border-antique focus:outline-none focus:ring-0"
+                  name="fullname"
+                  placeholder=" "
+                  required
+                  type="text"
+                  value={fullName}
+                  onChange={(event) => setFullName(event.target.value)}
+                />
+                <label className="absolute left-0 top-3 cursor-text text-sm text-[#5a403c] transition-all duration-200 peer-focus:-top-3.5 peer-focus:text-[11px] peer-focus:text-antique peer-[:not(:placeholder-shown)]:-top-3.5 peer-[:not(:placeholder-shown)]:text-[11px]" htmlFor="fullname">
+                  Họ và tên
+                </label>
+              </div>
+
+              <div className="relative mt-6">
+                <input
+                  id="email"
+                  className="peer block w-full border-0 border-b border-sand bg-transparent px-0 py-3 text-ink placeholder-transparent focus:border-antique focus:outline-none focus:ring-0"
+                  name="email"
+                  placeholder=" "
+                  required
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                />
+                <label className="absolute left-0 top-3 cursor-text text-sm text-[#5a403c] transition-all duration-200 peer-focus:-top-3.5 peer-focus:text-[11px] peer-focus:text-antique peer-[:not(:placeholder-shown)]:-top-3.5 peer-[:not(:placeholder-shown)]:text-[11px]" htmlFor="email">
+                  Email
+                </label>
+              </div>
+
+              <div className="relative mt-6">
+                <input
+                  id="password"
+                  className="peer block w-full border-0 border-b border-sand bg-transparent px-0 py-3 text-ink placeholder-transparent focus:border-antique focus:outline-none focus:ring-0"
+                  name="password"
+                  placeholder=" "
+                  required
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+                <label className="absolute left-0 top-3 cursor-text text-sm text-[#5a403c] transition-all duration-200 peer-focus:-top-3.5 peer-focus:text-[11px] peer-focus:text-antique peer-[:not(:placeholder-shown)]:-top-3.5 peer-[:not(:placeholder-shown)]:text-[11px]" htmlFor="password">
+                  Mật khẩu
+                </label>
+              </div>
+
+              <div className="relative mt-6">
+                <input
+                  id="confirm_password"
+                  className="peer block w-full border-0 border-b border-sand bg-transparent px-0 py-3 text-ink placeholder-transparent focus:border-antique focus:outline-none focus:ring-0"
+                  name="confirm_password"
+                  placeholder=" "
+                  required
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                />
+                <label className="absolute left-0 top-3 cursor-text text-sm text-[#5a403c] transition-all duration-200 peer-focus:-top-3.5 peer-focus:text-[11px] peer-focus:text-antique peer-[:not(:placeholder-shown)]:-top-3.5 peer-[:not(:placeholder-shown)]:text-[11px]" htmlFor="confirm_password">
+                  Xác nhận mật khẩu
+                </label>
+              </div>
+            </div>
+
+            {error ? <p className="text-sm text-red-700">{error}</p> : null}
+
+            <button
+              className="w-full rounded-sm bg-lotus py-4 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-[#920703] disabled:cursor-not-allowed disabled:opacity-60"
+              type="submit"
+              disabled={loading}
+            >
+              {loading ? "Đang tạo tài khoản" : "Đăng ký ngay"}
+            </button>
+          </form>
+
+          <div className="border-t border-sand/50 pt-8">
+            <ul className="flex flex-col space-y-4">
+              {benefitItems.map((item) => (
+                <li key={item.label} className="flex items-center space-x-3 text-[#5a403c]">
+                  <span className="material-symbols-outlined text-[20px] text-antique">{item.icon}</span>
+                  <span className="text-sm">{item.label}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="pt-4 text-center">
+            <Link className="border-b border-transparent pb-0.5 text-sm text-[#5a403c] transition hover:border-lotus hover:text-lotus" href="/login">
+              Đã có tài khoản? Đăng nhập ngay
+            </Link>
+          </div>
+        </div>
+      </section>
+    </main>
   );
 }
