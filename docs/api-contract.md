@@ -111,6 +111,235 @@ Response:
 }
 ```
 
+### Get Current User
+
+```http
+GET /api/auth/me
+```
+
+Headers:
+
+```http
+Authorization: Bearer jwt-token
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "email": "customer@example.com",
+    "role": "customer",
+    "isActive": true,
+    "fullName": "Nguyen Van A",
+    "phone": null
+  }
+}
+```
+
+### Update Profile
+
+```http
+PATCH /api/users/me/profile
+```
+
+Headers:
+
+```http
+Authorization: Bearer jwt-token
+```
+
+Request:
+
+```json
+{
+  "fullName": "Nguyen Van A",
+  "phone": "0909000000"
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "email": "customer@example.com",
+    "role": "customer",
+    "isActive": true,
+    "fullName": "Nguyen Van A",
+    "phone": "0909000000"
+  }
+}
+```
+
+### Get Latest Measurements
+
+Customer-only endpoint.
+
+```http
+GET /api/users/me/measurements
+```
+
+Headers:
+
+```http
+Authorization: Bearer jwt-token
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "heightCm": 165.5,
+    "weightKg": 50,
+    "bustCm": null,
+    "waistCm": null,
+    "hipCm": null,
+    "usualSize": "M",
+    "createdAt": "2026-06-12T00:00:00.000Z"
+  }
+}
+```
+
+If the customer has not saved measurements yet:
+
+```json
+{
+  "success": true,
+  "data": null
+}
+```
+
+### Update Measurements
+
+Customer-only endpoint.
+
+```http
+PATCH /api/users/me/measurements
+```
+
+Headers:
+
+```http
+Authorization: Bearer jwt-token
+```
+
+Request:
+
+```json
+{
+  "heightCm": 165.5,
+  "weightKg": 50,
+  "usualSize": "M"
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "heightCm": 165.5,
+    "weightKg": 50,
+    "bustCm": null,
+    "waistCm": null,
+    "hipCm": null,
+    "usualSize": "M",
+    "createdAt": "2026-06-12T00:00:00.000Z"
+  }
+}
+```
+
+### Create Address
+
+Customer-only endpoint.
+
+```http
+POST /api/users/me/addresses
+```
+
+Headers:
+
+```http
+Authorization: Bearer jwt-token
+```
+
+Request:
+
+```json
+{
+  "receiverName": "Nguyen Van A",
+  "phone": "0909000000",
+  "line1": "123 Le Loi",
+  "district": "District 1",
+  "city": "Ho Chi Minh City",
+  "isDefault": true
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "receiverName": "Nguyen Van A",
+    "phone": "0909000000",
+    "line1": "123 Le Loi",
+    "ward": null,
+    "district": "District 1",
+    "city": "Ho Chi Minh City",
+    "isDefault": true,
+    "createdAt": "2026-06-12T00:00:00.000Z"
+  }
+}
+```
+
+### List Addresses
+
+Customer-only endpoint.
+
+```http
+GET /api/users/me/addresses
+```
+
+Headers:
+
+```http
+Authorization: Bearer jwt-token
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid",
+      "receiverName": "Nguyen Van A",
+      "phone": "0909000000",
+      "line1": "123 Le Loi",
+      "ward": null,
+      "district": "District 1",
+      "city": "Ho Chi Minh City",
+      "isDefault": true,
+      "createdAt": "2026-06-12T00:00:00.000Z"
+    }
+  ]
+}
+```
+
 ### List Garments
 
 ```http
@@ -136,16 +365,6 @@ Response:
 ```
 
 ## Planned Endpoints
-
-### Auth/User
-
-```http
-GET /api/auth/me
-PATCH /api/users/me/profile
-PATCH /api/users/me/measurements
-POST /api/users/me/addresses
-GET /api/users/me/addresses
-```
 
 ### Catalog and Assets
 

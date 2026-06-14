@@ -3,6 +3,7 @@ import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcryptjs";
 import { ok } from "../../common/api-response";
 import { PrismaService } from "../../prisma/prisma.service";
+import { toAuthenticatedUser, type UserWithProfile } from "./auth-user";
 
 type RegisterInput = {
   fullName: string;
@@ -38,7 +39,7 @@ export class AuthService {
         role: "customer",
         profile: {
           create: {
-            fullName: input.fullName,
+            fullName: input.fullName.trim(),
           },
         },
       },
@@ -55,7 +56,10 @@ export class AuthService {
 
   async login(input: LoginInput) {
     const normalizedEmail = input.email.trim().toLowerCase();
-    const user = await this.prisma.userAccount.findUnique({ where: { email: normalizedEmail } });
+    const user = await this.prisma.userAccount.findUnique({
+      where: { email: normalizedEmail },
+      include: { profile: true },
+    });
 
     if (!user || !user.isActive) {
       throw new UnauthorizedException("Invalid email or password.");
@@ -74,11 +78,28 @@ export class AuthService {
 
     return ok({
       accessToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-      },
+      user: this.serializeLoginUser(user),
     });
+  }
+
+  async me(userId: string) {
+    const user = await this.prisma.userAccount.findUnique({
+      where: { id: userId },
+      include: { profile: true },
+    });
+
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException("User is inactive or no longer exists.");
+    }
+
+    return ok(toAuthenticatedUser(user));
+  }
+
+  private serializeLoginUser(user: UserWithProfile) {
+    return {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    };
   }
 }

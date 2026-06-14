@@ -29,6 +29,7 @@ Current modules:
 backend/src/modules/auth/
 backend/src/modules/garments/
 backend/src/modules/health/
+backend/src/modules/users/
 backend/src/prisma/
 backend/src/common/
 ```
@@ -36,7 +37,6 @@ backend/src/common/
 Planned modules:
 
 ```text
-backend/src/modules/users/
 backend/src/modules/bookings/
 backend/src/modules/assets/
 backend/src/modules/payments/

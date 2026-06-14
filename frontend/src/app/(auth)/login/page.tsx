@@ -1,25 +1,39 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useAuth } from "@/components/auth/auth-provider";
 import { apiRequest } from "@/lib/api";
+import { resolveDashboardPath, toAuthenticatedUser, type AppRole } from "@/lib/auth";
 
 type LoginResult = {
   accessToken: string;
   user: {
     id: string;
     email: string;
-    role: string;
+    role: AppRole;
   };
 };
 
+function getSafeRedirectPath(value: string | null, fallbackPath: string) {
+  return value && value.startsWith("/") && !value.startsWith("//") ? value : fallbackPath;
+}
+
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const searchParams = useSearchParams();
+  const { session, signIn, status } = useAuth();
+  const [email, setEmail] = useState(searchParams.get("email") ?? "");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (status === "authenticated" && session) {
+      router.replace(getSafeRedirectPath(searchParams.get("next"), resolveDashboardPath(session.user.role)));
+    }
+  }, [router, searchParams, session, status]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -27,9 +41,10 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      const normalizedEmail = email.trim().toLowerCase();
       const result = await apiRequest<LoginResult>("/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: normalizedEmail, password }),
       });
 
       if (!result.success || !result.data) {
@@ -37,9 +52,8 @@ export default function LoginPage() {
         return;
       }
 
-      window.localStorage.setItem("access_token", result.data.accessToken);
-      window.localStorage.setItem("user_role", result.data.user.role);
-      router.push("/dashboard");
+      signIn({ accessToken: result.data.accessToken, user: toAuthenticatedUser(result.data.user) });
+      router.push(getSafeRedirectPath(searchParams.get("next"), resolveDashboardPath(result.data.user.role)));
     } finally {
       setLoading(false);
     }

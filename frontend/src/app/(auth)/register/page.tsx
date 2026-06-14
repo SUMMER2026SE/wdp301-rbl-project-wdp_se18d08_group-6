@@ -1,9 +1,11 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/components/auth/auth-provider";
 import { apiRequest } from "@/lib/api";
+import { resolveDashboardPath } from "@/lib/auth";
 
 type RegisterResult = {
   id: string;
@@ -13,11 +15,18 @@ type RegisterResult = {
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { session, status } = useAuth();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (status === "authenticated" && session) {
+      router.replace(resolveDashboardPath(session.user.role));
+    }
+  }, [router, session, status]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -35,7 +44,7 @@ export default function RegisterPage() {
         return;
       }
 
-      router.push("/login");
+      router.push(`/login?email=${encodeURIComponent(email.trim().toLowerCase())}`);
     } finally {
       setLoading(false);
     }

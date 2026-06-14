@@ -129,6 +129,12 @@ Backend:
 - `GET /api/health`
 - `POST /api/auth/register`
 - `POST /api/auth/login`
+- `GET /api/auth/me`
+- `PATCH /api/users/me/profile`
+- `GET /api/users/me/measurements`
+- `PATCH /api/users/me/measurements`
+- `POST /api/users/me/addresses`
+- `GET /api/users/me/addresses`
 - `GET /api/garments`
 
 ## Required Docs For AI/Team Work
