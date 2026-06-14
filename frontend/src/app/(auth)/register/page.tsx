@@ -54,10 +54,10 @@ export default function RegisterPage() {
     <div className="mx-auto max-w-md px-4 py-12">
       <h1 className="text-2xl font-semibold text-ink">Register</h1>
       <p className="mt-2 text-sm text-slate-600">Create a customer account through the backend API.</p>
-      <form onSubmit={handleSubmit} className="mt-6 space-y-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <form onSubmit={handleSubmit} className="mt-6 space-y-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm" suppressHydrationWarning>
         <label className="block text-sm font-medium text-slate-700">
           Full name
-          <input
+          <input suppressHydrationWarning
             className="focus-ring mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
             value={fullName}
             onChange={(event) => setFullName(event.target.value)}
@@ -66,7 +66,7 @@ export default function RegisterPage() {
         </label>
         <label className="block text-sm font-medium text-slate-700">
           Email
-          <input
+          <input suppressHydrationWarning
             className="focus-ring mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
             type="email"
             value={email}
@@ -76,7 +76,7 @@ export default function RegisterPage() {
         </label>
         <label className="block text-sm font-medium text-slate-700">
           Password
-          <input
+          <input suppressHydrationWarning
             className="focus-ring mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
             type="password"
             minLength={8}
@@ -86,7 +86,7 @@ export default function RegisterPage() {
           />
         </label>
         {error ? <p className="text-sm text-red-700">{error}</p> : null}
-        <button
+        <button suppressHydrationWarning
           className="focus-ring w-full rounded-md bg-lotus px-4 py-2 font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
           type="submit"
           disabled={loading}
