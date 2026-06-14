@@ -1,15 +1,46 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/components/auth/auth-provider";
 import { apiRequest } from "@/lib/api";
+import { resolveDashboardPath } from "@/lib/auth";
 
 type RegisterResult = {
   id: string;
   email: string;
   role: string;
 };
+
+type PasswordStrength = {
+  hasMinLength: boolean;
+  hasUppercase: boolean;
+  hasLowercase: boolean;
+  hasNumber: boolean;
+};
+
+function checkPasswordStrength(password: string): PasswordStrength {
+  return {
+    hasMinLength: password.length >= 8,
+    hasUppercase: /[A-Z]/.test(password),
+    hasLowercase: /[a-z]/.test(password),
+    hasNumber: /\d/.test(password),
+  };
+}
+
+function isPasswordStrong(strength: PasswordStrength): boolean {
+  return strength.hasMinLength && strength.hasUppercase && strength.hasLowercase && strength.hasNumber;
+}
+
+function StrengthItem({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <span className={`flex items-center gap-1 text-xs transition-colors ${ok ? "text-jade" : "text-slate-400"}`}>
+      <span className={`inline-block h-1.5 w-1.5 rounded-full ${ok ? "bg-jade" : "bg-slate-300"}`} />
+      {label}
+    </span>
+  );
+}
 
 const benefitItems = [
   { icon: "calendar_today", label: "Đặt lịch nhanh chóng" },
@@ -19,12 +50,24 @@ const benefitItems = [
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { session, status } = useAuth();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
+
+  const strength = checkPasswordStrength(password);
+  const passwordMismatch = confirmPassword.length > 0 && password !== confirmPassword;
+
+  // Nếu đã đăng nhập rồi thì redirect về dashboard
+  useEffect(() => {
+    if (status === "authenticated" && session) {
+      router.replace(resolveDashboardPath(session.user.role));
+    }
+  }, [router, session, status]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -34,17 +77,17 @@ export default function RegisterPage() {
     const trimmedEmail = email.trim().toLowerCase();
 
     if (trimmedName.length < 4) {
-      setError("Họ và tên chưa hợp lệ.");
+      setError("Họ và tên chưa hợp lệ (cần ít nhất 4 ký tự).");
       return;
     }
 
-    if (password.length < 8) {
-      setError("Mật khẩu cần có ít nhất 8 ký tự.");
+    if (!isPasswordStrong(strength)) {
+      setError("Mật khẩu chưa đủ mạnh. Vui lòng đáp ứng tất cả yêu cầu bên dưới.");
       return;
     }
 
     if (password !== confirmPassword) {
-      setError("Mật khẩu xác nhận chưa khớp.");
+      setError("Mật khẩu xác nhận không khớp.");
       return;
     }
 
@@ -57,11 +100,12 @@ export default function RegisterPage() {
       });
 
       if (!result.success) {
-        setError(result.message ?? "Đăng ký thất bại.");
+        setError(result.message ?? "Đăng ký thất bại. Vui lòng thử lại.");
         return;
       }
 
-      router.push(`/login?registered=1&email=${encodeURIComponent(trimmedEmail)}`);
+      // Sau khi đăng ký thành công → chuyển sang trang xác thực OTP
+      router.push(`/verify-email?email=${encodeURIComponent(trimmedEmail)}`);
     } catch {
       setError("Không thể kết nối đến hệ thống đăng ký.");
     } finally {
@@ -71,6 +115,7 @@ export default function RegisterPage() {
 
   return (
     <main className="flex min-h-screen bg-[#fff8f6]">
+      {/* Cột trái: Ảnh di sản đẹp mắt */}
       <section className="relative hidden min-h-screen overflow-hidden md:block md:w-1/2 lg:w-3/5">
         <img
           alt="Cổ Phục Rental"
@@ -84,6 +129,7 @@ export default function RegisterPage() {
         </div>
       </section>
 
+      {/* Cột phải: Form đăng ký */}
       <section className="flex min-h-screen w-full items-center justify-center overflow-y-auto bg-[#fff8f6] px-4 py-16 md:w-1/2 md:px-12 lg:w-2/5">
         <div className="w-full max-w-md space-y-10">
           <div className="mb-8 text-center md:hidden">
@@ -99,6 +145,7 @@ export default function RegisterPage() {
 
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div className="space-y-4">
+              {/* Họ và tên - float label đẹp */}
               <div className="relative">
                 <input
                   id="fullname"
@@ -110,11 +157,15 @@ export default function RegisterPage() {
                   value={fullName}
                   onChange={(event) => setFullName(event.target.value)}
                 />
-                <label className="absolute left-0 top-3 cursor-text text-sm text-[#5a403c] transition-all duration-200 peer-focus:-top-3.5 peer-focus:text-[11px] peer-focus:text-antique peer-[:not(:placeholder-shown)]:-top-3.5 peer-[:not(:placeholder-shown)]:text-[11px]" htmlFor="fullname">
+                <label
+                  className="absolute left-0 top-3 cursor-text text-sm text-[#5a403c] transition-all duration-200 peer-focus:-top-3.5 peer-focus:text-[11px] peer-focus:text-antique peer-[:not(:placeholder-shown)]:-top-3.5 peer-[:not(:placeholder-shown)]:text-[11px]"
+                  htmlFor="fullname"
+                >
                   Họ và tên
                 </label>
               </div>
 
+              {/* Email - float label */}
               <div className="relative mt-6">
                 <input
                   id="email"
@@ -126,11 +177,15 @@ export default function RegisterPage() {
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                 />
-                <label className="absolute left-0 top-3 cursor-text text-sm text-[#5a403c] transition-all duration-200 peer-focus:-top-3.5 peer-focus:text-[11px] peer-focus:text-antique peer-[:not(:placeholder-shown)]:-top-3.5 peer-[:not(:placeholder-shown)]:text-[11px]" htmlFor="email">
+                <label
+                  className="absolute left-0 top-3 cursor-text text-sm text-[#5a403c] transition-all duration-200 peer-focus:-top-3.5 peer-focus:text-[11px] peer-focus:text-antique peer-[:not(:placeholder-shown)]:-top-3.5 peer-[:not(:placeholder-shown)]:text-[11px]"
+                  htmlFor="email"
+                >
                   Email
                 </label>
               </div>
 
+              {/* Mật khẩu + kiểm tra độ mạnh */}
               <div className="relative mt-6">
                 <input
                   id="password"
@@ -141,16 +196,32 @@ export default function RegisterPage() {
                   type="password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
+                  onBlur={() => setPasswordTouched(true)}
                 />
-                <label className="absolute left-0 top-3 cursor-text text-sm text-[#5a403c] transition-all duration-200 peer-focus:-top-3.5 peer-focus:text-[11px] peer-focus:text-antique peer-[:not(:placeholder-shown)]:-top-3.5 peer-[:not(:placeholder-shown)]:text-[11px]" htmlFor="password">
+                <label
+                  className="absolute left-0 top-3 cursor-text text-sm text-[#5a403c] transition-all duration-200 peer-focus:-top-3.5 peer-focus:text-[11px] peer-focus:text-antique peer-[:not(:placeholder-shown)]:-top-3.5 peer-[:not(:placeholder-shown)]:text-[11px]"
+                  htmlFor="password"
+                >
                   Mật khẩu
                 </label>
+                {/* Hiển thị thanh kiểm tra độ mạnh khi bắt đầu nhập */}
+                {(passwordTouched || password.length > 0) && (
+                  <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 rounded-lg border border-sand/40 bg-parchment/60 px-3 py-2">
+                    <StrengthItem ok={strength.hasMinLength} label="≥ 8 ký tự" />
+                    <StrengthItem ok={strength.hasUppercase} label="Chữ hoa (A-Z)" />
+                    <StrengthItem ok={strength.hasLowercase} label="Chữ thường (a-z)" />
+                    <StrengthItem ok={strength.hasNumber} label="Chữ số (0-9)" />
+                  </div>
+                )}
               </div>
 
+              {/* Xác nhận mật khẩu */}
               <div className="relative mt-6">
                 <input
                   id="confirm_password"
-                  className="peer block w-full border-0 border-b border-sand bg-transparent px-0 py-3 text-ink placeholder-transparent focus:border-antique focus:outline-none focus:ring-0"
+                  className={`peer block w-full border-0 border-b bg-transparent px-0 py-3 text-ink placeholder-transparent focus:outline-none focus:ring-0 ${
+                    passwordMismatch ? "border-red-400 focus:border-red-400" : "border-sand focus:border-antique"
+                  }`}
                   name="confirm_password"
                   placeholder=" "
                   required
@@ -158,9 +229,18 @@ export default function RegisterPage() {
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
                 />
-                <label className="absolute left-0 top-3 cursor-text text-sm text-[#5a403c] transition-all duration-200 peer-focus:-top-3.5 peer-focus:text-[11px] peer-focus:text-antique peer-[:not(:placeholder-shown)]:-top-3.5 peer-[:not(:placeholder-shown)]:text-[11px]" htmlFor="confirm_password">
+                <label
+                  className="absolute left-0 top-3 cursor-text text-sm text-[#5a403c] transition-all duration-200 peer-focus:-top-3.5 peer-focus:text-[11px] peer-focus:text-antique peer-[:not(:placeholder-shown)]:-top-3.5 peer-[:not(:placeholder-shown)]:text-[11px]"
+                  htmlFor="confirm_password"
+                >
                   Xác nhận mật khẩu
                 </label>
+                {passwordMismatch && (
+                  <p className="mt-1 text-xs text-red-600">Mật khẩu xác nhận không khớp.</p>
+                )}
+                {!passwordMismatch && confirmPassword.length > 0 && password === confirmPassword && (
+                  <p className="mt-1 text-xs text-jade">✓ Mật khẩu khớp nhau.</p>
+                )}
               </div>
             </div>
 
@@ -171,10 +251,11 @@ export default function RegisterPage() {
               type="submit"
               disabled={loading}
             >
-              {loading ? "Đang tạo tài khoản" : "Đăng ký ngay"}
+              {loading ? "Đang tạo tài khoản..." : "Đăng ký ngay"}
             </button>
           </form>
 
+          {/* Lợi ích khi đăng ký */}
           <div className="border-t border-sand/50 pt-8">
             <ul className="flex flex-col space-y-4">
               {benefitItems.map((item) => (
@@ -187,7 +268,10 @@ export default function RegisterPage() {
           </div>
 
           <div className="pt-4 text-center">
-            <Link className="border-b border-transparent pb-0.5 text-sm text-[#5a403c] transition hover:border-lotus hover:text-lotus" href="/login">
+            <Link
+              className="border-b border-transparent pb-0.5 text-sm text-[#5a403c] transition hover:border-lotus hover:text-lotus"
+              href="/login"
+            >
               Đã có tài khoản? Đăng nhập ngay
             </Link>
           </div>

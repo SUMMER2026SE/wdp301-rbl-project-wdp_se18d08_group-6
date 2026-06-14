@@ -1,23 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, Suspense, useMemo, useState } from "react";
+import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useAuth } from "@/components/auth/auth-provider";
 import { apiRequest } from "@/lib/api";
-import { getDashboardPathByRole } from "@/lib/auth";
+import { resolveDashboardPath, toAuthenticatedUser, type AppRole } from "@/lib/auth";
 
 type LoginResult = {
   accessToken: string;
   user: {
     id: string;
     email: string;
-    role: string;
+    role: AppRole;
   };
 };
+
+function getSafeRedirectPath(value: string | null, fallbackPath: string) {
+  return value && value.startsWith("/") && !value.startsWith("//") ? value : fallbackPath;
+}
 
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { session, signIn, status } = useAuth();
+
   const [email, setEmail] = useState(searchParams.get("email") ?? "");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
@@ -28,9 +35,15 @@ function LoginPageContent() {
     if (searchParams.get("registered") !== "1") {
       return null;
     }
-
     return "Tài khoản mới đã được tạo. Bạn có thể đăng nhập ngay.";
   }, [searchParams]);
+
+  // Tự động chuyển hướng nếu đã đăng nhập
+  useEffect(() => {
+    if (status === "authenticated" && session) {
+      router.replace(getSafeRedirectPath(searchParams.get("next"), resolveDashboardPath(session.user.role)));
+    }
+  }, [router, searchParams, session, status]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -38,28 +51,25 @@ function LoginPageContent() {
     setLoading(true);
 
     try {
+      const normalizedEmail = email.trim().toLowerCase();
       const result = await apiRequest<LoginResult>("/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email: email.trim(), password }),
+        body: JSON.stringify({ email: normalizedEmail, password }),
       });
 
       if (!result.success || !result.data) {
-        setError(result.message ?? "Đăng nhập thất bại");
+        // Email chưa xác thực → chuyển đến trang nhập OTP
+        if (result.message === "EMAIL_NOT_VERIFIED") {
+          router.push(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`);
+          return;
+        }
+        setError(result.message ?? "Email hoặc mật khẩu không đúng.");
         return;
       }
 
-      const storage = rememberMe ? window.localStorage : window.sessionStorage;
-      const otherStorage = rememberMe ? window.sessionStorage : window.localStorage;
-
-      otherStorage.removeItem("access_token");
-      otherStorage.removeItem("user_role");
-      otherStorage.removeItem("user_email");
-
-      storage.setItem("access_token", result.data.accessToken);
-      storage.setItem("user_role", result.data.user.role);
-      storage.setItem("user_email", result.data.user.email);
-
-      router.push(getDashboardPathByRole(result.data.user.role));
+      // Đăng nhập qua context AuthProvider (thay thế cách lưu localStorage thủ công)
+      signIn({ accessToken: result.data.accessToken, user: toAuthenticatedUser(result.data.user) });
+      router.push(getSafeRedirectPath(searchParams.get("next"), resolveDashboardPath(result.data.user.role)));
     } catch {
       setError("Không thể kết nối đến hệ thống đăng nhập.");
     } finally {
@@ -70,6 +80,7 @@ function LoginPageContent() {
   return (
     <main className="flex min-h-screen w-full bg-white">
       <div className="flex min-h-screen w-full flex-col md:flex-row">
+        {/* Cột trái: Ảnh di sản đẹp mắt */}
         <section className="relative hidden overflow-hidden bg-[#fee2dd] md:flex md:w-1/2">
           <img
             alt="Cổ Phục Rental - Heritage"
@@ -85,6 +96,7 @@ function LoginPageContent() {
           </div>
         </section>
 
+        {/* Cột phải: Form đăng nhập */}
         <section className="flex w-full items-center justify-center bg-white px-4 py-10 md:w-1/2 md:px-12">
           <div className="w-full max-w-md">
             <div className="mb-8 text-center md:hidden">
@@ -142,10 +154,20 @@ function LoginPageContent() {
                   />
                   Ghi nhớ đăng nhập
                 </label>
-                <button type="button" className="font-semibold text-lotus transition hover:text-oxblood" onClick={() => setError("Chức năng quên mật khẩu đang được cập nhật.")}>Quên mật khẩu?</button>
+                <button
+                  type="button"
+                  className="font-semibold text-lotus transition hover:text-oxblood"
+                  onClick={() => setError("Chức năng quên mật khẩu đang được cập nhật.")}
+                >
+                  Quên mật khẩu?
+                </button>
               </div>
 
-              {error ? <p className="text-sm text-red-700">{error}</p> : null}
+              {error ? (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  {error}
+                </div>
+              ) : null}
 
               <div className="pt-2">
                 <button
@@ -153,7 +175,7 @@ function LoginPageContent() {
                   type="submit"
                   disabled={loading}
                 >
-                  {loading ? "Đang đăng nhập..." : "Đăng nhập"}
+                  {loading ? "Đang xử lý..." : "Đăng nhập"}
                 </button>
               </div>
             </form>
