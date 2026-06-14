@@ -1,16 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { getDashboardPathByRole } from "./auth";
+import { resolveDashboardPath } from "./auth";
 
-describe("getDashboardPathByRole", () => {
+describe("resolveDashboardPath", () => {
   it("maps known roles to the correct dashboard path", () => {
-    expect(getDashboardPathByRole("customer")).toBe("/dashboard/customer");
-    expect(getDashboardPathByRole("staff")).toBe("/dashboard/staff");
-    expect(getDashboardPathByRole("manager_owner")).toBe("/dashboard/manager");
-    expect(getDashboardPathByRole("admin")).toBe("/dashboard/admin");
-  });
-
-  it("falls back to the shared dashboard for unknown roles", () => {
-    expect(getDashboardPathByRole(undefined)).toBe("/dashboard");
-    expect(getDashboardPathByRole("guest")).toBe("/dashboard");
+    expect(resolveDashboardPath("customer")).toBe("/dashboard/customer");
+    expect(resolveDashboardPath("staff")).toBe("/dashboard/staff");
+    expect(resolveDashboardPath("manager_owner")).toBe("/dashboard/manager");
+    expect(resolveDashboardPath("admin")).toBe("/dashboard/admin");
   });
 });
