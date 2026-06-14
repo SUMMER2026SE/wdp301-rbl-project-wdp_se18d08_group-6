@@ -1,34 +1,145 @@
-﻿import Link from "next/link";
+"use client";
 
-const navItems = [
-  { href: "/catalog", label: "Catalog" },
-  { href: "/dashboard", label: "Dashboard" },
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
+import { publicNavItems } from "@/lib/site-content";
+
+const authRoutes = new Set(["/login", "/register"]);
+const hiddenPrefixes = ["/catalog", "/booking", "/try-on", "/dashboard/customer", "/dashboard/staff"];
+
+const appNavItems = [
+  { href: "/catalog", label: "Danh mục" },
+  { href: "/dashboard", label: "Bảng điều khiển" },
 ];
 
 export function Header() {
+  const pathname = usePathname();
+  const publicSectionIds = useMemo(
+    () => publicNavItems.map((item) => item.href.split("#")[1]).filter(Boolean),
+    [],
+  );
+  const [activeSection, setActiveSection] = useState(publicSectionIds[0] ?? "");
+
+  useEffect(() => {
+    if (pathname !== "/") {
+      return;
+    }
+
+    function syncActiveSectionFromViewport() {
+      const sections = publicSectionIds
+        .map((id) => document.getElementById(id))
+        .filter((section): section is HTMLElement => section instanceof HTMLElement);
+
+      const visibleSection = sections.find((section) => {
+        const rect = section.getBoundingClientRect();
+        return rect.top <= 180 && rect.bottom >= 180;
+      });
+
+      if (visibleSection) {
+        setActiveSection(visibleSection.id);
+        return;
+      }
+
+      if (window.scrollY < 120 && publicSectionIds[0]) {
+        setActiveSection(publicSectionIds[0]);
+      }
+    }
+
+    function syncActiveSectionFromHash() {
+      const currentHash = window.location.hash.replace("#", "");
+
+      if (currentHash && publicSectionIds.includes(currentHash)) {
+        setActiveSection(currentHash);
+        return;
+      }
+
+      syncActiveSectionFromViewport();
+    }
+
+    syncActiveSectionFromHash();
+    window.addEventListener("scroll", syncActiveSectionFromViewport, { passive: true });
+    window.addEventListener("hashchange", syncActiveSectionFromHash);
+
+    return () => {
+      window.removeEventListener("scroll", syncActiveSectionFromViewport);
+      window.removeEventListener("hashchange", syncActiveSectionFromHash);
+    };
+  }, [pathname, publicSectionIds]);
+
+  if (authRoutes.has(pathname)) {
+    return null;
+  }
+
+  if (hiddenPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
+    return null;
+  }
+
+  if (pathname === "/") {
+    return (
+      <header className="sticky top-0 z-40 border-b border-sand/80 bg-parchment/95 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
+          <Link href="/" className="font-display text-3xl leading-none text-lotus">
+            Cổ Phục Rental
+          </Link>
+
+          <nav className="hidden items-center gap-8 md:flex">
+            {publicNavItems.map((item) => {
+              const sectionId = item.href.split("#")[1] ?? "";
+              const isActive = activeSection === sectionId;
+
+              return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={isActive
+                  ? "border-b border-lotus pb-1 text-sm font-semibold text-lotus"
+                  : "border-b border-transparent pb-1 text-sm font-medium text-stone-600 transition hover:border-lotus/35 hover:text-lotus"}
+                onClick={() => setActiveSection(sectionId)}
+              >
+                {item.label}
+              </Link>
+              );
+            })}
+          </nav>
+
+          <div className="flex items-center gap-3">
+            <Link href="/catalog" className="hidden rounded-sm bg-lotus px-5 py-2 text-sm font-semibold text-white transition hover:bg-oxblood md:inline-flex">
+              Thuê Ngay
+            </Link>
+            <button type="button" className="text-stone-600 transition hover:text-lotus" aria-label="Tìm kiếm">
+              <span className="material-symbols-outlined text-[22px]">search</span>
+            </button>
+            <button type="button" className="text-stone-600 transition hover:text-lotus" aria-label="Giỏ thuê đồ">
+              <span className="material-symbols-outlined text-[22px]">shopping_bag</span>
+            </button>
+            <Link href="/login" className="hidden text-stone-600 transition hover:text-lotus md:inline-flex" aria-label="Tài khoản">
+              <span className="material-symbols-outlined text-[22px]">person</span>
+            </Link>
+          </div>
+        </div>
+      </header>
+    );
+  }
+
   return (
-    <header className="border-b border-slate-200 bg-white">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
-        <Link href="/" className="text-base font-semibold tracking-wide text-ink">
-          Co Phuc ERP
+    <header className="sticky top-0 z-40 border-b border-sand/80 bg-mist/95 backdrop-blur">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-4 py-4 sm:px-6 lg:px-8">
+        <Link href="/" className="font-display text-3xl leading-none text-lotus">
+          Cổ Phục Rental
         </Link>
-        <nav className="flex items-center gap-2 text-sm">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100"
-            >
+
+        <nav className="hidden items-center gap-6 text-sm font-medium text-stone-700 md:flex">
+          {appNavItems.map((item) => (
+            <Link key={item.href} href={item.href} className="transition hover:text-lotus">
               {item.label}
             </Link>
           ))}
-          <Link
-            href="/login"
-            className="rounded-md bg-ink px-3 py-2 font-medium text-white hover:bg-slate-700"
-          >
-            Login
-          </Link>
         </nav>
+
+        <Link href="/login" className="rounded-sm bg-lotus px-4 py-2 text-sm font-semibold text-white transition hover:bg-oxblood">
+          Đăng nhập
+        </Link>
       </div>
     </header>
   );

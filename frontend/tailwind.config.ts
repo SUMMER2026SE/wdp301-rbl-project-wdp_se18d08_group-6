@@ -9,10 +9,24 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        ink: "#1f2933",
-        lotus: "#b91c1c",
-        jade: "#0f766e",
+        ink: "#251917",
+        lotus: "#8b1e1e",
+        oxblood: "#4d100f",
+        jade: "#225d55",
+        bronze: "#7b5a43",
+        antique: "#c6a664",
+        parchment: "#f6efe7",
+        mist: "#fcfaf7",
+        sand: "#e6d7c5",
         silk: "#f8fafc",
+        forest: "#203e39",
+      },
+      fontFamily: {
+        sans: ["Manrope", "ui-sans-serif", "system-ui", "sans-serif"],
+        display: ["Cormorant Garamond", "Georgia", "serif"],
+      },
+      boxShadow: {
+        glow: "0 20px 60px rgba(77, 16, 15, 0.14)",
       },
     },
   },
