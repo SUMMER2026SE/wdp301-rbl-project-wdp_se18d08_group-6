@@ -1,7 +1,15 @@
+"use client";
+
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import { bookingSuccessTimeline } from "@/lib/heritage-mock-data";
 
-export default function BookingSuccessPage() {
+function BookingSuccessInner() {
+  const searchParams = useSearchParams();
+  const bookingId = searchParams.get("bookingId");
+  const displayCode = bookingId ? `#${bookingId.slice(0, 8).toUpperCase()}` : "#—";
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-[linear-gradient(120deg,#f9f5f0_0%,#fff0ee_50%,#f9f5f0_100%)] px-4 py-12 text-ink">
       <main className="w-full max-w-3xl text-center">
@@ -11,11 +19,12 @@ export default function BookingSuccessPage() {
           </div>
           <p className="mt-6 text-xs font-semibold uppercase tracking-[0.22em] text-antique">Đặt lịch thành công</p>
           <h1 className="mt-3 font-display text-5xl text-ink sm:text-6xl">Giữ lịch thành công</h1>
-          <p className="mx-auto mt-4 max-w-2xl text-base leading-8 text-stone-600">Xưởng đã ghi nhận yêu cầu thuê cho bộ Nhật Bình Hoàng Phái. Thông tin bàn giao và trạng thái chuẩn bị sẽ tiếp tục được cập nhật trong bảng điều khiển khách hàng.</p>
+          <p className="mx-auto mt-4 max-w-2xl text-base leading-8 text-stone-600">Xưởng đã ghi nhận yêu cầu thuê. Thông tin bàn giao và trạng thái chuẩn bị sẽ được cập nhật trong bảng điều khiển khách hàng.</p>
 
           <div className="mt-8 rounded-xl border border-sand bg-[#fff8f6] p-4 text-left">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Mã booking</p>
-            <p className="mt-2 font-display text-3xl text-lotus">#BOOK-NB-240914</p>
+            <p className="mt-2 font-display text-3xl text-lotus">{displayCode}</p>
+            {bookingId && <p className="mt-1 text-xs text-stone-400 break-all">{bookingId}</p>}
           </div>
 
           <section className="mt-10 text-left">
@@ -47,5 +56,13 @@ export default function BookingSuccessPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function BookingSuccessPage() {
+  return (
+    <Suspense>
+      <BookingSuccessInner />
+    </Suspense>
   );
 }

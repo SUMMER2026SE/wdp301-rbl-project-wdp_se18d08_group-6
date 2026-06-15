@@ -117,7 +117,8 @@ export const pairingItems = [
 ];
 
 export const bookingFlowSteps = [
-  { key: "garment", label: "Trang phục", icon: "checkroom", href: "/catalog/nhat-binh-hoang-phai" },
+  // href của "garment" không dùng slug mock — trỏ về /catalog để user chọn trang phục thật từ DB
+  { key: "garment", label: "Trang phục", icon: "checkroom", href: "/catalog" },
   { key: "schedule", label: "Lịch thuê", icon: "calendar_today", href: "/booking/date-selection" },
   { key: "logistics", label: "Vận chuyển", icon: "local_shipping", href: "/booking/logistics" },
   { key: "review", label: "Kiểm tra đơn", icon: "fact_check", href: "/booking/review" },
@@ -168,18 +169,21 @@ export const customerWidgets = [
     description: "Xem lại các phiên bản thử trang phục kỹ thuật số gần đây.",
     icon: "face_retouching_natural",
     accent: "bg-lotus/10 text-lotus",
+    href: "/try-on",
   },
   {
     title: "Số đo cá nhân",
     description: "Cập nhật chiều cao, vòng ngực và ghi chú chỉnh sửa trước lần thuê tiếp theo.",
     icon: "straighten",
     accent: "bg-bronze/10 text-bronze",
+    href: "/dashboard/customer/measurements",
   },
   {
     title: "Địa chỉ nhận đồ",
     description: "Nhà riêng tại Quận 1 đang được dùng làm địa chỉ mặc định cho đơn thuê.",
     icon: "location_on",
     accent: "bg-antique/10 text-antique",
+    href: "/dashboard/customer/addresses",
   },
 ];
 

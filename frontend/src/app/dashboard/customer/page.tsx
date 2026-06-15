@@ -1,52 +1,207 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { getMyBookings, cancelBooking } from "@/lib/api";
+import type { BookingResponse } from "@/lib/api";
+import { readStoredSession } from "@/lib/auth";
+import { customerWidgets } from "@/lib/heritage-mock-data";
 
-const quickLinks = [
-  {
-    href: "/dashboard/customer/profile",
-    title: "Profile details",
-    description: "Update the contact information your orders and delivery team rely on.",
-  },
-  {
-    href: "/dashboard/customer/measurements",
-    title: "Measurements",
-    description: "Save body measurements to speed up fitting and recommendations.",
-  },
-  {
-    href: "/dashboard/customer/addresses",
-    title: "Delivery addresses",
-    description: "Keep default drop-off and pick-up addresses ready for future bookings.",
-  },
-];
+const STATUS_LABEL: Record<string, { label: string; color: string }> = {
+  draft:                { label: "Nháp",           color: "bg-stone-100 text-stone-600" },
+  pending_confirmation: { label: "Chờ xác nhận",   color: "bg-[#ffe9e6] text-lotus" },
+  confirmed:            { label: "Đã xác nhận",    color: "bg-jade/10 text-jade" },
+  awaiting_payment:     { label: "Chờ thanh toán", color: "bg-amber-50 text-amber-700" },
+  paid:                 { label: "Đã thanh toán",  color: "bg-jade/10 text-jade" },
+  preparing:            { label: "Đang chuẩn bị",  color: "bg-[#ffe9e6] text-lotus" },
+  ready_for_pickup:     { label: "Sẵn sàng nhận",  color: "bg-jade/10 text-jade" },
+  delivering:           { label: "Đang giao",       color: "bg-amber-50 text-amber-700" },
+  renting:              { label: "Đang thuê",       color: "bg-jade/10 text-jade" },
+  returned:             { label: "Đã trả",          color: "bg-stone-100 text-stone-600" },
+  inspection_pending:   { label: "Chờ kiểm tra",   color: "bg-amber-50 text-amber-700" },
+  completed:            { label: "Hoàn tất",        color: "bg-jade/10 text-jade" },
+  cancelled:            { label: "Đã hủy",          color: "bg-stone-100 text-stone-500" },
+  rejected:             { label: "Bị từ chối",      color: "bg-red-50 text-red-600" },
+  overdue:              { label: "Quá hạn",         color: "bg-red-50 text-red-600" },
+};
 
-const reminders = [
-  "Bookings, deposits, and AI try-on history will be added in the next dashboard sprint.",
-  "Profile, measurement, and address changes are saved directly through the NestJS backend API.",
-  "Your default delivery address is always shown first when the address book loads.",
-];
+const ACTIVE_STATUSES = new Set([
+  "pending_confirmation", "confirmed", "awaiting_payment",
+  "paid", "preparing", "ready_for_pickup", "delivering", "renting",
+]);
+
+const CANCELLABLE_STATUSES = new Set([
+  "draft", "pending_confirmation", "confirmed", "awaiting_payment",
+]);
+
+function formatVND(n: number) {
+  return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(n);
+}
+
+function formatDate(iso: string) {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
 
 export default function CustomerDashboardPage() {
+  const [bookings, setBookings] = useState<BookingResponse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [userName, setUserName] = useState("Khách hàng");
+
+  useEffect(() => {
+    const session = readStoredSession();
+    if (session?.user?.fullName) setUserName(session.user.fullName);
+    else if (session?.user?.email) setUserName(session.user.email.split("@")[0]);
+
+    getMyBookings().then((res) => {
+      if (res.success && res.data) setBookings(res.data);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  async function handleCancel(id: string) {
+    setCancellingId(id);
+    const res = await cancelBooking(id);
+    if (res.success && res.data) {
+      setBookings((prev) => prev.map((b) => (b.id === id ? res.data! : b)));
+    }
+    setCancellingId(null);
+  }
+
+  const activeBooking = bookings.find((b) => ACTIVE_STATUSES.has(b.status));
+  const history = bookings.filter((b) => !ACTIVE_STATUSES.has(b.status));
+  const statusOf = (s: string) => STATUS_LABEL[s] ?? { label: s, color: "bg-stone-100 text-stone-600" };
+
   return (
-    <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
-      <section>
-        <h2 className="text-xl font-semibold text-ink">Account tools</h2>
-        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {quickLinks.map((item) => (
-            <Link key={item.href} href={item.href} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition hover:border-slate-300 hover:bg-slate-50">
-              <h3 className="text-lg font-semibold text-ink">{item.title}</h3>
-              <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p>
+    <div className="space-y-10">
+      <header className="mb-12">
+        <h1 className="font-display text-5xl text-lotus sm:text-6xl">Xin chào, {userName}</h1>
+        <p className="mt-3 flex items-center gap-2 text-base text-stone-600">
+          <span className="material-symbols-outlined text-antique">workspace_premium</span>
+          Thành viên di sản
+        </p>
+      </header>
+
+      <div className="grid gap-8 lg:grid-cols-12">
+        <div className="space-y-8 lg:col-span-8">
+
+          {/* Đơn đang active */}
+          {loading ? (
+            <div className="rounded-xl border border-sand bg-white p-8 text-stone-400">Đang tải đơn thuê...</div>
+          ) : activeBooking ? (
+            <section className="overflow-hidden rounded-xl border border-sand bg-white p-8 shadow-[0_10px_40px_rgba(77,16,15,0.05)]">
+              <div className="flex flex-col gap-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="font-display text-4xl text-ink">
+                      {activeBooking.items[0]?.garmentName ?? "Trang phục"}
+                    </h2>
+                    <p className="mt-1 text-sm text-stone-600">
+                      {formatDate(activeBooking.rentalStartDate)} - {formatDate(activeBooking.rentalEndDate)}
+                      {" "}({activeBooking.days} ngày)
+                    </p>
+                    <p className="mt-1 text-sm text-stone-500">
+                      Tiền thuê: <span className="font-medium text-ink">{formatVND(activeBooking.rentalTotal)}</span>
+                      {" "}· Cọc: <span className="font-medium text-ink">{formatVND(activeBooking.depositTotal)}</span>
+                    </p>
+                  </div>
+                  <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${statusOf(activeBooking.status).color}`}>
+                    {statusOf(activeBooking.status).label}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <Link
+                    href={`/booking/success?bookingId=${activeBooking.id}`}
+                    className="inline-flex items-center justify-center rounded-lg bg-lotus px-5 py-3 text-sm font-semibold text-white transition hover:bg-oxblood"
+                  >
+                    Xem chi tiết
+                  </Link>
+                  {CANCELLABLE_STATUSES.has(activeBooking.status) && (
+                    <button
+                      type="button"
+                      disabled={cancellingId === activeBooking.id}
+                      onClick={() => handleCancel(activeBooking.id)}
+                      className="rounded-lg border border-stone-300 px-5 py-3 text-sm font-semibold text-stone-600 transition hover:bg-stone-50 disabled:opacity-40"
+                    >
+                      {cancellingId === activeBooking.id ? "Đang hủy..." : "Hủy đơn"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </section>
+          ) : (
+            <section className="rounded-xl border border-sand bg-white p-8 text-center shadow-sm">
+              <p className="text-stone-500">Bạn chưa có đơn thuê nào đang hoạt động.</p>
+              <Link
+                href="/catalog"
+                className="mt-4 inline-flex items-center gap-2 rounded-lg bg-lotus px-5 py-3 text-sm font-semibold text-white transition hover:bg-oxblood"
+              >
+                Khám phá bộ sưu tập
+                <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+              </Link>
+            </section>
+          )}
+
+          {/* Lịch sử */}
+          <section>
+            <h2 className="mb-6 font-display text-4xl text-ink">Lịch sử thuê trang phục</h2>
+            {history.length === 0 && !loading ? (
+              <p className="text-sm text-stone-400">Chưa có lịch sử thuê.</p>
+            ) : (
+              <div className="overflow-hidden rounded-xl border border-sand bg-white">
+                <table className="w-full border-collapse text-left text-sm">
+                  <thead>
+                    <tr className="bg-[#fff4ef] text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                      <th className="px-6 py-4">Trang phục</th>
+                      <th className="px-6 py-4">Thời gian</th>
+                      <th className="px-6 py-4">Trạng thái</th>
+                      <th className="px-6 py-4">Tổng</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.map((b) => {
+                      const st = statusOf(b.status);
+                      return (
+                        <tr key={b.id} className="border-t border-sand transition hover:bg-[#fff8f6]">
+                          <td className="px-6 py-4 font-medium text-ink">{b.items[0]?.garmentName ?? "—"}</td>
+                          <td className="px-6 py-4 text-stone-600">
+                            {formatDate(b.rentalStartDate)} - {formatDate(b.rentalEndDate)}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${st.color}`}>
+                              {st.label}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-stone-600">{formatVND(b.rentalTotal + b.depositTotal)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </div>
+
+        <aside className="space-y-6 lg:col-span-4">
+          {customerWidgets.map((item) => (
+            <Link
+              key={item.title}
+              href={item.href || "/dashboard/customer"}
+              className="block rounded-xl border border-sand bg-white p-6 shadow-[0_10px_30px_rgba(77,16,15,0.04)] transition-all duration-200 hover:border-lotus/40 hover:shadow-[0_10px_35px_rgba(77,16,15,0.08)] hover:-translate-y-0.5 group"
+            >
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div className={`flex h-10 w-10 items-center justify-center rounded-full ${item.accent}`}>
+                  <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
+                </div>
+                <span className="material-symbols-outlined text-stone-400 group-hover:text-lotus transition-colors duration-200">arrow_forward</span>
+              </div>
+              <h3 className="font-display text-3xl text-ink group-hover:text-lotus transition-colors duration-200">{item.title}</h3>
+              <p className="mt-2 text-sm leading-7 text-stone-600">{item.description}</p>
             </Link>
           ))}
-        </div>
-      </section>
-
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-ink">What is ready now</h2>
-        <ul className="mt-4 space-y-3 text-sm leading-6 text-slate-600">
-          {reminders.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
-      </section>
+        </aside>
+      </div>
     </div>
   );
 }
