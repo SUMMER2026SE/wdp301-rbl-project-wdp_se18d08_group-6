@@ -135,6 +135,113 @@ Response:
 }
 ```
 
+### Bookings
+
+All booking endpoints require `Authorization: Bearer <accessToken>`.
+
+#### Check Availability
+
+```http
+POST /api/bookings/check-availability
+```
+
+Request:
+
+```json
+{
+  "garmentId": "uuid",
+  "startDate": "2024-09-14",
+  "endDate": "2024-09-16"
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "garmentId": "uuid",
+    "available": true,
+    "conflictDates": []
+  }
+}
+```
+
+#### Create Booking
+
+```http
+POST /api/bookings
+```
+
+Request (`pickupMethod` and `note` optional):
+
+```json
+{
+  "garmentId": "uuid",
+  "startDate": "2024-09-14",
+  "endDate": "2024-09-16",
+  "pickupMethod": "store_pickup",
+  "note": "Nhan tai atelier"
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "status": "pending_confirmation",
+    "rentalStartDate": "2024-09-14",
+    "rentalEndDate": "2024-09-16",
+    "days": 3,
+    "pickupMethod": "store_pickup",
+    "rentalTotal": 1050000,
+    "depositTotal": 1000000,
+    "note": "Nhan tai atelier",
+    "createdAt": "2024-09-10T08:00:00.000Z",
+    "items": [
+      {
+        "id": "uuid",
+        "garmentId": "uuid",
+        "garmentName": "Ao dai do theu sen",
+        "sizeLabel": "M",
+        "dailyPrice": 350000,
+        "depositAmount": 1000000
+      }
+    ]
+  }
+}
+```
+
+`rentalTotal = dailyPrice * days`. Server rejects with `400` if the garment is already booked over an overlapping date range.
+
+#### List My Bookings
+
+```http
+GET /api/bookings/me
+```
+
+Returns an array of the authenticated customer's bookings (same shape as Create response), newest first.
+
+#### Get Booking Detail
+
+```http
+GET /api/bookings/:id
+```
+
+Returns one booking. Responds `403` if the booking does not belong to the authenticated customer, `404` if not found.
+
+#### Cancel Booking
+
+```http
+PATCH /api/bookings/:id/cancel
+```
+
+Sets status to `cancelled`. Only allowed while the booking is in `draft`, `pending_confirmation`, `confirmed`, or `awaiting_payment`; otherwise responds `400`.
+
 ## Planned Endpoints
 
 ### Auth/User
@@ -161,21 +268,16 @@ PATCH /api/assets/:id/status
 
 Manager/Owner owns create/update catalog and asset operations.
 
-### Booking
+### Booking (remaining, staff/manager)
 
 ```http
-POST /api/bookings/check-availability
-POST /api/bookings
-GET /api/bookings/me
-GET /api/bookings/:id
-PATCH /api/bookings/:id/cancel
 PATCH /api/bookings/:id/confirm
 PATCH /api/bookings/:id/reject
 PATCH /api/bookings/:id/mark-delivered
 PATCH /api/bookings/:id/mark-returned
 ```
 
-Booking creation must run on the backend and must prevent double-booking of the same `GarmentAsset` over overlapping dates.
+Booking creation, availability check, listing, detail, and customer cancel are implemented (see Existing Endpoints above). Booking creation runs on the backend and prevents double-booking of the same garment over overlapping dates.
 
 ### Payment and Financial Management
 

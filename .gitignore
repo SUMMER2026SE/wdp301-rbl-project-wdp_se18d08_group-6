@@ -1,7 +1,7 @@
-.next
-dist
+﻿dist
 backend/dist
-frontend/.next
+frontend/
+.next
 node_modules
 .env
 .env.local
