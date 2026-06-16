@@ -11,6 +11,8 @@ function formatDate(iso: string) {
   return `${d}/${m}/${y}`;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function BookingLogisticsInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -18,6 +20,8 @@ function BookingLogisticsInner() {
   const garmentId = searchParams.get("garmentId") ?? "";
   const startDate = searchParams.get("startDate") ?? "";
   const endDate = searchParams.get("endDate") ?? "";
+
+  const isInvalid = !UUID_RE.test(garmentId) || !startDate || !endDate || endDate < startDate;
 
   const [pickupMethod, setPickupMethod] = useState<string>(logisticsMethods[0].key);
 
@@ -27,6 +31,16 @@ function BookingLogisticsInner() {
   }
 
   const backParams = new URLSearchParams({ garmentId, startDate, endDate });
+
+  if (isInvalid) {
+    return (
+      <BookingFlowShell currentStep="logistics" title="Phương thức vận chuyển" description="">
+        <div className="py-20 text-center text-stone-500">
+          <p>Thông tin đặt lịch không hợp lệ. Vui lòng <Link href="/catalog" className="text-lotus underline">chọn lại trang phục</Link>.</p>
+        </div>
+      </BookingFlowShell>
+    );
+  }
 
   return (
     <BookingFlowShell
