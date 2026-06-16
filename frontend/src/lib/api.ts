@@ -130,3 +130,27 @@ export async function getBooking(id: string) {
 export async function cancelBooking(id: string) {
   return apiRequest<BookingResponse>(`/bookings/${id}/cancel`, { method: "PATCH" });
 }
+
+// ---------- Staff Booking types ----------
+
+export type StaffBookingResponse = BookingResponse & {
+  customerName: string | null;
+  customerPhone: string | null;
+};
+
+// ---------- Staff Booking API functions ----------
+
+export async function getStaffPendingBookings() {
+  return apiRequest<StaffBookingResponse[]>("/bookings/staff/pending");
+}
+
+export async function getStaffAllBookings() {
+  return apiRequest<StaffBookingResponse[]>("/bookings/staff/all");
+}
+
+export async function advanceBookingStatus(id: string, status: string, note?: string) {
+  return apiRequest<BookingResponse>(`/bookings/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status, ...(note ? { note } : {}) }),
+  });
+}

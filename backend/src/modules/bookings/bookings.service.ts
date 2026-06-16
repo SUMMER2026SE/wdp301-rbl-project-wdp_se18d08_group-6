@@ -4,6 +4,7 @@ import { ok } from "../../common/api-response";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { CheckAvailabilityDto } from "./dto/check-availability.dto";
 import type { CreateBookingDto } from "./dto/create-booking.dto";
+import type { UpdateBookingStatusDto } from "./dto/update-booking-status.dto";
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -21,6 +22,21 @@ const CANCELLABLE_STATUSES: BookingStatus[] = [
   BookingStatus.confirmed,
   BookingStatus.awaiting_payment,
 ];
+
+// Các trạng thái staff/manager được phép chuyển đến từ pending_confirmation
+const STAFF_ALLOWED_TRANSITIONS: Partial<Record<BookingStatus, BookingStatus[]>> = {
+  [BookingStatus.pending_confirmation]: [BookingStatus.confirmed, BookingStatus.rejected],
+  [BookingStatus.confirmed]: [BookingStatus.awaiting_payment, BookingStatus.cancelled],
+  [BookingStatus.awaiting_payment]: [BookingStatus.paid],
+  [BookingStatus.paid]: [BookingStatus.preparing],
+  [BookingStatus.preparing]: [BookingStatus.ready_for_pickup],
+  [BookingStatus.ready_for_pickup]: [BookingStatus.delivering, BookingStatus.renting],
+  [BookingStatus.delivering]: [BookingStatus.renting],
+  [BookingStatus.renting]: [BookingStatus.returned, BookingStatus.overdue],
+  [BookingStatus.returned]: [BookingStatus.inspection_pending],
+  [BookingStatus.inspection_pending]: [BookingStatus.completed],
+  [BookingStatus.overdue]: [BookingStatus.returned],
+};
 
 @Injectable()
 export class BookingsService {
@@ -175,8 +191,7 @@ export class BookingsService {
     return ok(this.serializeBooking(updated));
   }
 
-  private serializeBooking(
-    booking: {
+  private serializeBooking(    booking: {
       id: string;
       status: BookingStatus;
       rentalStartDate: Date;
@@ -226,5 +241,66 @@ export class BookingsService {
         depositAmount: Number(item.depositAmount),
       })),
     };
+  }
+
+  // ── Staff / Manager endpoints ──────────────────────────────────────────────
+
+  async findAllPending() {
+    const bookings = await this.prisma.booking.findMany({
+      where: { status: BookingStatus.pending_confirmation },
+      orderBy: { createdAt: "asc" },
+      include: {
+        items: { include: { garment: true } },
+        customer: { select: { profile: { select: { fullName: true, phone: true } }, email: true } },
+      },
+    });
+
+    return ok(bookings.map((b) => ({
+      ...this.serializeBooking(b),
+      customerName: b.customer?.profile?.fullName ?? b.customer?.email ?? null,
+      customerPhone: b.customer?.profile?.phone ?? null,
+    })));
+  }
+
+  async findAllForStaff() {
+    const bookings = await this.prisma.booking.findMany({
+      where: {
+        status: {
+          notIn: [BookingStatus.draft],
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      include: {
+        items: { include: { garment: true } },
+        customer: { select: { profile: { select: { fullName: true, phone: true } }, email: true } },
+      },
+    });
+
+    return ok(bookings.map((b) => ({
+      ...this.serializeBooking(b),
+      customerName: b.customer?.profile?.fullName ?? b.customer?.email ?? null,
+      customerPhone: b.customer?.profile?.phone ?? null,
+    })));
+  }
+
+  async advanceStatus(id: string, dto: UpdateBookingStatusDto) {
+    const booking = await this.prisma.booking.findUnique({ where: { id } });
+    if (!booking) throw new NotFoundException("Booking not found.");
+
+    const allowed = STAFF_ALLOWED_TRANSITIONS[booking.status];
+    if (!allowed?.includes(dto.status)) {
+      throw new BadRequestException(
+        `Cannot transition from '${booking.status}' to '${dto.status}'.`,
+      );
+    }
+
+    const updated = await this.prisma.booking.update({
+      where: { id },
+      data: { status: dto.status, ...(dto.note ? { note: dto.note } : {}) },
+      include: { items: { include: { garment: true } } },
+    });
+
+    return ok(this.serializeBooking(updated));
   }
 }

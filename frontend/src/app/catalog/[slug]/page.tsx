@@ -43,7 +43,7 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
   if (notFoundFlag) notFound();
 
   function handleBooking() {
-    const p = new URLSearchParams({ garmentId, startDate, endDate });
+    const p = new URLSearchParams({ garmentId, startDate, endDate, slug: garmentId });
     router.push(`/booking/date-selection?${p.toString()}`);
   }
 
