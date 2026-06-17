@@ -14,4 +14,9 @@ export class GarmentsController {
   findOne(@Param("id", ParseUUIDPipe) id: string) {
     return this.garmentsService.findOne(id);
   }
+
+  @Get(":id/assets/available")
+  findAvailableAssets(@Param("id", ParseUUIDPipe) id: string) {
+    return this.garmentsService.findAvailableAssets(id);
+  }
 }

@@ -5,8 +5,10 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import type { AuthenticatedUser } from "../auth/auth-user";
 import { BookingsService } from "./bookings.service";
+import { AssignAssetDto } from "./dto/assign-asset.dto";
 import { CheckAvailabilityDto } from "./dto/check-availability.dto";
 import { CreateBookingDto } from "./dto/create-booking.dto";
+import { MarkPaidDto } from "./dto/mark-paid.dto";
 import { UpdateBookingStatusDto } from "./dto/update-booking-status.dto";
 
 @Controller("bookings")
@@ -59,13 +61,58 @@ export class BookingsController {
     return this.bookingsService.findAllForStaff();
   }
 
+  @Get("staff/returns")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("staff", "manager_owner", "admin")
+  findReturnQueue() {
+    return this.bookingsService.findReturnQueue();
+  }
+
   @Patch(":id/status")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("staff", "manager_owner", "admin")
   advanceStatus(
+    @CurrentUser() user: AuthenticatedUser,
     @Param("id", ParseUUIDPipe) id: string,
     @Body() dto: UpdateBookingStatusDto,
   ) {
-    return this.bookingsService.advanceStatus(id, dto);
+    return this.bookingsService.advanceStatus(id, dto, user.id);
+  }
+
+  @Patch(":bookingId/items/:itemId/assign-asset")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("manager_owner", "admin")
+  assignAsset(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("bookingId", ParseUUIDPipe) bookingId: string,
+    @Param("itemId", ParseUUIDPipe) itemId: string,
+    @Body() dto: AssignAssetDto,
+  ) {
+    return this.bookingsService.assignAsset(bookingId, itemId, dto, user.id);
+  }
+
+  @Patch(":id/mark-paid")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("staff", "manager_owner", "admin")
+  markPaid(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: MarkPaidDto,
+  ) {
+    return this.bookingsService.markPaid(id, dto, user.id);
+  }
+
+  @Get("staff/assets-needed")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("manager_owner", "admin")
+  findBookingsNeedingAssets() {
+    return this.bookingsService.findBookingsNeedingAssets();
+  }
+
+  @Post("cancel-expired-payments")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("manager_owner", "admin")
+  cancelExpiredAwaitingPayments() {
+    return this.bookingsService.cancelExpiredAwaitingPayments();
   }
 }

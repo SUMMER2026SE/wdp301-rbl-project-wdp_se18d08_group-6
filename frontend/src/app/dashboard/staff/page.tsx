@@ -6,6 +6,7 @@ import {
   getStaffPendingBookings,
   getStaffAllBookings,
   advanceBookingStatus,
+  markBookingPaid,
   type StaffBookingResponse,
 } from "@/lib/api";
 
@@ -46,7 +47,7 @@ const NEXT_ACTIONS: Partial<Record<string, { status: string; label: string; styl
     { status: "cancelled",        label: "Hủy",            style: "border border-red-300 text-red-700 hover:bg-red-50" },
   ],
   awaiting_payment: [
-    { status: "paid", label: "Đánh dấu đã thanh toán", style: "bg-lotus text-white hover:bg-oxblood" },
+    // "paid" không dùng advanceBookingStatus nữa — staff phải qua dialog mark-paid
   ],
   paid: [
     { status: "preparing", label: "Bắt đầu chuẩn bị", style: "bg-lotus text-white hover:bg-oxblood" },
@@ -68,9 +69,8 @@ const NEXT_ACTIONS: Partial<Record<string, { status: string; label: string; styl
   returned: [
     { status: "inspection_pending", label: "Bắt đầu kiểm tra", style: "bg-lotus text-white hover:bg-oxblood" },
   ],
-  inspection_pending: [
-    { status: "completed", label: "Hoàn thành", style: "bg-jade text-white hover:bg-forest" },
-  ],
+  // inspection_pending → completed: bị cấm ở staff overview.
+  // Việc hoàn tất chỉ được thực hiện qua màn Kiểm tra (/dashboard/staff/inspection).
   overdue: [
     { status: "returned", label: "Khách đã trả", style: "bg-lotus text-white hover:bg-oxblood" },
   ],
@@ -78,12 +78,37 @@ const NEXT_ACTIONS: Partial<Record<string, { status: string; label: string; styl
 
 type Tab = "pending" | "all";
 
+type PaymentDialog = {
+  bookingId: string;
+  customerName: string | null;
+  rentalTotal: number;
+  depositTotal: number;
+} | null;
+
+const PAYMENT_METHODS: { key: string; label: string; icon: string }[] = [
+  { key: "cash", label: "Tiền mặt", icon: "payments" },
+  { key: "bank_transfer", label: "Chuyển khoản", icon: "account_balance" },
+  { key: "qr_code", label: "QR Code", icon: "qr_code" },
+  { key: "pos_card", label: "Thẻ POS", icon: "credit_card" },
+];
+
+// Statuses mà item chưa có asset là vấn đề cần báo manager
+const ASSET_NEEDED_STATUSES = [
+  "confirmed",
+  "awaiting_payment",
+  "paid",
+  "preparing",
+];
+
 export default function StaffDashboardPage() {
   const [tab, setTab] = useState<Tab>("pending");
   const [bookings, setBookings] = useState<StaffBookingResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [errorDialog, setErrorDialog] = useState<string | null>(null);
+  const [paymentDialog, setPaymentDialog] = useState<PaymentDialog>(null);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("cash");
 
   useEffect(() => {
     setLoading(true);
@@ -110,7 +135,56 @@ export default function StaffDashboardPage() {
         setBookings((prev) => prev.filter((b) => b.id !== id));
       }
     } else {
-      setErrorMsg(res.message ?? "Thao tác thất bại.");
+      // Nếu lỗi liên quan đến asset thì hiển thị popup thay vì banner
+      if (res.message?.includes("assigned asset")) {
+        setErrorDialog(
+          "Không thể chuyển trạng thái vì các món trong đơn chưa được gán tài sản vật lý.\n\n" +
+          "Vui lòng báo cho Quản lý / Chủ cửa hàng để gán asset cho từng món hàng trước khi chuyển sang trạng thái này.",
+        );
+      } else {
+        setErrorMsg(res.message ?? "Thao tác thất bại.");
+      }
+    }
+  }
+
+  function openPaymentDialog(booking: StaffBookingResponse) {
+    setSelectedPaymentMethod("cash");
+    setPaymentDialog({
+      bookingId: booking.id,
+      customerName: booking.customerName,
+      rentalTotal: booking.rentalTotal,
+      depositTotal: booking.depositTotal,
+    });
+  }
+
+  async function handleMarkPaid() {
+    if (!paymentDialog) return;
+    const id = paymentDialog.bookingId;
+    setActioningId(id);
+    setErrorMsg(null);
+    setPaymentDialog(null);
+    const res = await markBookingPaid(id, selectedPaymentMethod);
+    setActioningId(null);
+    if (res.success && res.data) {
+      setBookings((prev) =>
+        prev.map((b) => (b.id === id ? { ...b, status: res.data!.status } : b)),
+      );
+    } else {
+      setErrorMsg(res.message ?? "Không thể ghi nhận thanh toán.");
+    }
+  }
+
+  async function handleMarkDeliveryPaid(bookingId: string) {
+    setActioningId(bookingId);
+    setErrorMsg(null);
+    const res = await markBookingPaid(bookingId, "online");
+    setActioningId(null);
+    if (res.success && res.data) {
+      setBookings((prev) =>
+        prev.map((b) => (b.id === bookingId ? { ...b, status: res.data!.status } : b)),
+      );
+    } else {
+      setErrorMsg(res.message ?? "Không thể xác nhận thanh toán online.");
     }
   }
 
@@ -218,8 +292,59 @@ export default function StaffDashboardPage() {
                   </div>
                 </div>
 
-                {actions.length > 0 && (
+                {/* Cảnh báo: item chưa có asset — staff không có quyền gán, phải báo manager */}
+                {ASSET_NEEDED_STATUSES.includes(booking.status) && booking.items.some((item) => !item.garmentAssetId) && (
+                  <div className="border-t border-amber-200 bg-amber-50/70 px-6 py-4">
+                    <div className="flex items-start gap-3">
+                      <span className="material-symbols-outlined mt-0.5 text-amber-600 text-xl">warning</span>
+                      <div>
+                        <p className="text-sm font-semibold text-amber-700">
+                          Cần gán tài sản — vui lòng báo Quản lý
+                        </p>
+                        <p className="mt-1 text-xs leading-relaxed text-amber-600">
+                          Các item dưới đây chưa được gán tài sản vật lý. Việc gán asset thuộc quyền của{" "}
+                          <strong>Quản lý / Chủ cửa hàng</strong> (manager_owner).
+                          Nhân viên không thể tự gán. Vui lòng thông báo cho quản lý để gán asset trước khi chuyển trạng thái tiếp theo.
+                        </p>
+                        <ul className="mt-2 space-y-1">
+                          {booking.items.filter((item) => !item.garmentAssetId).map((item) => (
+                            <li key={item.id} className="text-xs text-amber-600 flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[14px]">inventory_2</span>
+                              {item.garmentName ?? "Trang phục"}
+                              {item.sizeLabel ? ` (${item.sizeLabel})` : ""}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Actions bar */}
+                {(actions.length > 0 || booking.status === "awaiting_payment") && (
                   <div className="flex flex-wrap justify-end gap-2 border-t border-sand px-6 py-4">
+                    {/* Nút "Đã thanh toán" cho awaiting_payment */}
+                    {booking.status === "awaiting_payment" && (
+                      booking.pickupMethod === "delivery" ? (
+                        <button
+                          type="button"
+                          disabled={isActioning}
+                          onClick={() => handleMarkDeliveryPaid(booking.id)}
+                          className="rounded-lg bg-jade px-4 py-2 text-sm font-semibold text-white transition hover:bg-forest disabled:opacity-50"
+                        >
+                          {isActioning ? "Đang xử lý..." : `Xác nhận đã nhận tiền online (${formatVND(booking.rentalTotal + booking.depositTotal)})`}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={isActioning}
+                          onClick={() => openPaymentDialog(booking)}
+                          className="rounded-lg bg-jade px-4 py-2 text-sm font-semibold text-white transition hover:bg-forest disabled:opacity-50"
+                        >
+                          {isActioning ? "Đang xử lý..." : `Đã thanh toán (${formatVND(booking.rentalTotal + booking.depositTotal)})`}
+                        </button>
+                      )
+                    )}
                     {actions.map((action) => (
                       <button
                         key={action.status}
@@ -236,6 +361,106 @@ export default function StaffDashboardPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ── Payment method dialog ── */}
+      {paymentDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-md rounded-2xl border border-sand bg-white p-8 shadow-2xl">
+            <h3 className="font-display text-2xl text-ink">Xác nhận thanh toán</h3>
+            <p className="mt-1 text-sm text-stone-500">
+              Khách: <strong>{paymentDialog.customerName ?? "—"}</strong>
+            </p>
+
+            <div className="mt-6 rounded-xl bg-[#f9fff8] border border-jade/30 p-4">
+              <div className="flex justify-between text-sm">
+                <span className="text-stone-600">Tiền thuê</span>
+                <span className="font-semibold text-ink">{formatVND(paymentDialog.rentalTotal)}</span>
+              </div>
+              <div className="mt-2 flex justify-between text-sm">
+                <span className="text-stone-600">Tiền cọc</span>
+                <span className="font-semibold text-ink">{formatVND(paymentDialog.depositTotal)}</span>
+              </div>
+              <div className="mt-3 border-t border-jade/30 pt-3 flex justify-between text-base">
+                <span className="font-semibold text-ink">Tổng thu</span>
+                <span className="font-bold text-jade">
+                  {formatVND(paymentDialog.rentalTotal + paymentDialog.depositTotal)}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-6">
+              <label className="mb-3 block text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">
+                Phương thức thanh toán
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                {PAYMENT_METHODS.map((pm) => (
+                  <button
+                    key={pm.key}
+                    type="button"
+                    onClick={() => setSelectedPaymentMethod(pm.key)}
+                    className={`flex items-center gap-3 rounded-xl border p-3 text-sm font-medium transition ${
+                      selectedPaymentMethod === pm.key
+                        ? "border-lotus bg-[#fff0ee] text-lotus"
+                        : "border-sand bg-white text-stone-600 hover:bg-[#fff8f6]"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-xl">{pm.icon}</span>
+                    {pm.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-8 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setPaymentDialog(null)}
+                className="rounded-lg border border-sand px-5 py-2.5 text-sm font-semibold text-stone-600 transition hover:bg-stone-50"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                disabled={actioningId === paymentDialog.bookingId}
+                onClick={handleMarkPaid}
+                className="rounded-lg bg-jade px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-forest disabled:opacity-50"
+              >
+                {actioningId === paymentDialog.bookingId ? "Đang xử lý..." : "Xác nhận đã thu tiền"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Error popup dialog ── */}
+      {errorDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-md rounded-2xl border border-sand bg-white p-8 shadow-2xl">
+            <div className="flex flex-col items-center text-center">
+              <span className="material-symbols-outlined text-5xl text-amber-500 mb-4">warning</span>
+              <h3 className="font-display text-2xl text-ink">Không thể chuyển trạng thái</h3>
+              <p className="mt-4 text-sm leading-relaxed text-stone-600 whitespace-pre-line">
+                {errorDialog}
+              </p>
+              <div className="mt-6 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-left w-full">
+                <p className="text-xs font-semibold text-amber-700 uppercase tracking-[0.14em] mb-1">Gợi ý</p>
+                <p className="text-xs leading-relaxed text-amber-600">
+                  Quay lại tab <strong>"Tất cả đơn"</strong>, tìm đơn này và kiểm tra cột trạng thái. Nếu thấy cảnh báo màu vàng, hãy báo cho Quản lý để gán tài sản.
+                </p>
+              </div>
+            </div>
+            <div className="mt-8 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setErrorDialog(null)}
+                className="rounded-lg bg-lotus px-8 py-2.5 text-sm font-semibold text-white transition hover:bg-oxblood"
+              >
+                Đã hiểu
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </StaffPortalShell>
