@@ -75,6 +75,10 @@ export type BookingItem = {
   sizeLabel: string | null;
   dailyPrice: number;
   depositAmount: number;
+  garmentAssetId?: string | null;
+  assetCode?: string | null;
+  assetStatus?: string | null;
+  conditionNote?: string | null;
 };
 
 export type BookingResponse = {
@@ -86,6 +90,7 @@ export type BookingResponse = {
   pickupMethod: string;
   rentalTotal: number;
   depositTotal: number;
+  penaltyTotal?: number;
   note: string | null;
   createdAt: string;
   items: BookingItem[];
@@ -152,5 +157,167 @@ export async function advanceBookingStatus(id: string, status: string, note?: st
   return apiRequest<BookingResponse>(`/bookings/${id}/status`, {
     method: "PATCH",
     body: JSON.stringify({ status, ...(note ? { note } : {}) }),
+  });
+}
+
+export async function markBookingPaid(
+  id: string,
+  paymentMethod: string,
+  note?: string,
+) {
+  return apiRequest<BookingResponse>(`/bookings/${id}/mark-paid`, {
+    method: "PATCH",
+    body: JSON.stringify({ paymentMethod, ...(note ? { note } : {}) }),
+  });
+}
+
+export async function getStaffReturnBookings() {
+  return apiRequest<StaffBookingResponse[]>("/bookings/staff/returns");
+}
+
+// ---------- Inspection types ----------
+
+export type InspectionAsset = {
+  id: string;
+  assetCode: string;
+  status: string;
+  conditionNote: string | null;
+  garment: {
+    id: string;
+    name: string;
+    sizeLabel: string | null;
+  };
+};
+
+export type InspectionBooking = {
+  id: string;
+  status: string;
+  customerName: null;
+  rentalStartDate: string;
+  rentalEndDate: string;
+  items: {
+    id: string;
+    garmentId: string;
+    garmentName: string | null;
+    sizeLabel: string | null;
+    assetCode: string | null;
+  }[];
+};
+
+export type InspectionFindingResponse = {
+  id: string;
+  findingType: string;
+  severity: string;
+  description: string | null;
+  penaltyAmount: number;
+  createdAt: string;
+};
+
+export type InspectionPhotoResponse = {
+  id: string;
+  imageUrl: string;
+  note: string | null;
+  createdAt: string;
+};
+
+export type InspectionSessionResponse = {
+  id: string;
+  bookingId: string;
+  garmentAssetId: string;
+  status: string;
+  note: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  inspector: {
+    id: string;
+    fullName: string;
+  } | null;
+  asset: InspectionAsset;
+  booking: InspectionBooking;
+  findings: InspectionFindingResponse[];
+  photos: InspectionPhotoResponse[];
+};
+
+// ---------- Inspection API functions ----------
+
+export async function getBookingInspections(bookingId: string) {
+  return apiRequest<InspectionSessionResponse[]>(`/inspections/booking/${bookingId}`);
+}
+
+export async function createInspectionSession(payload: {
+  bookingId: string;
+  garmentAssetId: string;
+  note?: string;
+}) {
+  return apiRequest<InspectionSessionResponse>("/inspections", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function addInspectionFinding(
+  sessionId: string,
+  payload: {
+    findingType: string;
+    severity?: string;
+    description?: string;
+    penaltyAmount?: number;
+  },
+) {
+  return apiRequest<InspectionFindingResponse>(`/inspections/${sessionId}/findings`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function addInspectionPhoto(
+  sessionId: string,
+  payload: {
+    imageUrl: string;
+    note?: string;
+  },
+) {
+  return apiRequest<InspectionPhotoResponse>(`/inspections/${sessionId}/photos`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function completeInspection(
+  sessionId: string,
+  payload: {
+    finalAssetStatus: string;
+    note?: string;
+  },
+) {
+  return apiRequest<InspectionSessionResponse>(`/inspections/${sessionId}/complete`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+// ---------- Asset management types ----------
+
+export type AvailableAsset = {
+  id: string;
+  assetCode: string;
+  status: string;
+  conditionNote: string | null;
+};
+
+// ---------- Asset API functions ----------
+
+export async function getAvailableAssets(garmentId: string) {
+  return apiRequest<AvailableAsset[]>(`/garments/${garmentId}/assets/available`);
+}
+
+export async function assignAssetToBookingItem(
+  bookingId: string,
+  itemId: string,
+  garmentAssetId: string,
+) {
+  return apiRequest<BookingResponse>(`/bookings/${bookingId}/items/${itemId}/assign-asset`, {
+    method: "PATCH",
+    body: JSON.stringify({ garmentAssetId }),
   });
 }

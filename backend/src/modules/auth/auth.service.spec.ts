@@ -19,6 +19,10 @@ describe("AuthService", () => {
           },
         }),
       },
+      emailVerificationCode: {
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        create: vi.fn().mockResolvedValue({}),
+      },
     };
     const jwtService = { signAsync: vi.fn() };
     const service = new AuthService(prisma as never, jwtService as never);
@@ -39,18 +43,17 @@ describe("AuthService", () => {
     expect(result).toEqual({
       success: true,
       data: {
-        id: "user-1",
         email: "customer@example.com",
-        fullName: "Nguyen Van A",
-        role: "customer",
+        requiresVerification: true,
       },
+      message: expect.any(String),
     });
   });
 
   it("rejects duplicate registration emails", async () => {
     const prisma = {
       userAccount: {
-        findUnique: vi.fn().mockResolvedValue({ id: "existing-user" }),
+        findUnique: vi.fn().mockResolvedValue({ id: "existing-user", isEmailVerified: true }),
       },
     };
     const jwtService = { signAsync: vi.fn() };
@@ -75,6 +78,7 @@ describe("AuthService", () => {
           passwordHash,
           role: "customer",
           isActive: true,
+          isEmailVerified: true,
           profile: {
             fullName: "Nguyen Van A",
             phone: "0909000000",
@@ -117,6 +121,7 @@ describe("AuthService", () => {
           passwordHash: "irrelevant",
           role: "customer",
           isActive: false,
+          isEmailVerified: true,
           profile: null,
         }),
       },
