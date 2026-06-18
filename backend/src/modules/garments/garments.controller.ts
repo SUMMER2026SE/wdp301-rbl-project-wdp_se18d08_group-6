@@ -34,6 +34,11 @@ export class GarmentsController {
     return this.garmentsService.findAllCategories();
   }
 
+  @Get("categories")
+  findAllCategories() {
+    return this.garmentsService.findAllCategories();
+  }
+
   @Get(":id")
   findOne(@Param("id") id: string) { return this.garmentsService.findOne(id); }
 

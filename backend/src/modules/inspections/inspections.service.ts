@@ -399,6 +399,332 @@ export class InspectionsService {
     });
   }
 
+  // ── Inspection log ─────────────────────────────────────────────────────────
+
+  async findAllLog() {
+    const sessions = await this.prisma.inspectionSession.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 200,
+      include: {
+        findings: { select: { id: true, penaltyAmount: true } },
+        garmentAsset: {
+          select: { assetCode: true, garment: { select: { name: true } } },
+        },
+        inspector: {
+          select: { profile: { select: { fullName: true } }, email: true },
+        },
+      },
+    });
+
+    return ok(
+      sessions.map((s) => ({
+        id: s.id,
+        bookingId: s.bookingId,
+        assetCode: s.garmentAsset.assetCode,
+        garmentName: s.garmentAsset.garment.name,
+        status: s.status,
+        inspectorName:
+          s.inspector?.profile?.fullName ?? s.inspector?.email ?? null,
+        findingsCount: s.findings.length,
+        totalPenalty: s.findings.reduce(
+          (sum, f) => sum + Number(f.penaltyAmount),
+          0,
+        ),
+        createdAt: s.createdAt.toISOString(),
+        completedAt: s.completedAt?.toISOString() ?? null,
+      })),
+    );
+  }
+
+  // ── Laundry queue ──────────────────────────────────────────────────────────
+
+  async findAllLaundry() {
+    const tickets = await this.prisma.laundryTicket.findMany({
+      where: { status: { notIn: ["completed", "cannot_repair"] } },
+      orderBy: { createdAt: "asc" },
+      include: {
+        garmentAsset: {
+          select: { assetCode: true, garment: { select: { name: true } } },
+        },
+      },
+    });
+
+    return ok(
+      tickets.map((t) => ({
+        id: t.id,
+        garmentAssetId: t.garmentAssetId,
+        assetCode: t.garmentAsset.assetCode,
+        garmentName: t.garmentAsset.garment.name,
+        bookingId: t.bookingId,
+        bookingCode: null,
+        status: t.status,
+        note: t.note,
+        createdAt: t.createdAt.toISOString(),
+        completedAt: t.completedAt?.toISOString() ?? null,
+      })),
+    );
+  }
+
+  async completeLaundry(ticketId: string, dto: CompleteLaundryDto) {
+    const ticket = await this.prisma.laundryTicket.findUnique({
+      where: { id: ticketId },
+    });
+    if (!ticket) throw new NotFoundException("Laundry ticket not found.");
+    if (ticket.status === "completed") {
+      throw new BadRequestException("Laundry ticket already completed.");
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const done = await tx.laundryTicket.update({
+        where: { id: ticketId },
+        data: {
+          status: "completed",
+          completedAt: new Date(),
+          ...(dto.note ? { note: dto.note } : {}),
+        },
+      });
+
+      await tx.garmentAsset.update({
+        where: { id: ticket.garmentAssetId },
+        data: { status: AssetStatus.available },
+      });
+
+      return done;
+    });
+
+    return ok({
+      id: updated.id,
+      garmentAssetId: updated.garmentAssetId,
+      status: updated.status,
+      note: updated.note,
+      completedAt: updated.completedAt?.toISOString() ?? null,
+    });
+  }
+
+  // ── Maintenance queue ──────────────────────────────────────────────────────
+
+  async findAllMaintenance() {
+    const jobs = await this.prisma.maintenanceJob.findMany({
+      orderBy: { createdAt: "asc" },
+      include: {
+        garmentAsset: {
+          select: { assetCode: true, garment: { select: { name: true } } },
+        },
+      },
+    });
+
+    return ok(
+      jobs.map((j) => ({
+        id: j.id,
+        garmentAssetId: j.garmentAssetId,
+        assetCode: j.garmentAsset.assetCode,
+        garmentName: j.garmentAsset.garment.name,
+        status: j.status,
+        note: j.note,
+        createdAt: j.createdAt.toISOString(),
+        completedAt: j.completedAt?.toISOString() ?? null,
+      })),
+    );
+  }
+
+  async completeMaintenance(jobId: string, dto: CompleteMaintenanceDto) {
+    const job = await this.prisma.maintenanceJob.findUnique({
+      where: { id: jobId },
+    });
+    if (!job) throw new NotFoundException("Maintenance job not found.");
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const done = await tx.maintenanceJob.update({
+        where: { id: jobId },
+        data: {
+          status: dto.status as any,
+          ...(dto.status === "completed" ? { completedAt: new Date() } : {}),
+          ...(dto.note ? { note: dto.note } : {}),
+        },
+      });
+
+      if (dto.status === "completed" || dto.status === "cannot_repair") {
+        await tx.garmentAsset.update({
+          where: { id: job.garmentAssetId },
+          data: { status: AssetStatus.available },
+        });
+      }
+
+      return done;
+    });
+
+    return ok({
+      id: updated.id,
+      garmentAssetId: updated.garmentAssetId,
+      status: updated.status,
+      note: updated.note,
+      completedAt: updated.completedAt?.toISOString() ?? null,
+    });
+  }
+
+  // ── Inspection log ─────────────────────────────────────────────────────────
+
+  async findAllLog() {
+    const sessions = await this.prisma.inspectionSession.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 200,
+      include: {
+        findings: { select: { id: true, penaltyAmount: true } },
+        garmentAsset: {
+          select: { assetCode: true, garment: { select: { name: true } } },
+        },
+        inspector: {
+          select: { profile: { select: { fullName: true } }, email: true },
+        },
+      },
+    });
+
+    return ok(
+      sessions.map((s) => ({
+        id: s.id,
+        bookingId: s.bookingId,
+        assetCode: s.garmentAsset.assetCode,
+        garmentName: s.garmentAsset.garment.name,
+        status: s.status,
+        inspectorName:
+          s.inspector?.profile?.fullName ?? s.inspector?.email ?? null,
+        findingsCount: s.findings.length,
+        totalPenalty: s.findings.reduce(
+          (sum, f) => sum + Number(f.penaltyAmount),
+          0,
+        ),
+        createdAt: s.createdAt.toISOString(),
+        completedAt: s.completedAt?.toISOString() ?? null,
+      })),
+    );
+  }
+
+  // ── Laundry queue ──────────────────────────────────────────────────────────
+
+  async findAllLaundry() {
+    const tickets = await this.prisma.laundryTicket.findMany({
+      where: { status: { notIn: ["completed", "cannot_repair"] } },
+      orderBy: { createdAt: "asc" },
+      include: {
+        garmentAsset: {
+          select: { assetCode: true, garment: { select: { name: true } } },
+        },
+      },
+    });
+
+    return ok(
+      tickets.map((t) => ({
+        id: t.id,
+        garmentAssetId: t.garmentAssetId,
+        assetCode: t.garmentAsset.assetCode,
+        garmentName: t.garmentAsset.garment.name,
+        bookingId: t.bookingId,
+        bookingCode: null,
+        status: t.status,
+        note: t.note,
+        createdAt: t.createdAt.toISOString(),
+        completedAt: t.completedAt?.toISOString() ?? null,
+      })),
+    );
+  }
+
+  async completeLaundry(ticketId: string, dto: CompleteLaundryDto) {
+    const ticket = await this.prisma.laundryTicket.findUnique({
+      where: { id: ticketId },
+    });
+    if (!ticket) throw new NotFoundException("Laundry ticket not found.");
+    if (ticket.status === "completed") {
+      throw new BadRequestException("Laundry ticket already completed.");
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const done = await tx.laundryTicket.update({
+        where: { id: ticketId },
+        data: {
+          status: "completed",
+          completedAt: new Date(),
+          ...(dto.note ? { note: dto.note } : {}),
+        },
+      });
+
+      await tx.garmentAsset.update({
+        where: { id: ticket.garmentAssetId },
+        data: { status: AssetStatus.available },
+      });
+
+      return done;
+    });
+
+    return ok({
+      id: updated.id,
+      garmentAssetId: updated.garmentAssetId,
+      status: updated.status,
+      note: updated.note,
+      completedAt: updated.completedAt?.toISOString() ?? null,
+    });
+  }
+
+  // ── Maintenance queue ──────────────────────────────────────────────────────
+
+  async findAllMaintenance() {
+    const jobs = await this.prisma.maintenanceJob.findMany({
+      orderBy: { createdAt: "asc" },
+      include: {
+        garmentAsset: {
+          select: { assetCode: true, garment: { select: { name: true } } },
+        },
+      },
+    });
+
+    return ok(
+      jobs.map((j) => ({
+        id: j.id,
+        garmentAssetId: j.garmentAssetId,
+        assetCode: j.garmentAsset.assetCode,
+        garmentName: j.garmentAsset.garment.name,
+        status: j.status,
+        note: j.note,
+        createdAt: j.createdAt.toISOString(),
+        completedAt: j.completedAt?.toISOString() ?? null,
+      })),
+    );
+  }
+
+  async completeMaintenance(jobId: string, dto: CompleteMaintenanceDto) {
+    const job = await this.prisma.maintenanceJob.findUnique({
+      where: { id: jobId },
+    });
+    if (!job) throw new NotFoundException("Maintenance job not found.");
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const done = await tx.maintenanceJob.update({
+        where: { id: jobId },
+        data: {
+          status: dto.status as any,
+          ...(dto.status === "completed" ? { completedAt: new Date() } : {}),
+          ...(dto.note ? { note: dto.note } : {}),
+        },
+      });
+
+      if (dto.status === "completed" || dto.status === "cannot_repair") {
+        await tx.garmentAsset.update({
+          where: { id: job.garmentAssetId },
+          data: { status: AssetStatus.available },
+        });
+      }
+
+      return done;
+    });
+
+    return ok({
+      id: updated.id,
+      garmentAssetId: updated.garmentAssetId,
+      status: updated.status,
+      note: updated.note,
+      completedAt: updated.completedAt?.toISOString() ?? null,
+    });
+  }
+
   // ── Serialization helpers ──────────────────────────────────────────────────
 
   private serialize(session: any) {
