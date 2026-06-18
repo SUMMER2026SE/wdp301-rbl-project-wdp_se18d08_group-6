@@ -1,14 +1,44 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ManagerPortalShell } from "@/components/heritage/ui";
+import { useAuth } from "@/components/auth/auth-provider";
 import {
   getStaffAllBookings,
   getAvailableAssets,
   assignAssetToBookingItem,
   getPendingManagerRefunds,
   approveRefund,
+  getGarments,
+  getGarmentById,
+  getAssetsByGarment,
+  getAssetById,
+  getAssetInspectionHistory,
+  getInspectionLog,
+  getLaundryTickets,
+  completeLaundryTicket,
+  getMaintenanceJobs,
+  completeMaintenanceJob,
+  createGarment,
+  updateGarment,
+  createGarmentCategory,
+  addGarmentImage,
+  getGarmentCategories,
+  createAsset,
+  getAllAssets,
+  updateAssetStatus,
   type StaffBookingResponse,
   type AvailableAsset,
+  type GarmentSummary,
+  type GarmentDetail,
+  type GarmentCategory,
+  type GarmentImage,
+  type AssetDetail,
+  type AssetInspectionHistory,
+  type InspectionLogEntry,
+  type LaundryTicketResponse,
+  type MaintenanceJobResponse,
   type RefundResponse,
 } from "@/lib/api";
 
@@ -22,86 +52,310 @@ function formatVND(amount: number) {
 }
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  pending_confirmation: { label: "Ch·ªù x√°c nh·∫≠n",        color: "bg-amber-100 text-amber-700" },
-  confirmed:            { label: "ƒê√£ x√°c nh·∫≠n",         color: "bg-blue-100 text-blue-700" },
-  awaiting_payment:     { label: "Ch·ªù thanh to√°n",      color: "bg-yellow-100 text-yellow-700" },
-  paid:                 { label: "ƒê√£ thanh to√°n",       color: "bg-green-100 text-green-700" },
-  preparing:            { label: "ƒêang chu·∫©n b·ªã",       color: "bg-purple-100 text-purple-700" },
-  ready_for_pickup:     { label: "S·∫µn s√†ng nh·∫≠n",       color: "bg-teal-100 text-teal-700" },
-  delivering:           { label: "ƒêang giao",           color: "bg-indigo-100 text-indigo-700" },
-  renting:              { label: "ƒêang thu√™",           color: "bg-lotus/10 text-lotus" },
-  returned:             { label: "ƒê√£ tr·∫£",              color: "bg-stone-100 text-stone-600" },
-  inspection_pending:   { label: "Ch·ªù ki·ªÉm tra",        color: "bg-orange-100 text-orange-700" },
-  completed:            { label: "Ho√†n th√†nh",          color: "bg-jade/10 text-jade" },
+  pending_confirmation: { label: "Ch? x·c nh?n",        color: "bg-amber-100 text-amber-700" },
+  confirmed:            { label: "–„ x·c nh?n",         color: "bg-blue-100 text-blue-700" },
+  awaiting_payment:     { label: "Ch? thanh to·n",      color: "bg-yellow-100 text-yellow-700" },
+  paid:                 { label: "–„ thanh to·n",       color: "bg-green-100 text-green-700" },
+  preparing:            { label: "–ang chu?n b?",       color: "bg-purple-100 text-purple-700" },
+  ready_for_pickup:     { label: "S?n s‡ng nh?n",       color: "bg-teal-100 text-teal-700" },
+  delivering:           { label: "–ang giao",           color: "bg-indigo-100 text-indigo-700" },
+  renting:              { label: "–ang thuÍ",           color: "bg-lotus/10 text-lotus" },
+  returned:             { label: "–„ tr?",              color: "bg-stone-100 text-stone-600" },
+  inspection_pending:   { label: "Ch? ki?m tra",        color: "bg-orange-100 text-orange-700" },
+  completed:            { label: "Ho‡n th‡nh",          color: "bg-jade/10 text-jade" },
+  cancelled:            { label: "–„ h?y",              color: "bg-red-100 text-red-600" },
+  rejected:             { label: "T? ch?i",             color: "bg-red-100 text-red-700" },
+  overdue:              { label: "Qu· h?n",             color: "bg-red-200 text-red-800" },
 };
 
-type AssetAssignState = Record<string, {
-  assets: AvailableAsset[];
-  loading: boolean;
-  selected: string;
-  open: boolean;
-}>;
+const ASSET_STATUS_META: Record<string, { label: string; color: string }> = {
+  available:         { label: "S?n s‡ng",       color: "bg-state-available/10 text-state-available border border-state-available/20" },
+  reserved:          { label: "–„ gi? ch?",     color: "bg-amber-100 text-amber-700 border border-amber-200" },
+  rented:            { label: "–ang thuÍ",      color: "bg-state-rented/10 text-state-rented border border-state-rented/20" },
+  inspection_pending:{ label: "Ch? ki?m tra",   color: "bg-orange-100 text-orange-700 border border-orange-200" },
+  laundry:           { label: "Gi?t s?y",       color: "bg-state-laundry/10 text-state-laundry border border-state-laundry/20" },
+  maintenance:       { label: "B?o trÏ",        color: "bg-state-maintenance/10 text-state-maintenance border border-state-maintenance/20" },
+  damaged:           { label: "Hu h?ng",        color: "bg-state-damaged/10 text-state-damaged border border-state-damaged/20" },
+  retired:           { label: "–„ thanh l˝",    color: "bg-stone-100 text-stone-500 border border-stone-200" },
+  lost:              { label: "M?t",            color: "bg-red-100 text-red-700 border border-red-200" },
+};
 
-type Tab = "assets" | "catalog" | "finance" | "refunds";
+const ACTIVE_STATUSES = [
+  "confirmed", "awaiting_payment", "paid", "preparing",
+  "ready_for_pickup", "delivering", "renting", "returned", "inspection_pending",
+];
+
+const REVENUE_STATUSES = ["completed", "renting", "returned", "inspection_pending"];
+
+type Tab = "overview" | "assets" | "inventory" | "inspection-log" | "laundry" | "damaged" | "finance" | "refunds";
+
+const VALID_TABS: Tab[] = ["overview", "assets", "inventory", "inspection-log", "laundry", "damaged", "finance", "refunds"];
+
+function tabFromHash(): Tab {
+  const hash = window.location.hash.replace("#", "");
+  return (VALID_TABS as string[]).includes(hash) ? (hash as Tab) : "overview";
+}
+
+const TAB_META: Record<Tab, { title: string; subtitle: string }> = {
+  overview:      { title: "T?ng Quan V?n H‡nh",        subtitle: "Theo dıi doanh thu, don thuÍ v‡ tÏnh tr?ng kho theo th?i gian th?c." },
+  assets:        { title: "G·n T‡i S?n",             subtitle: "G·n t‡i s?n v?t l˝ cho c·c don d?t ch?." },
+  inventory:     { title: "Qu?n L˝ Kho Trang Ph?c",          subtitle: "Qu?n l˝ m?u trang ph?c, ?nh catalog v‡ t‡i s?n v?t l˝." },
+  "inspection-log": { title: "Nh?t K˝ Ki?m Tra",     subtitle: "L?ch s? ki?m tra tÏnh tr?ng trang ph?c sau khi tr?." },
+  laundry:       { title: "Gi?t S?y",                subtitle: "Qu?n l˝ h‡ng ch? gi?t s?y v‡ di?u ph?i." },
+  damaged:       { title: "Hu H?ng & M?t",           subtitle: "B·o c·o t‡i s?n hu h?ng, m?t v‡ b?o trÏ." },
+  finance:       { title: "–?i So·t T‡i ChÌnh",                subtitle: "Theo dıi doanh thu, ti?n c?c v‡ phÌ ph?t ph·t sinh." },
+  refunds:       { title: "Duy?t Ho‡n C?c",                subtitle: "Duy?t c·c yÍu c?u ho‡n c?c ch? x? l˝." },
+};
 
 export default function ManagerDashboardPage() {
-  const [tab, setTab] = useState<Tab>("assets");
+  const router = useRouter();
+  const { user, signOut } = useAuth();
+  const [hasMounted, setHasMounted] = useState(false);
+  const [currentDateLabel, setCurrentDateLabel] = useState("");
+  const [tab, setTab] = useState<Tab>("overview");
   const [bookings, setBookings] = useState<StaffBookingResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [actioningId, setActioningId] = useState<string | null>(null);
+
+  // Inventory state
+  const [garments, setGarments] = useState<GarmentSummary[]>([]);
+  const [selectedGarmentId, setSelectedGarmentId] = useState<string | null>(null);
+  const [assets, setAssets] = useState<AssetDetail[]>([]);
+  const [allAssets, setAllAssets] = useState<AssetDetail[]>([]);
+  const [assetsLoading, setAssetsLoading] = useState(false);
+
+  // Asset assignment state (g·n t‡i s?n)
+  type AssetAssignState = Record<string, {
+    assets: AvailableAsset[];
+    loading: boolean;
+    selected: string;
+    open: boolean;
+  }>;
   const [assetAssignState, setAssetAssignState] = useState<AssetAssignState>({});
+  const [actioningId, setActioningId] = useState<string | null>(null);
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<AssetDetail | null>(null);
+  const [assetHistory, setAssetHistory] = useState<AssetInspectionHistory[]>([]);
+  const [assetHistoryLoading, setAssetHistoryLoading] = useState(false);
+
+  // Inspection log state
+  const [inspectionLog, setInspectionLog] = useState<InspectionLogEntry[]>([]);
+  const [inspectionLogLoading, setInspectionLogLoading] = useState(false);
+
+  // Laundry state
+  const [laundryTickets, setLaundryTickets] = useState<LaundryTicketResponse[]>([]);
+  const [laundryLoading, setLaundryLoading] = useState(false);
+
+  // Maintenance state
+  const [maintenanceJobs, setMaintenanceJobs] = useState<MaintenanceJobResponse[]>([]);
+  const [maintenanceLoading, setMaintenanceLoading] = useState(false);
+
+  // Garment management state
+  const [categories, setCategories] = useState<GarmentCategory[]>([]);
+  const [garmentModalOpen, setGarmentModalOpen] = useState(false);
+  const [editingGarment, setEditingGarment] = useState<GarmentDetail | null>(null);
+  const [assetModalOpen, setAssetModalOpen] = useState(false);
+  const [categorySubmitting, setCategorySubmitting] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   // Refund approval state
   const [pendingRefunds, setPendingRefunds] = useState<RefundResponse[]>([]);
   const [loadingRefunds, setLoadingRefunds] = useState(false);
-  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [approvingRefundId, setApprovingRefundId] = useState<string | null>(null);
   const [proofImageUrl, setProofImageUrl] = useState("");
   const [approveNote, setApproveNote] = useState("");
 
   useEffect(() => {
-    setLoading(true);
-    setErrorMsg(null);
-    getStaffAllBookings()
-      .then((res) => {
-        if (res.success && res.data) setBookings(res.data);
-        else setErrorMsg(res.message ?? "Kh√¥ng th·ªÉ t·∫£i danh s√°ch ƒë∆°n.");
-      })
-      .finally(() => setLoading(false));
+    setHasMounted(true);
+    setCurrentDateLabel(new Intl.DateTimeFormat("vi-VN", {
+      weekday: "long",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(new Date()));
   }, []);
 
-  // Load pending refunds when refund tab is selected
+  // -- Sync tab with URL hash --
   useEffect(() => {
-    if (tab !== "refunds") return;
-    setLoadingRefunds(true);
-    getPendingManagerRefunds()
-      .then((res) => {
-        if (res.success && res.data) setPendingRefunds(res.data);
-        else setPendingRefunds([]);
-      })
-      .finally(() => setLoadingRefunds(false));
-  }, [tab]);
+    setTab(tabFromHash());
+    const onHash = () => setTab(tabFromHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
 
-  async function handleApproveRefund(refundId: string) {
-    if (!proofImageUrl.trim()) return;
-    setApprovingId(refundId);
-    setErrorMsg(null);
-    const res = await approveRefund(refundId, {
-      status: "refunded",
-      proofImageUrl: proofImageUrl.trim(),
-      note: approveNote || undefined,
-    });
-    setApprovingId(null);
-    if (res.success) {
-      setPendingRefunds((prev) => prev.filter((r) => r.id !== refundId));
-      setProofImageUrl("");
-      setApproveNote("");
+  function goToTab(next: Tab) {
+    if (next === "overview") {
+      history.replaceState(null, "", "/dashboard/manager");
     } else {
-      setErrorMsg(res.message ?? "Kh√¥ng th·ªÉ duy·ªát ho√†n c·ªçc.");
+      window.location.hash = next;
+    }
+    setTab(next);
+  }
+
+  // -- Load data --
+  useEffect(() => {
+    setLoading(true);
+    setErrorMsg(null);
+    Promise.all([
+      getStaffAllBookings().then(res => { if (res.success && res.data) setBookings(res.data); }),
+      getGarments().then(res => { if (res.success && res.data) setGarments(res.data); }),
+      getAllAssets().then(res => { if (res.success && res.data) setAllAssets(res.data); }),
+      getGarmentCategories().then(res => { if (res.success && res.data) setCategories(res.data); })
+    ]).catch(() => {
+      setErrorMsg("CÛ l?i x?y ra khi t?i d? li?u.");
+    }).finally(() => setLoading(false));
+  }, []);
+
+  function refreshGarments() {
+    return getGarments().then((res) => {
+      if (res.success && res.data) setGarments(res.data);
+    });
+  }
+
+  function refreshAssets(garmentId: string) {
+    return getAssetsByGarment(garmentId).then((res) => {
+      if (res.success && res.data) setAssets(res.data);
+    });
+  }
+
+  function refreshAllAssets() {
+    return getAllAssets().then((res) => {
+      if (res.success && res.data) setAllAssets(res.data);
+    });
+  }
+
+  function refreshCategories() {
+    return getGarmentCategories().then((res) => {
+      if (res.success && res.data) setCategories(res.data);
+    });
+  }
+
+  async function handleCreateCategory(name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    setCategorySubmitting(true);
+    setErrorMsg(null);
+    const res = await createGarmentCategory(trimmed);
+    setCategorySubmitting(false);
+    if (res.success && res.data) {
+      await refreshCategories();
+      return res.data;
+    }
+    setErrorMsg(res.message ?? "KhÙng th? t?o danh m?c.");
+    return null;
+  }
+
+  async function handleCreateGarment(payload: Parameters<typeof createGarment>[0], imagesToAdd: string[]) {
+    setSubmitting(true);
+    setErrorMsg(null);
+    const res = await createGarment(payload);
+    if (res.success && res.data) {
+      for (const imgUrl of imagesToAdd) {
+        await addGarmentImage(res.data.id, { imageUrl: imgUrl });
+      }
+      await refreshGarments();
+      setSelectedGarmentId(res.data.id);
+      setGarmentModalOpen(false);
+      setEditingGarment(null);
+    } else {
+      setErrorMsg(res.message ?? "KhÙng th? t?o trang ph?c.");
+    }
+    setSubmitting(false);
+  }
+
+  async function handleUpdateGarment(id: string, payload: Parameters<typeof updateGarment>[1], imagesToAdd: string[]) {
+    setSubmitting(true);
+    setErrorMsg(null);
+    const res = await updateGarment(id, payload);
+    if (res.success) {
+      for (const imgUrl of imagesToAdd) {
+        await addGarmentImage(id, { imageUrl: imgUrl });
+      }
+      await refreshGarments();
+      setGarmentModalOpen(false);
+      setEditingGarment(null);
+    } else {
+      setErrorMsg(res.message ?? "KhÙng th? c?p nh?t trang ph?c.");
+    }
+    setSubmitting(false);
+  }
+
+  async function handleAddImage(garmentId: string, imageUrl: string) {
+    setErrorMsg(null);
+    const res = await addGarmentImage(garmentId, { imageUrl });
+    if (!res.success) {
+      setErrorMsg(res.message ?? "KhÙng th? thÍm ?nh.");
+      return;
+    }
+    await refreshGarments();
+    const detail = await getGarmentById(garmentId);
+    if (detail.success && detail.data) setEditingGarment(detail.data as GarmentDetail);
+  }
+
+  async function handleCreateAsset(payload: Parameters<typeof createAsset>[0]) {
+    setSubmitting(true);
+    setErrorMsg(null);
+    const res = await createAsset(payload);
+    setSubmitting(false);
+    if (res.success) {
+      if (selectedGarmentId) await refreshAssets(selectedGarmentId);
+      await refreshAllAssets();
+      setAssetModalOpen(false);
+    } else {
+      setErrorMsg(res.message ?? "KhÙng th? t?o t‡i s?n.");
     }
   }
 
-  // ‚îÄ‚îÄ Asset assignment helpers ‚îÄ‚îÄ
+  async function handleUpdateAssetStatus(assetId: string, status: string) {
+    setErrorMsg(null);
+    const res = await updateAssetStatus(assetId, status);
+    if (res.success) {
+      if (selectedGarmentId) await refreshAssets(selectedGarmentId);
+      await refreshAllAssets();
+      if (selectedAssetId === assetId) {
+        const detail = await getAssetById(assetId);
+        if (detail.success && detail.data) setSelectedAsset(detail.data);
+      }
+    } else {
+      setErrorMsg(res.message ?? "KhÙng th? c?p nh?t tr?ng th·i.");
+    }
+  }
+
+  function openCreateGarment() {
+    setEditingGarment(null);
+    setGarmentModalOpen(true);
+  }
+
+  async function openEditGarment(garment: GarmentSummary) {
+    const res = await getGarmentById(garment.id);
+    if (res.success && res.data) {
+      setEditingGarment(res.data as GarmentDetail);
+    } else {
+      setEditingGarment({
+        ...garment,
+        description: null,
+        categoryId: null,
+        color: null,
+        isActive: true,
+        images: garment.images ?? [],
+      } as GarmentDetail);
+    }
+    setGarmentModalOpen(true);
+  }
+
+  // -- Load garments --
+  useEffect(() => {
+    getGarments().then((res) => {
+      if (res.success && res.data) {
+        setGarments(res.data);
+        if (res.data.length > 0 && !selectedGarmentId) {
+          setSelectedGarmentId(res.data[0].id);
+        }
+      }
+    });
+  }, []);
+
+  // -- Asset assignment helpers --
 
   async function openAssetPicker(itemKey: string, garmentId: string) {
     setAssetAssignState((prev) => ({
@@ -113,12 +367,7 @@ export default function ManagerDashboardPage() {
       const data = res.data;
       setAssetAssignState((prev) => ({
         ...prev,
-        [itemKey]: {
-          assets: data,
-          loading: false,
-          selected: data.length > 0 ? data[0].id : "",
-          open: true,
-        },
+        [itemKey]: { assets: data, loading: false, selected: data.length > 0 ? data[0].id : "", open: true },
       }));
     } else {
       setAssetAssignState((prev) => ({
@@ -144,7 +393,26 @@ export default function ManagerDashboardPage() {
         return next;
       });
     } else {
-      setErrorMsg(res.message ?? "Kh√¥ng th·ªÉ g√°n t√†i s·∫£n.");
+      setErrorMsg(res.message ?? "KhÙng th? g·n t‡i s?n.");
+    }
+  }
+
+  async function handleApproveRefund(refundId: string) {
+    if (!proofImageUrl.trim()) return;
+    setApprovingRefundId(refundId);
+    setErrorMsg(null);
+    const res = await approveRefund(refundId, {
+      status: "refunded",
+      proofImageUrl: proofImageUrl.trim(),
+      note: approveNote || undefined,
+    });
+    setApprovingRefundId(null);
+    if (res.success) {
+      setPendingRefunds((prev) => prev.filter((r) => r.id !== refundId));
+      setProofImageUrl("");
+      setApproveNote("");
+    } else {
+      setErrorMsg(res.message ?? "KhÙng th? duy?t ho‡n c?c.");
     }
   }
 
@@ -156,339 +424,1478 @@ export default function ManagerDashboardPage() {
     });
   }
 
-  // L·ªçc booking c√≥ item ch∆∞a c√≥ asset
-  const bookingsNeedingAssets = bookings.filter((b) =>
-    ["confirmed", "awaiting_payment", "paid", "preparing"].includes(b.status) &&
-    b.items.some((item) => !item.garmentAssetId)
-  );
+  // -- Load assets when garment selected --
+  useEffect(() => {
+    if (!selectedGarmentId) return;
+    setAssetsLoading(true);
+    getAssetsByGarment(selectedGarmentId)
+      .then((res) => {
+        if (res.success && res.data) setAssets(res.data);
+        else setAssets([]);
+      })
+      .finally(() => setAssetsLoading(false));
+  }, [selectedGarmentId]);
 
-  // T·ªïng quan t√†i ch√≠nh
-  const activeBookings = bookings.filter((b) =>
-    ["renting", "returned", "inspection_pending", "ready_for_pickup", "delivering"].includes(b.status)
+  // -- Load asset detail + history when asset selected --
+  useEffect(() => {
+    if (!selectedAssetId) {
+      setSelectedAsset(null);
+      setAssetHistory([]);
+      return;
+    }
+    getAssetById(selectedAssetId).then((res) => {
+      if (res.success && res.data) setSelectedAsset(res.data);
+    });
+    setAssetHistoryLoading(true);
+    getAssetInspectionHistory(selectedAssetId)
+      .then((res) => {
+        if (res.success && res.data) setAssetHistory(res.data);
+        else setAssetHistory([]);
+      })
+      .finally(() => setAssetHistoryLoading(false));
+  }, [selectedAssetId]);
+
+  // -- Load inspection log --
+  useEffect(() => {
+    if (tab !== "inspection-log") return;
+    setInspectionLogLoading(true);
+    getInspectionLog()
+      .then((res) => {
+        if (res.success && res.data) setInspectionLog(res.data);
+      })
+      .finally(() => setInspectionLogLoading(false));
+  }, [tab]);
+
+  // -- Load laundry --
+  useEffect(() => {
+    if (tab !== "laundry") return;
+    setLaundryLoading(true);
+    getLaundryTickets()
+      .then((res) => {
+        if (res.success && res.data) setLaundryTickets(res.data);
+      })
+      .finally(() => setLaundryLoading(false));
+  }, [tab]);
+
+  // -- Load maintenance --
+  useEffect(() => {
+    if (tab !== "damaged") return;
+    setMaintenanceLoading(true);
+    getMaintenanceJobs()
+      .then((res) => {
+        if (res.success && res.data) setMaintenanceJobs(res.data);
+      })
+      .finally(() => setMaintenanceLoading(false));
+  }, [tab]);
+
+  // -- Load refunds --
+  useEffect(() => {
+    if (tab !== "refunds") return;
+    setLoadingRefunds(true);
+    getPendingManagerRefunds()
+      .then((res) => {
+        if (res.success && res.data) setPendingRefunds(res.data);
+        else setPendingRefunds([]);
+      })
+      .finally(() => setLoadingRefunds(false));
+  }, [tab]);
+
+  // -- Derived metrics --
+  const activeBookings = bookings.filter((b) => ACTIVE_STATUSES.includes(b.status));
+  const bookingsNeedingAssets = activeBookings.filter((b) =>
+    ["confirmed", "awaiting_payment", "paid", "preparing"].includes(b.status) &&
+    b.items.some((item) => !item.garmentAssetId),
   );
   const totalRentalRevenue = bookings
-    .filter((b) => b.status === "completed" || b.status === "renting" || b.status === "returned" || b.status === "inspection_pending")
+    .filter((b) => REVENUE_STATUSES.includes(b.status))
     .reduce((sum, b) => sum + b.rentalTotal, 0);
   const totalDepositHeld = activeBookings.reduce((sum, b) => sum + b.depositTotal, 0);
-  const totalPenalties = bookings
-    .filter((b) => (b.penaltyTotal ?? 0) > 0)
-    .reduce((sum, b) => sum + (b.penaltyTotal ?? 0), 0);
+  const totalPenalties = bookings.reduce((sum, b) => sum + (b.penaltyTotal ?? 0), 0);
+  const rentedItemCount = bookings
+    .filter((b) => b.status === "renting")
+    .reduce((sum, b) => sum + b.items.filter((i) => i.garmentAssetId).length, 0);
+  const totalAvailable = assets.filter((a) => a.status === "available").length;
+  const utilizationDenominator = rentedItemCount + totalAvailable;
+  const utilizationPct = utilizationDenominator > 0
+    ? Math.round((rentedItemCount / utilizationDenominator) * 100)
+    : 0;
+
+  const countBy = (statuses: string[]) =>
+    bookings.filter((b) => statuses.includes(b.status)).length;
+
+  const meta = TAB_META[tab];
 
   return (
-    <div className="min-h-screen bg-[#f9f5f0]">
-      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-10">
-        {/* Header */}
-        <div className="mb-10">
-          <p className="text-sm font-semibold uppercase tracking-wider text-jade">Qu·∫£n l√Ω / Ch·ªß c·ª≠a h√†ng</p>
-          <h1 className="mt-2 font-display text-4xl text-ink sm:text-5xl">Khu v·ª±c ƒëi·ªÅu h√†nh</h1>
-          <p className="mt-2 text-base text-stone-600">Qu·∫£n l√Ω catalog, ki·ªÉm k√™ t√†i s·∫£n v√† ƒë·ªëi so√°t t√†i ch√≠nh.</p>
+    <ManagerPortalShell
+      active={tab}
+      title={meta.title}
+      subtitle={meta.subtitle}
+      onTabChange={goToTab}
+      managerName={hasMounted ? (user?.fullName ?? user?.email?.split("@")[0] ?? "Qu?n l˝ c?a h‡ng") : "Qu?n l˝ c?a h‡ng"}
+      managerEmail={hasMounted ? (user?.email ?? null) : null}
+      currentDateLabel={hasMounted ? currentDateLabel : ""}
+      onProfile={() => router.push("/dashboard/manager/profile")}
+      onSignOut={() => { signOut(); router.replace("/login"); }}
+    >
+      {errorMsg && (
+        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {errorMsg}
         </div>
+      )}
 
-        {/* Tab bar */}
-        <div className="mb-8 flex gap-2 border-b border-sand">
-          {([
-            { key: "assets" as const, label: "G√°n t√†i s·∫£n", icon: "inventory_2", count: bookingsNeedingAssets.length },
-            { key: "catalog" as const, label: "Catalog", icon: "apparel", count: 0 },
-            { key: "finance" as const, label: "T√†i ch√≠nh", icon: "finance", count: 0 },
-            { key: "refunds" as const, label: "Duy·ªát ho√†n c·ªçc", icon: "payments", count: pendingRefunds.length },
-          ]).map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setTab(t.key as Tab)}
-              className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold uppercase tracking-[0.16em] transition border-b-2 -mb-px ${
-                tab === t.key
-                  ? "border-jade text-jade"
-                  : "border-transparent text-stone-500 hover:text-jade"
-              }`}
-            >
-              <span className="material-symbols-outlined text-[18px]">{t.icon}</span>
-              {t.label}
-              {t.count > 0 && tab !== t.key && (
-                <span className="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-xs text-white">
-                  {t.count}
+      {loading ? (
+        <div className="py-20 text-center text-stone-400">–ang t?i d? li?u...</div>
+      ) : tab === "overview" ? (
+        <OverviewTab
+          totalRentalRevenue={totalRentalRevenue}
+          totalDepositHeld={totalDepositHeld}
+          activeBookings={activeBookings}
+          utilizationPct={utilizationPct}
+          rentedItemCount={rentedItemCount}
+          utilizationDenominator={utilizationDenominator}
+          countBy={countBy}
+          garments={garments}
+          onGoToTab={goToTab}
+          bookingsNeedingAssets={bookingsNeedingAssets}
+          allAssets={allAssets}
+          laundryTickets={laundryTickets}
+          maintenanceJobs={maintenanceJobs}
+          assets={assets}
+        />
+      ) : tab === "assets" ? (
+        <AssetsAssignTab
+          bookingsNeedingAssets={bookingsNeedingAssets}
+          assetAssignState={assetAssignState}
+          actioningId={actioningId}
+          onOpenPicker={openAssetPicker}
+          onAssign={handleAssignAsset}
+          onClosePicker={closeAssetPicker}
+          onSelectChange={(itemKey, value) =>
+            setAssetAssignState((prev) => ({
+              ...prev,
+              [itemKey]: { ...prev[itemKey], selected: value },
+            }))
+          }
+        />
+      ) : tab === "inventory" ? (
+        <InventoryTab
+          garments={garments}
+          categories={categories}
+          selectedGarmentId={selectedGarmentId}
+          onSelectGarment={setSelectedGarmentId}
+          assets={assets}
+          assetsLoading={assetsLoading}
+          selectedAssetId={selectedAssetId}
+          onSelectAsset={setSelectedAssetId}
+          selectedAsset={selectedAsset}
+          assetHistory={assetHistory}
+          assetHistoryLoading={assetHistoryLoading}
+          onCreateGarment={openCreateGarment}
+          onEditGarment={openEditGarment}
+          onCreateAsset={() => setAssetModalOpen(true)}
+          onAddImage={handleAddImage}
+          onCreateCategory={handleCreateCategory}
+          categorySubmitting={categorySubmitting}
+          onUpdateAssetStatus={handleUpdateAssetStatus}
+          garmentModalOpen={garmentModalOpen}
+          editingGarment={editingGarment}
+          onCloseGarmentModal={() => { setGarmentModalOpen(false); setEditingGarment(null); }}
+          onSubmitGarment={(id, p) => id ? handleUpdateGarment(id, p, []) : handleCreateGarment(p, [])}
+          submitting={submitting}
+          assetModalOpen={assetModalOpen}
+          onCloseAssetModal={() => setAssetModalOpen(false)}
+          onSubmitAsset={handleCreateAsset}
+        />
+      ) : tab === "inspection-log" ? (
+        <InspectionLogTab
+          log={inspectionLog}
+          loading={inspectionLogLoading}
+        />
+      ) : tab === "laundry" ? (
+        <LaundryTab
+          tickets={laundryTickets}
+          loading={laundryLoading}
+          actioningId={actioningId}
+          onComplete={async (id) => {
+            setActioningId(id);
+            const res = await completeLaundryTicket(id);
+            setActioningId(null);
+            if (res.success) {
+              const refresh = await getLaundryTickets();
+              if (refresh.success && refresh.data) setLaundryTickets(refresh.data);
+            }
+          }}
+        />
+      ) : tab === "damaged" ? (
+        <DamagedTab
+          jobs={maintenanceJobs}
+          loading={maintenanceLoading}
+          actioningId={actioningId}
+          onComplete={async (id, status) => {
+            setActioningId(id);
+            const res = await completeMaintenanceJob(id, status);
+            setActioningId(null);
+            if (res.success) {
+              const refresh = await getMaintenanceJobs();
+              if (refresh.success && refresh.data) setMaintenanceJobs(refresh.data);
+            }
+          }}
+        />
+      ) : tab === "refunds" ? (
+        <RefundsTab
+          refunds={pendingRefunds}
+          loading={loadingRefunds}
+          actioningId={approvingRefundId}
+          proofImageUrl={proofImageUrl}
+          approveNote={approveNote}
+          onProofImageUrlChange={setProofImageUrl}
+          onApproveNoteChange={setApproveNote}
+          onApprove={handleApproveRefund}
+        />
+      ) : (
+        <FinanceTab
+          totalRentalRevenue={totalRentalRevenue}
+          totalDepositHeld={totalDepositHeld}
+          totalPenalties={totalPenalties}
+          activeBookings={activeBookings}
+          bookings={bookings}
+        />
+      )}
+
+      {garmentModalOpen && (
+        <GarmentFormModal
+          garment={editingGarment}
+          categories={categories}
+          submitting={submitting}
+          onClose={() => { setGarmentModalOpen(false); setEditingGarment(null); }}
+          onSubmit={(payload, images) => {
+            if (editingGarment) handleUpdateGarment(editingGarment.id, payload, images);
+            else handleCreateGarment(payload, images);
+          }}
+        />
+      )}
+    </ManagerPortalShell>
+  );
+}
+
+// -------------------------------------------------------------------------------
+// TAB: Assets Assignment (G·n t‡i s?n)
+// -------------------------------------------------------------------------------
+
+function AssetsAssignTab({
+  bookingsNeedingAssets,
+  assetAssignState,
+  actioningId,
+  onOpenPicker,
+  onAssign,
+  onClosePicker,
+  onSelectChange,
+}: {
+  bookingsNeedingAssets: StaffBookingResponse[];
+  assetAssignState: Record<string, {
+    assets: AvailableAsset[];
+    loading: boolean;
+    selected: string;
+    open: boolean;
+  }>;
+  actioningId: string | null;
+  onOpenPicker: (itemKey: string, garmentId: string) => void;
+  onAssign: (bookingId: string, itemId: string, itemKey: string) => void;
+  onClosePicker: (itemKey: string) => void;
+  onSelectChange: (itemKey: string, value: string) => void;
+}) {
+  return (
+    <div className="space-y-6">
+      {bookingsNeedingAssets.length === 0 ? (
+        <div className="py-20 text-center text-stone-400">
+          <span className="material-symbols-outlined mb-4 block text-5xl text-stone-200">check_circle</span>
+          T?t c? don d?u d„ du?c g·n t‡i s?n. KhÙng cÛ gÏ c?n x? l˝.
+        </div>
+      ) : (
+        bookingsNeedingAssets.map((booking) => {
+          const s = STATUS_LABELS[booking.status] ?? { label: booking.status, color: "bg-stone-100 text-stone-600" };
+          const unassignedItems = booking.items.filter((item) => !item.garmentAssetId);
+          return (
+            <div key={booking.id} className="overflow-hidden rounded-xl border border-sand bg-white shadow-[0_4px_20px_rgba(0,0,0,0.04)]">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand bg-[#fff8f6] px-6 py-3">
+                <div className="flex items-center gap-3">
+                  <span className="font-semibold text-ink">#{booking.id.slice(0, 8).toUpperCase()}</span>
+                  <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${s.color}`}>{s.label}</span>
+                </div>
+                <span className="text-xs text-stone-400">
+                  {booking.customerName ?? "ó"} ∑ {formatDate(booking.rentalStartDate)} ñ {formatDate(booking.rentalEndDate)}
                 </span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        {errorMsg && (
-          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            {errorMsg}
-          </div>
-        )}
-
-        {loading ? (
-          <div className="py-20 text-center text-stone-400">ƒêang t·∫£i d·ªØ li·ªáu...</div>
-        ) : tab === "assets" ? (
-          /* ‚îÄ‚îÄ TAB: G√°n t√†i s·∫£n ‚îÄ‚îÄ */
-          <div className="space-y-6">
-            {bookingsNeedingAssets.length === 0 ? (
-              <div className="py-20 text-center text-stone-400">
-                <span className="material-symbols-outlined text-5xl text-stone-200 mb-4 block">check_circle</span>
-                T·∫•t c·∫£ ƒë∆°n ƒë·ªÅu ƒë√£ ƒë∆∞·ª£c g√°n t√†i s·∫£n. Kh√¥ng c√≥ g√¨ c·∫ßn x·ª≠ l√Ω.
               </div>
-            ) : (
-              bookingsNeedingAssets.map((booking) => {
-                const s = STATUS_LABELS[booking.status] ?? { label: booking.status, color: "bg-stone-100 text-stone-600" };
-                const unassignedItems = booking.items.filter((item) => !item.garmentAssetId);
-                return (
-                  <div
-                    key={booking.id}
-                    className="overflow-hidden rounded-xl border border-sand bg-white shadow-[0_4px_20px_rgba(0,0,0,0.04)]"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand bg-[#fff8f6] px-6 py-3">
-                      <div className="flex items-center gap-3">
-                        <span className="font-semibold text-ink">#{booking.id.slice(0, 8).toUpperCase()}</span>
-                        <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${s.color}`}>
-                          {s.label}
-                        </span>
+              <div className="space-y-3 px-6 py-4">
+                <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">
+                  <span className="material-symbols-outlined text-[16px]">warning</span>
+                  {unassignedItems.length} item chua g·n t‡i s?n
+                </p>
+                {unassignedItems.map((item) => {
+                  const itemKey = `${booking.id}-${item.id}`;
+                  const state = assetAssignState[itemKey];
+                  return (
+                    <div key={itemKey} className="flex items-center gap-4 rounded-lg border border-amber-200 bg-amber-50/50 p-4">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-ink">
+                          {item.garmentName ?? "Trang ph?c"}
+                          {item.sizeLabel && <span className="ml-1 text-stone-500">({item.sizeLabel})</span>}
+                        </p>
+                        <div className="mt-1 flex gap-4 text-xs text-stone-500">
+                          <span>{formatVND(item.dailyPrice)}/ng‡y</span>
+                          <span>C?c: {formatVND(item.depositAmount)}</span>
+                        </div>
                       </div>
-                      <span className="text-xs text-stone-400">
-                        {booking.customerName ?? "‚Äî"} ¬∑ {formatDate(booking.rentalStartDate)} ‚Äì {formatDate(booking.rentalEndDate)}
-                      </span>
-                    </div>
-
-                    {/* Items needing assets */}
-                    <div className="px-6 py-4 space-y-3">
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700 flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[16px]">warning</span>
-                        {unassignedItems.length} item ch∆∞a g√°n t√†i s·∫£n
-                      </p>
-                      {unassignedItems.map((item) => {
-                        const itemKey = `${booking.id}-${item.id}`;
-                        const state = assetAssignState[itemKey];
-                        return (
-                          <div key={itemKey} className="flex items-center gap-4 rounded-lg border border-amber-200 bg-amber-50/50 p-4">
-                            <div className="flex-1 min-w-0">
-                              <p className="font-medium text-ink">
-                                {item.garmentName ?? "Trang ph·ª•c"}
-                                {item.sizeLabel && <span className="ml-1 text-stone-500">({item.sizeLabel})</span>}
-                              </p>
-                              <div className="mt-1 flex gap-4 text-xs text-stone-500">
-                                <span>{formatVND(item.dailyPrice)}/ng√†y</span>
-                                <span>C·ªçc: {formatVND(item.depositAmount)}</span>
-                              </div>
-                            </div>
-
-                            {!state?.open ? (
-                              <button
-                                type="button"
-                                className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-100"
-                                onClick={() => openAssetPicker(itemKey, item.garmentId)}
-                              >
-                                <span className="material-symbols-outlined text-[16px] align-middle mr-1">add</span>
-                                G√°n t√†i s·∫£n
-                              </button>
-                            ) : state.loading ? (
-                              <span className="text-sm text-stone-400">ƒêang t·∫£i...</span>
-                            ) : state.assets.length === 0 ? (
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm text-red-600 font-medium">H·∫øt t√†i s·∫£n kh·∫£ d·ª•ng</span>
-                                <button
-                                  type="button"
-                                  className="text-sm text-stone-500 underline"
-                                  onClick={() => closeAssetPicker(itemKey)}
-                                >
-                                  ƒê√≥ng
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-3">
-                                <select
-                                  className="min-w-[200px] rounded-lg border border-sand bg-white px-3 py-2 text-sm outline-none focus:border-antique"
-                                  value={state.selected}
-                                  onChange={(e) =>
-                                    setAssetAssignState((prev) => ({
-                                      ...prev,
-                                      [itemKey]: { ...prev[itemKey], selected: e.target.value },
-                                    }))
-                                  }
-                                  aria-label="Ch·ªçn t√†i s·∫£n"
-                                >
-                                  {state.assets.map((a) => (
-                                    <option key={a.id} value={a.id}>
-                                      {a.assetCode} {a.conditionNote ? `‚Äî ${a.conditionNote}` : ""}
-                                    </option>
-                                  ))}
-                                </select>
-                                <button
-                                  type="button"
-                                  disabled={actioningId === booking.id}
-                                  className="rounded-lg bg-jade px-4 py-2 text-sm font-semibold text-white transition hover:bg-forest disabled:opacity-50"
-                                  onClick={() => handleAssignAsset(booking.id, item.id, itemKey)}
-                                >
-                                  {actioningId === booking.id ? "..." : "X√°c nh·∫≠n g√°n"}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="text-sm text-stone-500 underline"
-                                  onClick={() => closeAssetPicker(itemKey)}
-                                >
-                                  H·ªßy
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        ) : tab === "catalog" ? (
-          /* ‚îÄ‚îÄ TAB: Catalog ‚îÄ‚îÄ */
-          <div className="rounded-xl border border-sand bg-white p-10 text-center shadow-sm">
-            <span className="material-symbols-outlined text-5xl text-stone-200 mb-4 block">apparel</span>
-            <h3 className="font-display text-2xl text-ink">Qu·∫£n l√Ω Catalog</h3>
-            <p className="mt-2 text-stone-500">
-              Module qu·∫£n l√Ω danh m·ª•c s·∫£n ph·∫©m, gi√° thu√™, ti·ªÅn c·ªçc, v√† tr·∫°ng th√°i ho·∫°t ƒë·ªông c·ªßa t·ª´ng m·∫´u trang ph·ª•c.
-            </p>
-            <p className="mt-2 text-sm text-stone-400">(ƒêang ph√°t tri·ªÉn ‚Äî s·∫Ω tri·ªÉn khai trong giai ƒëo·∫°n ti·∫øp theo)</p>
-          </div>
-        ) : tab === "finance" ? (
-          /* ‚îÄ‚îÄ TAB: T√†i ch√≠nh ‚îÄ‚îÄ */
-          <div className="space-y-6">
-            {/* Summary cards */}
-            <div className="grid gap-6 md:grid-cols-3">
-              <div className="rounded-xl border border-sand bg-white p-6 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Doanh thu cho thu√™</p>
-                <p className="mt-2 font-display text-3xl text-jade">{formatVND(totalRentalRevenue)}</p>
-                <p className="mt-1 text-sm text-stone-500">T·ª´ c√°c ƒë∆°n completed + ƒëang thu√™</p>
-              </div>
-              <div className="rounded-xl border border-sand bg-white p-6 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Ti·ªÅn c·ªçc ƒëang gi·ªØ</p>
-                <p className="mt-2 font-display text-3xl text-amber-700">{formatVND(totalDepositHeld)}</p>
-                <p className="mt-1 text-sm text-stone-500">{activeBookings.length} ƒë∆°n ƒëang active</p>
-              </div>
-              <div className="rounded-xl border border-sand bg-white p-6 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Ti·ªÅn ph·∫°t ph√°t sinh</p>
-                <p className="mt-2 font-display text-3xl text-red-700">{formatVND(totalPenalties)}</p>
-                <p className="mt-1 text-sm text-stone-500">T·ª´ c√°c l·∫ßn ki·ªÉm tra ph√°t hi·ªán h∆∞ h·ªèng</p>
-              </div>
-            </div>
-
-            {/* Detail table placeholder */}
-            <div className="rounded-xl border border-sand bg-white p-6 shadow-sm">
-              <h3 className="mb-4 text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">
-                ƒê·ªëi so√°t thanh to√°n g·∫ßn ƒë√¢y
-              </h3>
-              <div className="py-10 text-center text-stone-400">
-                <span className="material-symbols-outlined text-4xl text-stone-200 mb-2 block">receipt_long</span>
-                Module ƒë·ªëi so√°t chi ti·∫øt s·∫Ω ƒë∆∞·ª£c tri·ªÉn khai trong giai ƒëo·∫°n ti·∫øp theo.
-              </div>
-            </div>
-          </div>
-        ) : (
-          /* ‚îÄ‚îÄ TAB: Duy·ªát ho√†n c·ªçc ‚îÄ‚îÄ */
-          <div className="space-y-6">
-            {loadingRefunds ? (
-              <div className="py-20 text-center text-stone-400">ƒêang t·∫£i danh s√°ch ho√†n c·ªçc...</div>
-            ) : pendingRefunds.length === 0 ? (
-              <div className="py-20 text-center text-stone-400">
-                <span className="material-symbols-outlined text-5xl text-stone-200 mb-4 block">check_circle</span>
-                Kh√¥ng c√≥ y√™u c·∫ßu ho√†n c·ªçc n√†o ƒëang ch·ªù duy·ªát.
-              </div>
-            ) : (
-              pendingRefunds.map((refund) => (
-                <div
-                  key={refund.id}
-                  className="overflow-hidden rounded-xl border border-sand bg-white shadow-[0_4px_20px_rgba(0,0,0,0.04)]"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand bg-[#fff8f6] px-6 py-3">
-                    <div className="flex items-center gap-3">
-                      <span className="font-semibold text-ink">#{refund.bookingId.slice(0, 8).toUpperCase()}</span>
-                      <span className="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] bg-yellow-100 text-yellow-700">
-                        Ch·ªù duy·ªát
-                      </span>
-                    </div>
-                    <span className="text-xs text-stone-400">
-                      Y√™u c·∫ßu l√∫c {new Date(refund.createdAt).toLocaleString("vi-VN")}
-                    </span>
-                  </div>
-
-                  <div className="grid gap-6 p-6 sm:grid-cols-2">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Kh√°ch h√†ng</p>
-                      <p className="mt-1 font-medium text-ink">{refund.booking.customerName ?? "‚Äî"}</p>
-                      {refund.booking.customerPhone && (
-                        <p className="text-sm text-stone-500">{refund.booking.customerPhone}</p>
+                      {!state?.open ? (
+                        <button type="button" className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-100" onClick={() => onOpenPicker(itemKey, item.garmentId)}>
+                          <span className="material-symbols-outlined mr-1 align-middle text-[16px]">add</span>
+                          G·n t‡i s?n
+                        </button>
+                      ) : state.loading ? (
+                        <span className="text-sm text-stone-400">–ang t?i...</span>
+                      ) : state.assets.length === 0 ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-red-600">H?t t‡i s?n kh? d?ng</span>
+                          <button type="button" className="text-sm text-stone-500 underline" onClick={() => onClosePicker(itemKey)}>–Ûng</button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <select className="min-w-[200px] rounded-lg border border-sand bg-white px-3 py-2 text-sm outline-none focus:border-antique" value={state.selected} onChange={(e) => onSelectChange(itemKey, e.target.value)} aria-label="Ch?n t‡i s?n">
+                            {state.assets.map((a) => (
+                              <option key={a.id} value={a.id}>{a.assetCode} {a.conditionNote ? `ó ${a.conditionNote}` : ""}</option>
+                            ))}
+                          </select>
+                          <button type="button" disabled={actioningId === booking.id} className="rounded-lg bg-jade px-4 py-2 text-sm font-semibold text-white transition hover:bg-forest disabled:opacity-50" onClick={() => onAssign(booking.id, item.id, itemKey)}>
+                            {actioningId === booking.id ? "..." : "X·c nh?n g·n"}
+                          </button>
+                          <button type="button" className="text-sm text-stone-500 underline" onClick={() => onClosePicker(itemKey)}>H?y</button>
+                        </div>
                       )}
                     </div>
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">S·ªë ti·ªÅn ho√†n</p>
-                      <p className="mt-1 font-display text-2xl text-jade">{formatVND(refund.amount)}</p>
-                      <p className="text-sm text-stone-500">
-                        C·ªçc: {formatVND(refund.booking.depositTotal)} ‚Äî Ph·∫°t: {formatVND(refund.booking.penaltyTotal)}
-                      </p>
-                    </div>
-                  </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
 
-                  {/* Bank info */}
-                  <div className="border-t border-sand bg-[#fff8f6] px-6 py-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500 mb-3">
-                      Th√¥ng tin chuy·ªÉn kho·∫£n
-                    </p>
-                    <div className="grid gap-3 sm:grid-cols-3 text-sm">
-                      <div>
-                        <span className="text-stone-500">Ng√¢n h√†ng: </span>
-                        <span className="font-medium text-ink">{refund.bankName ?? "‚Äî"}</span>
-                      </div>
-                      <div>
-                        <span className="text-stone-500">S·ªë TK: </span>
-                        <span className="font-medium text-ink">{refund.bankAccountNumber ?? "‚Äî"}</span>
-                      </div>
-                      <div>
-                        <span className="text-stone-500">Ch·ªß TK: </span>
-                        <span className="font-medium text-ink">{refund.bankAccountHolder ?? "‚Äî"}</span>
-                      </div>
-                    </div>
-                  </div>
+// -------------------------------------------------------------------------------
+// TAB: Overview
+// -------------------------------------------------------------------------------
 
-                  {/* Approval form */}
-                  <div className="border-t border-sand px-6 py-4 space-y-4">
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-stone-500">
-                        ·∫¢nh bill chuy·ªÉn kho·∫£n (URL)
-                      </label>
-                      <input
-                        className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique"
-                        placeholder="D√°n URL ·∫£nh ch·ª•p giao d·ªãch chuy·ªÉn kho·∫£n..."
-                        value={proofImageUrl}
-                        onChange={(e) => setProofImageUrl(e.target.value)}
-                      />
+function OverviewTab({
+  totalRentalRevenue, totalDepositHeld, activeBookings,
+  utilizationPct, rentedItemCount, utilizationDenominator,
+  countBy, garments, onGoToTab, bookingsNeedingAssets, allAssets, laundryTickets, maintenanceJobs, assets,
+}: {
+  totalRentalRevenue: number;
+  totalDepositHeld: number;
+  activeBookings: StaffBookingResponse[];
+  utilizationPct: number;
+  rentedItemCount: number;
+  utilizationDenominator: number;
+  countBy: (s: string[]) => number;
+  garments: GarmentSummary[];
+  onGoToTab: (t: Tab) => void;
+  bookingsNeedingAssets: StaffBookingResponse[];
+  allAssets: AssetDetail[];
+  laundryTickets: LaundryTicketResponse[];
+  maintenanceJobs: MaintenanceJobResponse[];
+  assets: AssetDetail[];
+}) {
+  const effectiveAssets = allAssets.length > 0
+    ? allAssets
+    : assets.length > 0
+      ? assets
+      : activeBookings.flatMap((booking) => booking.items)
+          .filter((item) => item.assetStatus)
+          .map((item) => ({ status: item.assetStatus! }));
+  const assetCounts = effectiveAssets.reduce<Record<string, number>>((acc: Record<string, number>, asset: { status: string }) => {
+    acc[asset.status] = (acc[asset.status] ?? 0) + 1;
+    return acc;
+  }, {});
+  const returnedWaiting = countBy(["returned", "inspection_pending", "overdue"]);
+
+  return (
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <SnapshotCard label="Doanh thu (dang ph·t sinh)" value={formatVND(totalRentalRevenue)} hint="T? don completed + dang thuÍ" icon="payments" tone="lotus" />
+        <SnapshotCard label="Ti?n c?c dang gi?" value={formatVND(totalDepositHeld)} hint={`${activeBookings.length} don dang ho?t d?ng`} icon="account_balance_wallet" tone="antique" />
+        <SnapshotCard label="–on d?t ch? hi?n t?i" value={String(activeBookings.length)} hint="–ang trong lu?ng v?n h‡nh" icon="calendar_month" tone="jade" />
+        <SnapshotCard label="Hi?u su?t l?p d?y" value={garments.length === 0 ? "ó" : `${utilizationPct}%`} hint={`${rentedItemCount} dang thuÍ / ${utilizationDenominator} kh? d?ng`} icon="pie_chart" tone="bronze" progress={garments.length === 0 ? null : utilizationPct} />
+      </div>
+
+      <section className="rounded-xl border border-sand bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="font-display text-2xl text-ink">Vi?c c?n x? l˝</h2>
+            <p className="text-sm text-stone-500">Uu tiÍn v?n h‡nh trong ng‡y</p>
+          </div>
+          <span className="material-symbols-outlined text-lotus">task_alt</span>
+        </div>
+        <div className="grid gap-3 md:grid-cols-4">
+          <QuickWorkItem icon="swap_horiz" label="C?n g·n t‡i s?n" value={bookingsNeedingAssets.length} tone="amber" onClick={() => onGoToTab("assets")} />
+          <QuickWorkItem icon="search_check" label="Ch? ki?m tra" value={returnedWaiting} tone="orange" onClick={() => onGoToTab("inspection-log")} />
+          <QuickWorkItem icon="dry_cleaning" label="–ang gi?t s?y" value={laundryTickets.length} tone="blue" onClick={() => onGoToTab("laundry")} />
+          <QuickWorkItem icon="build" label="C?n b?o trÏ" value={maintenanceJobs.filter((j) => j.status !== "completed" && j.status !== "cannot_repair").length} tone="red" onClick={() => onGoToTab("damaged")} />
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-sand bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="font-display text-2xl text-ink">T?ng Quan Kho T‡i S?n</h2>
+            <p className="text-sm text-stone-500">TÏnh tr?ng hi?n v?t dang v?n h‡nh trong c?a h‡ng</p>
+          </div>
+          <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">{effectiveAssets.length} t‡i s?n</span>
+        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          {["available", "reserved", "rented", "laundry", "maintenance", "damaged", "inspection_pending", "retired", "lost"].map((status) => {
+            const meta = ASSET_STATUS_META[status] ?? { label: status, color: "bg-stone-100 text-stone-600" };
+            return (
+              <button key={status} type="button" onClick={() => onGoToTab("inventory")} className="rounded-lg border border-sand bg-[#fff8f6] p-3 text-left transition hover:border-lotus/50 hover:bg-white">
+                <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${meta.color}`}>{meta.label}</span>
+                <p className="mt-2 font-display text-2xl text-ink">{assetCounts[status] ?? 0}</p>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <div className="grid grid-cols-1 gap-gutter lg:grid-cols-3">
+        <div className="rounded-xl border border-sand bg-white p-6 shadow-[0_4px_12px_rgba(74,4,4,0.03)] lg:col-span-2">
+          <h2 className="mb-6 font-display text-2xl text-ink">TÏnh Tr?ng V?n H‡nh</h2>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
+            <StatusCell label="Ch? x? l˝" value={countBy(["pending_confirmation", "awaiting_payment"])} tone="amber" />
+            <StatusCell label="–ang chu?n b?" value={countBy(["paid", "preparing", "ready_for_pickup", "delivering"])} tone="purple" />
+            <StatusCell label="–ang thuÍ" value={countBy(["renting"])} tone="lotus" />
+            <StatusCell label="Ch? ki?m tra" value={countBy(["returned", "inspection_pending"])} tone="orange" />
+            <StatusCell label="Ho‡n th‡nh" value={countBy(["completed"])} tone="jade" />
+          </div>
+          <div className="mt-6 flex items-start gap-4 rounded-r-lg border-l-4 border-lotus bg-[#fff4ef] p-4">
+            <span className="material-symbols-outlined mt-0.5 text-lotus">warning</span>
+            <div>
+              <h3 className="text-sm font-semibold text-ink">C?nh B·o V?n H‡nh</h3>
+              <p className="mt-1 text-sm text-stone-600">
+                {bookingsNeedingAssets.length > 0
+                  ? `${bookingsNeedingAssets.length} don dang ch? g·n t‡i s?n. C?n x? l˝ ngay d? khÙng tr? ti?n d? giao trang ph?c.`
+                  : "KhÙng cÛ c?nh b·o. T?t c? don dang ch? d?u d„ du?c g·n t‡i s?n."}
+              </p>
+              {bookingsNeedingAssets.length > 0 && (
+                <button type="button" onClick={() => onGoToTab("assets")} className="mt-2 text-sm font-semibold text-lotus underline hover:text-oxblood">
+                  –i t?i kho trang ph?c ?
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col rounded-xl border border-sand bg-white p-6 shadow-[0_4px_12px_rgba(74,4,4,0.03)]">
+          <h2 className="mb-6 font-display text-2xl text-ink">Truy C?p Nhanh</h2>
+          <div className="flex flex-1 flex-col gap-3">
+            <ShortcutButton icon="inventory_2" label="Kho trang ph?c" badge={bookingsNeedingAssets.length} tone="bronze" onClick={() => onGoToTab("assets")} />
+            <ShortcutButton icon="fact_check" label="Nh?t k˝ ki?m tra" tone="jade" onClick={() => onGoToTab("inspection-log")} />
+            <ShortcutButton icon="bar_chart" label="B·o c·o t‡i chÌnh" tone="antique" onClick={() => onGoToTab("finance")} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// -------------------------------------------------------------------------------
+// TAB: Inventory (split layout)
+// -------------------------------------------------------------------------------
+
+function InventoryTab({
+  garments, categories, selectedGarmentId, onSelectGarment,
+  assets, assetsLoading, selectedAssetId, onSelectAsset,
+  selectedAsset, assetHistory, assetHistoryLoading,
+  onCreateGarment, onEditGarment, onCreateAsset, onAddImage, onCreateCategory, categorySubmitting, onUpdateAssetStatus,
+  garmentModalOpen, editingGarment, onCloseGarmentModal, onSubmitGarment, submitting,
+  assetModalOpen, onCloseAssetModal, onSubmitAsset,
+}: {
+  garments: GarmentSummary[];
+  categories: GarmentCategory[];
+  selectedGarmentId: string | null;
+  onSelectGarment: (id: string) => void;
+  assets: AssetDetail[];
+  assetsLoading: boolean;
+  selectedAssetId: string | null;
+  onSelectAsset: (id: string | null) => void;
+  selectedAsset: AssetDetail | null;
+  assetHistory: AssetInspectionHistory[];
+  assetHistoryLoading: boolean;
+  onCreateGarment: () => void;
+  onEditGarment: (g: GarmentSummary) => void;
+  onCreateAsset: () => void;
+  onAddImage: (garmentId: string, imageUrl: string) => Promise<void>;
+  onCreateCategory: (name: string) => Promise<GarmentCategory | null>;
+  categorySubmitting: boolean;
+  onUpdateAssetStatus: (assetId: string, status: string) => Promise<void>;
+  garmentModalOpen: boolean;
+  editingGarment: GarmentDetail | null;
+  onCloseGarmentModal: () => void;
+  onSubmitGarment: (id: string | null, payload: Parameters<typeof createGarment>[0]) => Promise<void>;
+  submitting: boolean;
+  assetModalOpen: boolean;
+  onCloseAssetModal: () => void;
+  onSubmitAsset: (payload: Parameters<typeof createAsset>[0]) => Promise<void>;
+}) {
+  const [garmentSearch, setGarmentSearch] = useState("");
+  const [assetSearch, setAssetSearch] = useState("");
+  const [assetStatusFilter, setAssetStatusFilter] = useState("all");
+
+  const filteredGarments = useMemo(() => {
+    const q = garmentSearch.trim().toLowerCase();
+    return q
+      ? garments.filter((g) => [g.name, g.categoryName, g.sizeLabel].some((v) => v?.toLowerCase().includes(q)))
+      : garments;
+  }, [garments, garmentSearch]);
+
+  const filteredAssets = useMemo(() => {
+    const q = assetSearch.trim().toLowerCase();
+    return assets.filter((asset) => {
+      const byText = q ? [asset.assetCode, asset.garmentName, asset.conditionNote].some((v) => v?.toLowerCase().includes(q)) : true;
+      const byStatus = assetStatusFilter === "all" ? true : asset.status === assetStatusFilter;
+      return byText && byStatus;
+    });
+  }, [assets, assetSearch, assetStatusFilter]);
+
+  return (
+    <div className="flex h-[calc(100vh-240px)] -mx-4 sm:-mx-6 lg:-mx-8 overflow-hidden border-y border-sand bg-white">
+      {/* Left Pane: Garment Catalog Grid */}
+      <section className="w-1/2 flex flex-col border-r border-sand bg-warm-ivory">
+        <div className="p-4 border-b border-sand bg-surface-container-low sticky top-0 z-10 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <h2 className="font-display text-xl text-ink">Danh m?c Tuy?t t·c</h2>
+            <span className="text-xs text-stone-500">{garments.length} m?u</span>
+          </div>
+          <button type="button" onClick={onCreateGarment} className="flex items-center gap-1 rounded-lg bg-lotus px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-oxblood">
+            <span className="material-symbols-outlined text-[16px]">add</span>
+            ThÍm trang ph?c
+          </button>
+        </div>
+        <div className="border-b border-sand bg-white px-4 py-3">
+          <div className="relative">
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-stone-400">search</span>
+            <input value={garmentSearch} onChange={(e) => setGarmentSearch(e.target.value)} className="w-full rounded-lg border border-sand bg-[#fff8f6] py-2 pl-10 pr-3 text-sm outline-none focus:border-antique" placeholder="TÏm trang ph?c, danh m?c, size..." />
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          {filteredGarments.length === 0 ? (
+            <div className="py-20 text-center text-stone-400">Chua cÛ trang ph?c.</div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4">
+              {filteredGarments.map((g) => {
+                const isSelected = g.id === selectedGarmentId;
+                return (
+                  <div
+                    key={g.id}
+                    className={`rounded-lg border overflow-hidden text-left transition relative ${
+                      isSelected ? "border-lotus ring-2 ring-lotus/20" : "border-outline-variant hover:shadow-md"
+                    }`}
+                  >
+                  <button
+                    type="button"
+                    onClick={() => onSelectGarment(g.id)}
+                    className="w-full text-left"
+                  >
+                    <div className="aspect-[3/4] relative bg-surface-container-highest flex items-center justify-center">
+                      <span className="material-symbols-outlined text-[48px] text-antique/30">checkroom</span>
+                      <div className="absolute top-2 left-2 bg-surface/80 backdrop-blur-sm px-2 py-0.5 rounded text-[10px] font-semibold text-ink">
+                        {g.categoryName ?? "Trang ph?c"}
+                      </div>
                     </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-stone-500">
-                        Ghi ch√∫ (tu·ª≥ ch·ªçn)
-                      </label>
-                      <input
-                        className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique"
-                        placeholder="Ghi ch√∫ n·ªôi b·ªô..."
-                        value={approveNote}
-                        onChange={(e) => setApproveNote(e.target.value)}
-                      />
+                    <div className="p-3">
+                      <h3 className="font-display text-base text-ink line-clamp-1">{g.name}</h3>
+                      <div className="mt-1 text-xs text-stone-500">Size: {g.sizeLabel ?? "ó"}</div>
+                      <div className="mt-2 flex justify-between items-center border-t border-surface-variant pt-2 text-xs">
+                        <span className="font-semibold text-lotus">{formatVND(g.dailyPrice)}/ng‡y</span>
+                        <span className="text-stone-500">C?c {formatVND(g.depositAmount)}</span>
+                      </div>
                     </div>
-                    <div className="flex justify-end">
-                      <button
-                        type="button"
-                        disabled={approvingId === refund.id || !proofImageUrl.trim()}
-                        onClick={() => handleApproveRefund(refund.id)}
-                        className="rounded-lg bg-jade px-6 py-3 text-sm font-semibold text-white transition hover:bg-forest disabled:opacity-50"
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onEditGarment(g)}
+                    className="absolute top-2 right-2 rounded-md bg-white/90 backdrop-blur-sm p-1.5 text-stone-500 hover:text-lotus transition"
+                    aria-label="Ch?nh s?a"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">edit</span>
+                  </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Right Pane: Asset Inventory Table + Detail Drawer */}
+      <section className="w-1/2 flex flex-col bg-surface">
+        <div className="p-4 border-b border-sand bg-surface-container-low sticky top-0 z-10 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <h2 className="font-display text-xl text-ink">Qu?n l˝ Hi?n v?t</h2>
+            <span className="text-xs text-stone-500">{assets.length} t‡i s?n</span>
+          </div>
+          {selectedGarmentId && (
+            <button type="button" onClick={onCreateAsset} className="flex items-center gap-1 rounded-lg bg-lotus px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-oxblood">
+              <span className="material-symbols-outlined text-[16px]">add</span>
+              ThÍm t‡i s?n
+            </button>
+          )}
+        </div>
+        <div className="border-b border-sand bg-white px-4 py-3">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-stone-400">search</span>
+              <input value={assetSearch} onChange={(e) => setAssetSearch(e.target.value)} className="w-full rounded-lg border border-sand bg-[#fff8f6] py-2 pl-10 pr-3 text-sm outline-none focus:border-antique" placeholder="TÏm m„ t‡i s?n..." />
+            </div>
+            <select value={assetStatusFilter} onChange={(e) => setAssetStatusFilter(e.target.value)} className="rounded-lg border border-sand bg-white px-3 py-2 text-sm outline-none focus:border-antique" aria-label="L?c tr?ng th·i t‡i s?n">
+              <option value="all">T?t c?</option>
+              {Object.entries(ASSET_STATUS_META).map(([key, meta]) => <option key={key} value={key}>{meta.label}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {assetsLoading ? (
+          <div className="flex-1 flex items-center justify-center text-sm text-stone-400">–ang t?i...</div>
+        ) : filteredAssets.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center text-sm text-stone-400">
+            {selectedGarmentId ? "Chua cÛ t‡i s?n cho m?u n‡y." : "Ch?n m?t m?u trang ph?c."}
+          </div>
+        ) : (
+          <div className="flex-1 flex overflow-hidden">
+            {/* Asset table */}
+            <div className="flex-1 overflow-auto">
+              <table className="w-full text-left border-collapse">
+                <thead className="bg-surface-container-highest border-b border-outline-variant sticky top-0">
+                  <tr>
+                    <th className="font-label-sm text-label-sm text-on-surface-variant py-3 px-4 font-semibold uppercase tracking-wider">M„ hi?n v?t</th>
+                    <th className="font-label-sm text-label-sm text-on-surface-variant py-3 px-4 font-semibold uppercase tracking-wider">Tr?ng th·i</th>
+                    <th className="font-label-sm text-label-sm text-on-surface-variant py-3 px-4 font-semibold uppercase tracking-wider">TÏnh tr?ng</th>
+                  </tr>
+                </thead>
+                <tbody className="font-body-sm text-body-sm">
+                  {filteredAssets.map((a) => {
+                    const sm = ASSET_STATUS_META[a.status] ?? { label: a.status, color: "bg-stone-100 text-stone-600" };
+                    const isSelected = a.id === selectedAssetId;
+                    return (
+                      <tr
+                        key={a.id}
+                        onClick={() => onSelectAsset(isSelected ? null : a.id)}
+                        className={`border-b border-outline-variant cursor-pointer transition-colors ${
+                          isSelected ? "bg-surface-container hover:bg-surface-container-high" : "hover:bg-surface-container-high"
+                        }`}
                       >
-                        {approvingId === refund.id ? "ƒêang x·ª≠ l√Ω..." : `Duy·ªát ho√†n c·ªçc ${formatVND(refund.amount)}`}
-                      </button>
+                        <td className={`py-4 px-4 font-label-md text-label-md text-on-surface border-l-4 ${isSelected ? "border-primary" : "border-transparent"}`}>
+                          {a.assetCode}
+                        </td>
+                        <td className="py-4 px-4">
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${sm.color}`}>
+                            {sm.label}
+                          </span>
+                        </td>
+                        <td className="py-4 px-4 text-on-surface-variant">
+                          {a.conditionNote ?? (a.status === "available" ? "T?t" : "ó")}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Side Detail Drawer */}
+            {selectedAsset && (
+              <aside className="w-80 bg-surface-container-low border-l border-outline-variant flex flex-col flex-shrink-0 shadow-[-4px_0_15px_-3px_rgba(74,4,4,0.05)] z-20">
+                <div className="p-4 border-b border-outline-variant flex justify-between items-center bg-warm-ivory">
+                  <h3 className="font-display text-lg text-ink">{selectedAsset.assetCode}</h3>
+                  <button type="button" onClick={() => onSelectAsset(null)} className="text-stone-500 hover:text-lotus">
+                    <span className="material-symbols-outlined">close</span>
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-5">
+                  {/* Image placeholder */}
+                  <div className="aspect-square bg-surface-container-highest rounded border border-outline-variant flex items-center justify-center">
+                    <span className="material-symbols-outlined text-[48px] text-antique/30">checkroom</span>
+                  </div>
+
+                  {/* Status with update control */}
+                  <div>
+                    <label className="font-label-sm text-label-sm text-on-surface-variant uppercase mb-1 block">C?p nh?t tr?ng th·i</label>
+                    <select
+                      value={selectedAsset.status}
+                      onChange={(e) => onUpdateAssetStatus(selectedAsset.id, e.target.value)}
+                      className="w-full rounded-lg border border-sand bg-white px-3 py-2 text-sm outline-none focus:border-antique"
+                    >
+                      {Object.entries(ASSET_STATUS_META).map(([key, meta]) => (
+                        <option key={key} value={key}>{meta.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Info */}
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-stone-500">Trang ph?c</span>
+                      <span className="font-medium text-ink">{selectedAsset.garmentName}</span>
                     </div>
+                    <div className="flex justify-between">
+                      <span className="text-stone-500">Size</span>
+                      <span className="font-medium text-ink">{selectedAsset.sizeLabel ?? "ó"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-stone-500">Gi· thuÍ</span>
+                      <span className="font-medium text-lotus">{formatVND(selectedAsset.dailyPrice)}/ng‡y</span>
+                    </div>
+                    {selectedAsset.conditionNote && (
+                      <div className="flex justify-between">
+                        <span className="text-stone-500">Ghi ch˙</span>
+                        <span className="font-medium text-ink text-right max-w-[180px]">{selectedAsset.conditionNote}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Condition History */}
+                  <div>
+                    <h4 className="font-label-md text-label-md text-on-surface border-b border-outline-variant pb-2 mb-3">L?ch s? ki?m tra</h4>
+                    {assetHistoryLoading ? (
+                      <p className="text-xs text-stone-400">–ang t?i...</p>
+                    ) : assetHistory.length === 0 ? (
+                      <p className="text-xs text-stone-400">Chua cÛ l?ch ki?m tra.</p>
+                    ) : (
+                      <div className="relative pl-5 border-l border-outline-variant ml-2 space-y-4">
+                        {assetHistory.slice(0, 5).map((h) => (
+                          <div key={h.id} className="relative">
+                            <div className={`absolute -left-[23px] top-1 w-2.5 h-2.5 rounded-full border-2 border-surface-container-low ${
+                              h.status === "completed" ? "bg-antique-gold" : "bg-outline"
+                            }`} />
+                            <div className="font-label-sm text-label-sm text-on-surface-variant mb-1">
+                              {h.createdAt.slice(0, 10)} ó {h.status === "completed" ? "–„ ki?m tra" : h.status}
+                            </div>
+                            <div className="font-body-sm text-body-sm text-on-surface bg-surface p-2 rounded border border-surface-variant">
+                              {h.findings.length > 0
+                                ? (() => { const total = h.findings.reduce((sum, f) => sum + f.penaltyAmount, 0); return `${h.findings.length} ghi nh?n${total > 0 ? ` ∑ Ph?t ${formatVND(total)}` : ""}`; })()
+                                : "KhÙng cÛ ghi nh?n"}
+                              {h.inspectorName && <span className="block text-xs text-stone-400 mt-1">B?i: {h.inspectorName}</span>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
-              ))
+              </aside>
             )}
           </div>
         )}
+      </section>
+
+      {/* Garment Create/Edit Modal */}
+      {garmentModalOpen && (
+        <GarmentFormModal
+          garment={editingGarment}
+          categories={categories}
+          submitting={submitting}
+          onClose={onCloseGarmentModal}
+          onSubmit={(payload) => onSubmitGarment(editingGarment?.id ?? null, payload)}
+        />
+      )}
+
+      {/* Asset Create Modal */}
+      {assetModalOpen && selectedGarmentId && (
+        <AssetFormModal
+          garmentName={garments.find((g) => g.id === selectedGarmentId)?.name ?? "ó"}
+          garmentId={selectedGarmentId}
+          submitting={submitting}
+          onClose={onCloseAssetModal}
+          onSubmit={onSubmitAsset}
+        />
+      )}
+    </div>
+  );
+}
+
+// -------------------------------------------------------------------------------
+// Modal: Garment Create/Edit
+// -------------------------------------------------------------------------------
+
+function GarmentFormModal({
+  garment, categories, submitting, onClose, onSubmit,
+}: {
+  garment: GarmentDetail | null;
+  categories: GarmentCategory[];
+  submitting: boolean;
+  onClose: () => void;
+  onSubmit: (payload: Parameters<typeof createGarment>[0], imagesToAdd: string[]) => void;
+}) {
+  const [name, setName] = useState(garment?.name ?? "");
+  const [categoryId, setCategoryId] = useState(garment?.categoryId ?? "");
+  const [description, setDescription] = useState(garment?.description ?? "");
+  const [sizeLabel, setSizeLabel] = useState(garment?.sizeLabel ?? "");
+  const [color, setColor] = useState(garment?.color ?? "");
+  const [dailyPrice, setDailyPrice] = useState(String(garment?.dailyPrice ?? ""));
+  const [depositAmount, setDepositAmount] = useState(String(garment?.depositAmount ?? ""));
+  
+  // Image states
+  const [pendingImages, setPendingImages] = useState<string[]>([]);
+  const [imageUrl, setImageUrl] = useState("");
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    onSubmit({
+      name,
+      categoryId: categoryId || undefined,
+      description: description || undefined,
+      sizeLabel: sizeLabel || undefined,
+      color: color || undefined,
+      dailyPrice: Number(dailyPrice),
+      depositAmount: Number(depositAmount),
+    }, pendingImages);
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage(true);
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const data = await res.json();
+      if (data.success && data.url) {
+        setPendingImages((prev) => [...prev, data.url]);
+      } else {
+        alert("Upload th?t b?i: " + (data.message || JSON.stringify(data)));
+      }
+    } catch (err: any) {
+      alert("L?i upload: " + err.message);
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
+  function handleAddImageUrl() {
+    if (!imageUrl.trim()) return;
+    setPendingImages((prev) => [...prev, imageUrl.trim()]);
+    setImageUrl("");
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4">
+      <form onSubmit={handleSubmit} className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-sand bg-white p-6 shadow-2xl">
+        <div className="mb-6 flex items-center justify-between">
+          <h3 className="font-display text-2xl text-ink">{garment ? "S?a trang ph?c" : "ThÍm trang ph?c m?i"}</h3>
+          <button type="button" onClick={onClose} className="text-stone-500 hover:text-lotus">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">TÍn trang ph?c *</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} required className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="Vd: Nh?t BÏnh Ho‡ng Ph·i" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Danh m?c</label>
+            <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-full rounded-lg border border-sand bg-white px-3 py-2 text-sm outline-none focus:border-antique">
+              <option value="">ó Ch?n danh m?c ó</option>
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <p className="mt-1 text-xs text-stone-400">Danh m?c d˘ng d? ph‚n lo?i trang ph?c.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Size</label>
+              <input value={sizeLabel} onChange={(e) => setSizeLabel(e.target.value)} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="Vd: M, L" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">M‡u</label>
+              <input value={color} onChange={(e) => setColor(e.target.value)} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="Vd: –?" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Gi· thuÍ/ng‡y (VN–) *</label>
+              <input value={dailyPrice} onChange={(e) => setDailyPrice(e.target.value)} required type="number" min={0} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="350000" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Ti?n c?c (VN–) *</label>
+              <input value={depositAmount} onChange={(e) => setDepositAmount(e.target.value)} required type="number" min={0} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="1000000" />
+            </div>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">MÙ t?</label>
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="MÙ t? trang ph?c..." />
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-xl border border-sand bg-[#fff8f6] p-4">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <h4 className="text-sm font-semibold text-ink">?nh trang ph?c</h4>
+              <p className="text-xs text-stone-500">T?i ?nh lÍn ho?c d˘ng URL d? hi?n th?.</p>
+            </div>
+            <span className="text-xs text-stone-400">{(garment?.images?.length ?? 0) + pendingImages.length} ?nh</span>
+          </div>
+          
+          {(garment?.images && garment.images.length > 0 || pendingImages.length > 0) && (
+            <div className="mt-3 mb-4 flex gap-2 overflow-x-auto pb-2">
+              {garment?.images?.map((img) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={img.id} src={img.imageUrl} alt={img.altText ?? "?nh trang ph?c"} className="h-20 w-16 flex-shrink-0 rounded border border-sand object-cover" />
+              ))}
+              {pendingImages.map((imgUrl, i) => (
+                <div key={i} className="relative group flex-shrink-0">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={imgUrl} alt="Pending" className="h-20 w-16 rounded border border-lotus object-cover opacity-80" />
+                  <div className="absolute inset-0 rounded bg-lotus/10 pointer-events-none" />
+                  <button type="button" onClick={() => setPendingImages(prev => prev.filter((_, idx) => idx !== i))} className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white shadow opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="material-symbols-outlined text-[10px]">close</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="rounded border border-sand bg-white p-3">
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-stone-500">T?i ?nh lÍn (File)</label>
+              <input type="file" accept="image/*" onChange={handleFileUpload} disabled={uploadingImage} className="block w-full text-xs text-stone-500 file:mr-3 file:rounded file:border-0 file:bg-sand/30 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-ink hover:file:bg-sand/50" />
+              {uploadingImage && <p className="mt-1 text-[10px] text-stone-400">–ang t?i lÍn...</p>}
+            </div>
+            <div className="rounded border border-sand bg-white p-3">
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-stone-500">Ho?c d˘ng URL ?nh</label>
+              <div className="flex gap-2">
+                <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="min-w-0 flex-1 rounded border border-sand px-2 py-1.5 text-xs outline-none focus:border-antique" placeholder="https://..." />
+                <button type="button" disabled={!imageUrl.trim()} onClick={handleAddImageUrl} className="rounded bg-lotus px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-oxblood disabled:opacity-50">
+                  ThÍm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button type="button" onClick={onClose} className="rounded-lg border border-sand px-5 py-2.5 text-sm font-semibold text-stone-600 hover:bg-stone-50">H?y</button>
+          <button type="submit" disabled={submitting} className="rounded-lg bg-lotus px-6 py-2.5 text-sm font-semibold text-white hover:bg-oxblood disabled:opacity-50">
+            {submitting ? "–ang luu..." : garment ? "Luu thay d?i" : "T?o trang ph?c"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// -------------------------------------------------------------------------------
+// Modal: Asset Create
+// -------------------------------------------------------------------------------
+
+function AssetFormModal({
+  garmentId, garmentName, submitting, onClose, onSubmit,
+}: {
+  garmentId: string;
+  garmentName: string;
+  submitting: boolean;
+  onClose: () => void;
+  onSubmit: (payload: Parameters<typeof createAsset>[0]) => void;
+}) {
+  const [assetCode, setAssetCode] = useState("");
+  const [conditionNote, setConditionNote] = useState("");
+  const [purchaseCost, setPurchaseCost] = useState("");
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    onSubmit({
+      garmentId,
+      assetCode,
+      conditionNote: conditionNote || undefined,
+      purchaseCost: purchaseCost ? Number(purchaseCost) : undefined,
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4">
+      <form onSubmit={handleSubmit} className="w-full max-w-md rounded-2xl border border-sand bg-white p-6 shadow-2xl">
+        <div className="mb-6 flex items-center justify-between">
+          <h3 className="font-display text-2xl text-ink">ThÍm t‡i s?n m?i</h3>
+          <button type="button" onClick={onClose} className="text-stone-500 hover:text-lotus">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <p className="mb-4 text-sm text-stone-500">Trang ph?c: <strong className="text-ink">{garmentName}</strong></p>
+
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">M„ t‡i s?n *</label>
+            <input value={assetCode} onChange={(e) => setAssetCode(e.target.value)} required className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="Vd: NB-005" />
+            <p className="mt-1 text-xs text-stone-400">M„ duy nh?t cho mÛn d? v?t l˝.</p>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Ghi ch˙ tÏnh tr?ng</label>
+            <input value={conditionNote} onChange={(e) => setConditionNote(e.target.value)} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="Vd: M?i 100%" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Gi· mua (VN–)</label>
+            <input value={purchaseCost} onChange={(e) => setPurchaseCost(e.target.value)} type="number" min={0} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="Vd: 5000000" />
+          </div>
+        </div>
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button type="button" onClick={onClose} className="rounded-lg border border-sand px-5 py-2.5 text-sm font-semibold text-stone-600 hover:bg-stone-50">H?y</button>
+          <button type="submit" disabled={submitting} className="rounded-lg bg-jade px-6 py-2.5 text-sm font-semibold text-white hover:bg-forest disabled:opacity-50">
+            {submitting ? "–ang t?o..." : "T?o t‡i s?n"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// -------------------------------------------------------------------------------
+// TAB: Inspection Log
+// -------------------------------------------------------------------------------
+
+function InspectionLogTab({ log, loading }: { log: InspectionLogEntry[]; loading: boolean }) {
+  return (
+    <div className="space-y-4">
+      {loading ? (
+        <div className="py-20 text-center text-stone-400">–ang t?i...</div>
+      ) : log.length === 0 ? (
+        <div className="py-20 text-center text-stone-400">Chua cÛ phiÍn ki?m tra n‡o.</div>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-[#fff8f6] text-xs uppercase tracking-[0.14em] text-stone-500">
+              <tr>
+                <th className="px-6 py-3">M„ t‡i s?n</th>
+                <th className="px-6 py-3">Trang ph?c</th>
+                <th className="px-6 py-3">Tr?ng th·i</th>
+                <th className="px-6 py-3">Ngu?i ki?m tra</th>
+                <th className="px-6 py-3">Ghi nh?n</th>
+                <th className="px-6 py-3">Ph?t</th>
+                <th className="px-6 py-3">Ng‡y t?o</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-sand">
+              {log.map((entry) => (
+                <tr key={entry.id} className="transition hover:bg-[#fff8f6]">
+                  <td className="px-6 py-4 font-semibold text-ink">{entry.assetCode}</td>
+                  <td className="px-6 py-4 text-stone-600">{entry.garmentName}</td>
+                  <td className="px-6 py-4">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                      entry.status === "completed" ? "bg-jade/10 text-jade" : "bg-amber-100 text-amber-700"
+                    }`}>
+                      {entry.status === "completed" ? "Ho‡n t?t" : entry.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-stone-600">{entry.inspectorName ?? "ó"}</td>
+                  <td className="px-6 py-4 text-stone-600">{entry.findingsCount}</td>
+                  <td className="px-6 py-4 text-red-700">{entry.totalPenalty > 0 ? formatVND(entry.totalPenalty) : "ó"}</td>
+                  <td className="px-6 py-4 text-stone-500">{entry.createdAt.slice(0, 10)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// -------------------------------------------------------------------------------
+// TAB: Laundry Queue
+// -------------------------------------------------------------------------------
+
+function LaundryTab({
+  tickets, loading, actioningId, onComplete,
+}: {
+  tickets: LaundryTicketResponse[];
+  loading: boolean;
+  actioningId: string | null;
+  onComplete: (id: string) => Promise<void>;
+}) {
+  return (
+    <div className="space-y-4">
+      {loading ? (
+        <div className="py-20 text-center text-stone-400">–ang t?i...</div>
+      ) : tickets.length === 0 ? (
+        <div className="py-20 text-center text-stone-400">KhÙng cÛ d? c?n gi?t s?y.</div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {tickets.map((t) => (
+            <div key={t.id} className="rounded-xl border border-sand bg-white p-5 shadow-sm">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="font-semibold text-ink">{t.assetCode}</p>
+                  <p className="text-sm text-stone-500">{t.garmentName}</p>
+                </div>
+                <span className="rounded-full bg-state-laundry/10 text-state-laundry px-2 py-0.5 text-xs font-semibold">
+                  {t.status === "open" ? "Ch? gi?t" : "–ang gi?t"}
+                </span>
+              </div>
+              {t.note && <p className="mt-2 text-xs text-stone-500">{t.note}</p>}
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  disabled={actioningId === t.id}
+                  onClick={() => onComplete(t.id)}
+                  className="rounded-lg bg-jade px-4 py-2 text-xs font-semibold text-white transition hover:bg-forest disabled:opacity-50"
+                >
+                  {actioningId === t.id ? "..." : "Ho‡n t?t gi?t"}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// -------------------------------------------------------------------------------
+// TAB: Damaged / Maintenance
+// -------------------------------------------------------------------------------
+
+function DamagedTab({
+  jobs, loading, actioningId, onComplete,
+}: {
+  jobs: MaintenanceJobResponse[];
+  loading: boolean;
+  actioningId: string | null;
+  onComplete: (id: string, status: string) => Promise<void>;
+}) {
+  return (
+    <div className="space-y-4">
+      {loading ? (
+        <div className="py-20 text-center text-stone-400">–ang t?i...</div>
+      ) : jobs.length === 0 ? (
+        <div className="py-20 text-center text-stone-400">KhÙng cÛ t‡i s?n hu h?ng ho?c b?o trÏ.</div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {jobs.map((j) => (
+            <div key={j.id} className="rounded-xl border border-sand bg-white p-5 shadow-sm">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="font-semibold text-ink">{j.assetCode}</p>
+                  <p className="text-sm text-stone-500">{j.garmentName}</p>
+                </div>
+                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                  j.status === "open" ? "bg-red-100 text-red-700" :
+                  j.status === "in_progress" ? "bg-amber-100 text-amber-700" :
+                  "bg-jade/10 text-jade"
+                }`}>
+                  {j.status === "open" ? "C?n x? l˝" : j.status === "in_progress" ? "–ang s?a" : "Ho‡n t?t"}
+                </span>
+              </div>
+              {j.note && <p className="mt-2 text-xs text-stone-500">{j.note}</p>}
+              <div className="mt-4 flex gap-2 justify-end">
+                {j.status !== "completed" && j.status !== "cannot_repair" && (
+                  <>
+                    <button
+                      type="button"
+                      disabled={actioningId === j.id}
+                      onClick={() => onComplete(j.id, "completed")}
+                      className="rounded-lg bg-jade px-3 py-2 text-xs font-semibold text-white transition hover:bg-forest disabled:opacity-50"
+                    >
+                      {actioningId === j.id ? "..." : "Ho‡n t?t"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={actioningId === j.id}
+                      onClick={() => onComplete(j.id, "cannot_repair")}
+                      className="rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+                    >
+                      KhÙng s?a du?c
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// -------------------------------------------------------------------------------
+// TAB: Finance
+// -------------------------------------------------------------------------------
+
+function RefundsTab({
+  refunds, loading, actioningId, proofImageUrl, approveNote,
+  onProofImageUrlChange, onApproveNoteChange, onApprove,
+}: {
+  refunds: RefundResponse[];
+  loading: boolean;
+  actioningId: string | null;
+  proofImageUrl: string;
+  approveNote: string;
+  onProofImageUrlChange: (value: string) => void;
+  onApproveNoteChange: (value: string) => void;
+  onApprove: (refundId: string) => Promise<void>;
+}) {
+  return (
+    <div className="space-y-6">
+      {loading ? (
+        <div className="py-20 text-center text-stone-400">–ang t?i danh s·ch ho‡n c?c...</div>
+      ) : refunds.length === 0 ? (
+        <div className="py-20 text-center text-stone-400">
+          <span className="material-symbols-outlined mb-4 block text-5xl text-stone-200">check_circle</span>
+          KhÙng cÛ yÍu c?u ho‡n c?c n‡o dang ch? duy?t.
+        </div>
+      ) : (
+        refunds.map((refund) => (
+          <div key={refund.id} className="overflow-hidden rounded-xl border border-sand bg-white shadow-[0_4px_20px_rgba(0,0,0,0.04)]">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand bg-[#fff8f6] px-6 py-3">
+              <div className="flex items-center gap-3">
+                <span className="font-semibold text-ink">#{refund.bookingId.slice(0, 8).toUpperCase()}</span>
+                <span className="rounded-full bg-yellow-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-yellow-700">Ch? duy?t</span>
+              </div>
+              <span className="text-xs text-stone-400">
+                YÍu c?u l˙c {new Date(refund.createdAt).toLocaleString("vi-VN")}
+              </span>
+            </div>
+            <div className="grid gap-6 p-6 sm:grid-cols-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Kh·ch h‡ng</p>
+                <p className="mt-1 font-medium text-ink">{refund.booking.customerName ?? "ó"}</p>
+                {refund.booking.customerPhone && <p className="text-sm text-stone-500">{refund.booking.customerPhone}</p>}
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">S? ti?n ho‡n</p>
+                <p className="mt-1 font-display text-2xl text-jade">{formatVND(refund.amount)}</p>
+                <p className="text-sm text-stone-500">
+                  C?c: {formatVND(refund.booking.depositTotal)} - Ph?t: {formatVND(refund.booking.penaltyTotal)}
+                </p>
+              </div>
+            </div>
+            <div className="border-t border-sand bg-[#fff8f6] px-6 py-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">ThÙng tin chuy?n kho?n</p>
+              <div className="grid gap-3 text-sm sm:grid-cols-3">
+                <div><span className="text-stone-500">Ng‚n h‡ng: </span><span className="font-medium text-ink">{refund.bankName ?? "ó"}</span></div>
+                <div><span className="text-stone-500">S? TK: </span><span className="font-medium text-ink">{refund.bankAccountNumber ?? "ó"}</span></div>
+                <div><span className="text-stone-500">Ch? TK: </span><span className="font-medium text-ink">{refund.bankAccountHolder ?? "ó"}</span></div>
+              </div>
+            </div>
+            <div className="space-y-4 border-t border-sand px-6 py-4">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-stone-500">?nh bill chuy?n kho?n (URL)</label>
+                <input
+                  className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique"
+                  placeholder="D·n URL ?nh ch?p giao d?ch chuy?n kho?n..."
+                  value={proofImageUrl}
+                  onChange={(e) => onProofImageUrlChange(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-stone-500">Ghi ch˙ (tu? ch?n)</label>
+                <input
+                  className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique"
+                  placeholder="Ghi ch˙ n?i b?..."
+                  value={approveNote}
+                  onChange={(e) => onApproveNoteChange(e.target.value)}
+                />
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  disabled={actioningId === refund.id || !proofImageUrl.trim()}
+                  onClick={() => onApprove(refund.id)}
+                  className="rounded-lg bg-jade px-6 py-3 text-sm font-semibold text-white transition hover:bg-forest disabled:opacity-50"
+                >
+                  {actioningId === refund.id ? "–ang x? l˝..." : `Duy?t ho‡n c?c ${formatVND(refund.amount)}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+function FinanceTab({
+  totalRentalRevenue, totalDepositHeld, totalPenalties,
+  activeBookings, bookings,
+}: {
+  totalRentalRevenue: number;
+  totalDepositHeld: number;
+  totalPenalties: number;
+  activeBookings: StaffBookingResponse[];
+  bookings: StaffBookingResponse[];
+}) {
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-6 md:grid-cols-3">
+        <div className="rounded-xl border border-sand bg-white p-6 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Doanh thu cho thuÍ</p>
+          <p className="mt-2 font-display text-3xl text-jade">{formatVND(totalRentalRevenue)}</p>
+          <p className="mt-1 text-sm text-stone-500">T? c·c don completed + dang thuÍ</p>
+        </div>
+        <div className="rounded-xl border border-sand bg-white p-6 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Ti?n c?c dang gi?</p>
+          <p className="mt-2 font-display text-3xl text-amber-700">{formatVND(totalDepositHeld)}</p>
+          <p className="mt-1 text-sm text-stone-500">{activeBookings.length} don dang active</p>
+        </div>
+        <div className="rounded-xl border border-sand bg-white p-6 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Ti?n ph?t ph·t sinh</p>
+          <p className="mt-2 font-display text-3xl text-red-700">{formatVND(totalPenalties)}</p>
+          <p className="mt-1 text-sm text-stone-500">T? c·c l?n ki?m tra ph·t hi?n hu h?ng</p>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
+        <div className="border-b border-sand px-6 py-4">
+          <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">–?i so·t don g?n d‚y</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-[#fff8f6] text-xs uppercase tracking-[0.14em] text-stone-500">
+              <tr>
+                <th className="px-6 py-3">M„ don</th>
+                <th className="px-6 py-3">Kh·ch h‡ng</th>
+                <th className="px-6 py-3">Ti?n thuÍ</th>
+                <th className="px-6 py-3">Ti?n c?c</th>
+                <th className="px-6 py-3">Ph?t</th>
+                <th className="px-6 py-3">Tr?ng th·i</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-sand">
+              {bookings.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-10 text-center text-stone-400">Chua cÛ don n‡o.</td>
+                </tr>
+              ) : (
+                bookings.slice().reverse().map((b) => {
+                  const s = STATUS_LABELS[b.status] ?? { label: b.status, color: "bg-stone-100 text-stone-600" };
+                  return (
+                    <tr key={b.id} className="transition hover:bg-[#fff8f6]">
+                      <td className="px-6 py-4 font-semibold text-ink">#{b.id.slice(0, 8).toUpperCase()}</td>
+                      <td className="px-6 py-4 text-stone-600">{b.customerName ?? "ó"}</td>
+                      <td className="px-6 py-4 text-ink">{formatVND(b.rentalTotal)}</td>
+                      <td className="px-6 py-4 text-stone-600">{formatVND(b.depositTotal)}</td>
+                      <td className="px-6 py-4 text-red-700">{(b.penaltyTotal ?? 0) > 0 ? formatVND(b.penaltyTotal ?? 0) : "ó"}</td>
+                      <td className="px-6 py-4">
+                        <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${s.color}`}>{s.label}</span>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
+  );
+}
+
+// -------------------------------------------------------------------------------
+// Shared presentational components
+// -------------------------------------------------------------------------------
+
+const TONE_CLASSES: Record<string, { text: string; bg: string; bar: string }> = {
+  lotus:   { text: "text-lotus",   bg: "bg-[#ffe9e6]", bar: "bg-lotus" },
+  antique: { text: "text-antique", bg: "bg-[#fdf5db]", bar: "bg-antique" },
+  jade:    { text: "text-jade",    bg: "bg-[#e6f0f0]", bar: "bg-jade" },
+  bronze:  { text: "text-bronze",  bg: "bg-[#f0ece6]", bar: "bg-bronze" },
+};
+
+function QuickWorkItem({ icon, label, value, tone, onClick }: { icon: string; label: string; value: number; tone: "amber" | "orange" | "blue" | "red"; onClick: () => void }) {
+  const cls = {
+    amber: "bg-amber-50 text-amber-700 border-amber-200",
+    orange: "bg-orange-50 text-orange-700 border-orange-200",
+    blue: "bg-sky-50 text-sky-700 border-sky-200",
+    red: "bg-red-50 text-red-700 border-red-200",
+  }[tone];
+  return (
+    <button type="button" onClick={onClick} className={`flex items-center justify-between rounded-lg border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${cls}`}>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] opacity-80">{label}</p>
+        <p className="mt-1 font-display text-3xl">{value}</p>
+      </div>
+      <span className="material-symbols-outlined text-3xl opacity-70">{icon}</span>
+    </button>
+  );
+}
+
+function SnapshotCard({
+  label, value, hint, icon, tone, progress,
+}: {
+  label: string; value: string; hint: string; icon: string;
+  tone: "lotus" | "antique" | "jade" | "bronze";
+  progress?: number | null;
+}) {
+  const t = TONE_CLASSES[tone];
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-sand bg-white p-6 shadow-[0_4px_12px_rgba(74,4,4,0.03)]">
+      <div className="mb-4 flex items-start justify-between">
+        <span className="text-sm font-semibold text-stone-500">{label}</span>
+        <span className={`material-symbols-outlined rounded-lg p-2 ${t.text} ${t.bg}`}>{icon}</span>
+      </div>
+      <div className="mb-2 font-display text-3xl text-ink">{value}</div>
+      {typeof progress === "number" ? (
+        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#fee2dd]">
+          <div className={`h-full rounded-full ${t.bar}`} style={{ width: `${progress}%` }} />
+        </div>
+      ) : (
+        <div className="text-sm text-stone-500">{hint}</div>
+      )}
+      {typeof progress === "number" && <div className="mt-2 text-sm text-stone-500">{hint}</div>}
+    </div>
+  );
+}
+
+const CELL_TONES: Record<string, { num: string; bg: string; border: string }> = {
+  amber:   { num: "text-amber-700",   bg: "bg-[#fff7ed]", border: "border-[#fde6c8]" },
+  purple:  { num: "text-purple-700",  bg: "bg-[#f5f3ff]", border: "border-[#e8e2ff]" },
+  lotus:   { num: "text-lotus",       bg: "bg-[#ffe9e6]", border: "border-[#f7d2cd]" },
+  orange:  { num: "text-orange-700",  bg: "bg-[#fff4ed]", border: "border-[#feddc6]" },
+  jade:    { num: "text-jade",        bg: "bg-[#eaf5f1]", border: "border-[#cfe7df]" },
+};
+
+function StatusCell({ label, value, tone }: { label: string; value: number; tone: keyof typeof CELL_TONES }) {
+  const t = CELL_TONES[tone];
+  return (
+    <div className={`flex flex-col items-center justify-center rounded-lg border p-4 ${t.bg} ${t.border}`}>
+      <span className={`font-display text-2xl ${t.num}`}>{value}</span>
+      <span className={`mt-1 text-center text-xs font-semibold uppercase ${t.num}`}>{label}</span>
+    </div>
+  );
+}
+
+function ShortcutButton({
+  icon, label, badge, tone, onClick,
+}: {
+  icon: string; label: string; badge?: number;
+  tone: "bronze" | "jade" | "antique";
+  onClick: () => void;
+}) {
+  const hover = { bronze: "hover:border-bronze", jade: "hover:border-jade", antique: "hover:border-antique" }[tone];
+  return (
+    <button type="button" onClick={onClick}
+      className={`group flex w-full items-center justify-between rounded-lg border border-sand p-4 transition hover:bg-[#fff8f6] ${hover}`}>
+      <div className="flex items-center gap-3">
+        <div className={`rounded-md bg-[#f4eee6] p-2 ${TONE_CLASSES[tone].text} transition group-hover:bg-current`}>
+          <span className="material-symbols-outlined text-[20px]">{icon}</span>
+        </div>
+        <span className="text-sm font-semibold text-ink">{label}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        {typeof badge === "number" && badge > 0 && (
+          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1 text-xs text-white">{badge}</span>
+        )}
+        <span className="material-symbols-outlined text-stone-400 group-hover:text-current">arrow_forward</span>
+      </div>
+    </button>
   );
 }
