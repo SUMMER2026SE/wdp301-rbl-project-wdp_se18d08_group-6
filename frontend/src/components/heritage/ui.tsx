@@ -5,6 +5,7 @@ import { bookingFlowSteps } from "@/lib/heritage-mock-data";
 type PublicNavKey = "collection" | "heritage" | "atelier" | "erp";
 type BookingStepKey = (typeof bookingFlowSteps)[number]["key"];
 type StaffNavKey = "overview" | "inspection";
+type ManagerNavKey = "overview" | "inventory" | "inspection-log" | "laundry" | "damaged" | "finance" | "assets";
 
 function navClass(active: boolean) {
   return active
@@ -166,12 +167,14 @@ export function StaffPortalShell({
   active,
   title,
   subtitle,
+  onTabChange,
   children,
 }: {
   active: StaffNavKey;
   title: string;
   subtitle: string;
   children: ReactNode;
+  onTabChange?: (key: StaffNavKey) => void;
 }) {
   const items = [
     { key: "overview", label: "Tổng quan", icon: "dashboard", href: "/dashboard/staff" },
@@ -193,16 +196,20 @@ export function StaffPortalShell({
           {items.map((item) => {
             const isActive = item.key === active;
             return (
-              <Link
+              <a
                 key={item.key}
                 href={item.href}
+                onClick={(e) => {
+                  e.preventDefault();
+                  onTabChange?.(item.key);
+                }}
                 className={isActive
                   ? "flex items-center gap-3 rounded-xl bg-[#ffe9e6] px-4 py-3 text-sm font-semibold text-lotus"
                   : "flex items-center gap-3 rounded-xl px-4 py-3 text-sm text-stone-600 transition hover:bg-white hover:text-lotus"}
               >
                 <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
                 <span>{item.label}</span>
-              </Link>
+              </a>
             );
           })}
         </nav>
@@ -211,7 +218,7 @@ export function StaffPortalShell({
       <div className="min-w-0 flex-1">
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-sand bg-[#fff8f6]/95 px-4 backdrop-blur md:px-6 lg:px-8">
           <div>
-            <h2 className="font-display text-3xl text-lotus">Heritage ERP</h2>
+            <h2 className="font-display text-3xl text-lotus">Cổ Phục Rental</h2>
             <p className="text-xs uppercase tracking-[0.18em] text-stone-500">{subtitle}</p>
           </div>
           <div className="hidden items-center gap-3 md:flex">
@@ -233,6 +240,139 @@ export function StaffPortalShell({
           <div className="mb-8">
             <h1 className="font-display text-4xl text-ink sm:text-5xl">{title}</h1>
             <p className="mt-2 text-base text-stone-600">{subtitle}</p>
+          </div>
+          {children}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+export function ManagerPortalShell({
+  active,
+  title,
+  subtitle,
+  onTabChange,
+  managerName = "Quản lý cửa hàng",
+  managerEmail,
+  onProfile,
+  onSignOut,
+  currentDateLabel = "",
+  children,
+}: {
+  active: ManagerNavKey;
+  title: string;
+  subtitle: string;
+  onTabChange?: (key: ManagerNavKey) => void;
+  managerName?: string;
+  managerEmail?: string | null;
+  onProfile?: () => void;
+  onSignOut?: () => void;
+  currentDateLabel?: string;
+  children: ReactNode;
+}) {
+  const initials = managerName
+    .split(" ")
+    .filter(Boolean)
+    .slice(-2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "QL";
+  // Manager: nút chính là thêm trang phục (đi tới inventory), không phải tạo booking
+  const items = [
+    { key: "overview", label: "Tổng quan", icon: "dashboard", href: "/dashboard/manager" },
+    { key: "assets", label: "Gán tài sản", icon: "swap_horiz", href: "/dashboard/manager#assets" },
+    { key: "inventory", label: "Kho trang phục", icon: "inventory_2", href: "/dashboard/manager#inventory" },
+    { key: "inspection-log", label: "Nhật ký kiểm tra", icon: "fact_check", href: "/dashboard/manager#inspection-log" },
+    { key: "laundry", label: "Giặt sấy", icon: "dry_cleaning", href: "/dashboard/manager#laundry" },
+    { key: "damaged", label: "Hư hỏng & Mất", icon: "report_problem", href: "/dashboard/manager#damaged" },
+    { key: "finance", label: "Tài chính", icon: "payments", href: "/dashboard/manager#finance" },
+  ] as const;
+
+  return (
+    <div className="min-h-screen bg-[#f9f5f0] text-ink lg:flex">
+      <aside className="hidden w-72 shrink-0 flex-col border-r border-sand bg-[#fff4ef] p-4 lg:flex">
+        <div className="mb-8 px-3 pt-4">
+          <h1 className="font-display text-3xl text-lotus">Cổ Phục Rental</h1>
+          <p className="mt-1 text-sm text-stone-500">Bảng quản lý vận hành</p>
+        </div>
+        <div className="mb-8 flex items-center gap-4 rounded-xl border border-sand/70 bg-white p-4">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#ffe9e6] font-display text-xl text-lotus">
+            {initials}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-ink">{managerName}</p>
+            <p className="truncate text-xs uppercase tracking-[0.16em] text-antique">{managerEmail ?? "Manager / Owner"}</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => onTabChange?.("inventory")}
+          className="mb-6 inline-flex items-center justify-center gap-2 rounded-xl bg-lotus px-4 py-3 text-sm font-semibold text-white transition hover:bg-oxblood"
+        >
+          <span className="material-symbols-outlined text-[18px]">add</span>
+          Thêm trang phục
+        </button>
+        <nav className="flex flex-1 flex-col gap-2">
+          {items.map((item) => {
+            const isActive = item.key === active;
+            return (
+              <a
+                key={item.key}
+                href={item.href}
+                onClick={(e) => {
+                  e.preventDefault();
+                  onTabChange?.(item.key);
+                }}
+                className={isActive
+                  ? "flex items-center gap-3 rounded-xl bg-[#ffe9e6] px-4 py-3 text-sm font-semibold text-lotus"
+                  : "flex items-center gap-3 rounded-xl px-4 py-3 text-sm text-stone-600 transition hover:bg-white hover:text-lotus"}
+              >
+                <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
+                <span>{item.label}</span>
+              </a>
+            );
+          })}
+        </nav>
+        <div className="mt-6 border-t border-sand pt-4">
+          <button type="button" className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm text-stone-600 transition hover:bg-white hover:text-lotus">
+            <span className="material-symbols-outlined text-[20px]">support_agent</span>
+            <span>Hỗ trợ vận hành</span>
+          </button>
+        </div>
+      </aside>
+
+      <div className="min-w-0 flex-1">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-sand bg-[#fff8f6]/95 px-4 backdrop-blur md:px-6 lg:px-8">
+          <div>
+            <h2 className="font-display text-3xl text-lotus">Cổ Phục Rental</h2>
+            <p className="text-xs uppercase tracking-[0.18em] text-stone-500">{subtitle}</p>
+          </div>
+          <div className="hidden items-center gap-3 md:flex">
+            <div className="rounded-full border border-sand bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+              {currentDateLabel || "Đang đồng bộ"}
+            </div>
+            <button type="button" onClick={() => onTabChange?.("assets")} className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-100">
+              <span className="material-symbols-outlined text-[18px]">priority_high</span>
+              Cần xử lý
+            </button>
+            <button type="button" onClick={onProfile} className="inline-flex items-center gap-2 rounded-full border border-sand bg-white px-3 py-2 text-sm font-semibold text-stone-600 transition hover:border-lotus hover:text-lotus">
+              <span className="material-symbols-outlined text-[18px]">account_circle</span>
+              Hồ sơ
+            </button>
+            <button type="button" onClick={onSignOut} className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100">
+              <span className="material-symbols-outlined text-[18px]">logout</span>
+              Đăng xuất
+            </button>
+          </div>
+        </header>
+
+        <main className="mx-auto max-w-[1440px] px-4 py-8 sm:px-6 lg:px-8">
+          <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h1 className="font-display text-4xl text-ink sm:text-5xl">{title}</h1>
+              <p className="mt-2 text-base text-stone-600">{subtitle}</p>
+            </div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-bronze">Manager / Owner</p>
           </div>
           {children}
         </main>

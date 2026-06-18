@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, UseGuards, ParseUUIDPipe } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
@@ -8,6 +8,8 @@ import { CreateInspectionDto } from "./dto/create-inspection.dto";
 import { CreateFindingDto } from "./dto/create-finding.dto";
 import { CreatePhotoDto } from "./dto/create-photo.dto";
 import { CompleteInspectionDto } from "./dto/complete-inspection.dto";
+import { CompleteLaundryDto } from "./dto/laundry.dto";
+import { CompleteMaintenanceDto } from "./dto/maintenance.dto";
 import { InspectionsService } from "./inspections.service";
 
 @Controller("inspections")
@@ -29,6 +31,37 @@ export class InspectionsController {
   @Get("assets/needing-processing")
   findAssetsNeedingProcessing() {
     return this.inspectionsService.findAssetsNeedingProcessing();
+  }
+
+  @Get("log")
+  findAllLog() {
+    return this.inspectionsService.findAllLog();
+  }
+
+  @Get("laundry")
+  findAllLaundry() {
+    return this.inspectionsService.findAllLaundry();
+  }
+
+  @Patch("laundry/:ticketId/complete")
+  completeLaundry(
+    @Param("ticketId", ParseUUIDPipe) ticketId: string,
+    @Body() body: CompleteLaundryDto,
+  ) {
+    return this.inspectionsService.completeLaundry(ticketId, body);
+  }
+
+  @Get("maintenance")
+  findAllMaintenance() {
+    return this.inspectionsService.findAllMaintenance();
+  }
+
+  @Patch("maintenance/:jobId/complete")
+  completeMaintenance(
+    @Param("jobId", ParseUUIDPipe) jobId: string,
+    @Body() body: CompleteMaintenanceDto,
+  ) {
+    return this.inspectionsService.completeMaintenance(jobId, body);
   }
 
   @Get(":id")
