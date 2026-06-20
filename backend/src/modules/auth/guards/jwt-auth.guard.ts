@@ -8,6 +8,8 @@ type JwtPayload = {
   sub?: string;
   email?: string;
   role?: AppRole;
+  tokenType?: "access" | "password-reset";
+  iat?: number;
 };
 
 @Injectable()
@@ -31,6 +33,14 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException("Invalid or expired token.");
     }
 
+    if (payload.tokenType && payload.tokenType !== "access") {
+      throw new UnauthorizedException("Invalid token type.");
+    }
+
+    if (typeof payload.iat !== "number") {
+      throw new UnauthorizedException("Token payload is missing issued-at time.");
+    }
+
     if (!payload.sub) {
       throw new UnauthorizedException("Token payload is missing subject.");
     }
@@ -42,6 +52,10 @@ export class JwtAuthGuard implements CanActivate {
 
     if (!user || !user.isActive) {
       throw new UnauthorizedException("User is inactive or no longer exists.");
+    }
+
+    if (payload.iat * 1000 < user.updatedAt.getTime()) {
+      throw new UnauthorizedException("Token has been invalidated.");
     }
 
     request.user = toAuthenticatedUser(user);

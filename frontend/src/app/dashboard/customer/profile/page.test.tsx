@@ -66,12 +66,12 @@ describe("CustomerProfilePage", () => {
 
     render(<CustomerProfilePage />);
 
-    await waitFor(() => expect(screen.getByLabelText("Full name")).toHaveValue("Nguyen Van A"));
-    await user.clear(screen.getByLabelText("Full name"));
-    await user.type(screen.getByLabelText("Full name"), "Kha Tran");
-    await user.clear(screen.getByLabelText("Phone number"));
-    await user.type(screen.getByLabelText("Phone number"), "0911222333");
-    await user.click(screen.getByRole("button", { name: "Save profile" }));
+    await waitFor(() => expect(screen.getByLabelText("Họ và tên")).toHaveValue("Nguyen Van A"));
+    await user.clear(screen.getByLabelText("Họ và tên"));
+    await user.type(screen.getByLabelText("Họ và tên"), "Kha Tran");
+    await user.clear(screen.getByLabelText("Số điện thoại"));
+    await user.type(screen.getByLabelText("Số điện thoại"), "0911222333");
+    await user.click(screen.getByRole("button", { name: /Lưu thay đổi/i }));
 
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/users/me/profile", {
       method: "PATCH",
@@ -88,6 +88,6 @@ describe("CustomerProfilePage", () => {
       fullName: "Kha Tran",
       phone: "0911222333",
     });
-    expect(screen.getByText("Profile updated successfully.")).toBeInTheDocument();
+    expect(screen.getByText(/Cập nhật hồ sơ thành công/i)).toBeInTheDocument();
   });
 });

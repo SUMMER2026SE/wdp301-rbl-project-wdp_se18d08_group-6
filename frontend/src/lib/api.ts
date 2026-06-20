@@ -708,3 +708,140 @@ export async function createAsset(payload: {
     body: JSON.stringify(payload),
   });
 }
+// ---------- Notifications ----------
+
+export type NotificationItem = {
+  id: string;
+  userId: string | null;
+  title: string;
+  body: string | null;
+  readAt: string | null;
+  createdAt: string;
+  isRead: boolean;
+};
+
+export type NotificationCenterResponse = {
+  unreadCount: number;
+  notifications: NotificationItem[];
+};
+
+export type NotificationPreferences = {
+  emailEnabled: boolean;
+  inAppEnabled: boolean;
+  bookingUpdatesEnabled: boolean;
+  paymentUpdatesEnabled: boolean;
+  reminderEnabled: boolean;
+  marketingEnabled: boolean;
+};
+
+export type NotificationSettings = {
+  provider: "mock" | "smtp";
+  smtp: {
+    service: string | null;
+    host: string | null;
+    port: number | null;
+    secure: boolean;
+    user: string | null;
+    fromEmail: string | null;
+    fromName: string | null;
+    replyTo: string | null;
+    passwordConfigured: boolean;
+  };
+};
+
+export type NotificationTemplate = {
+  subject: string;
+  title: string;
+  body: string;
+  channels: ("email" | "inApp")[];
+  enabled: boolean;
+};
+
+export type NotificationTemplatesMap = Record<string, NotificationTemplate>;
+
+export type NotificationLogEntry = {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  metadata: unknown;
+  createdAt: string;
+  actorId: string | null;
+};
+
+export async function getMyNotifications(limit?: number) {
+  const query = typeof limit === "number" && Number.isFinite(limit) ? `?limit=${limit}` : "";
+  return apiRequest<NotificationCenterResponse>(`/notifications/me${query}`);
+}
+
+export async function markMyNotificationRead(id: string) {
+  return apiRequest<NotificationItem>(`/notifications/me/${id}/read`, { method: "PATCH" });
+}
+
+export async function markAllMyNotificationsRead() {
+  return apiRequest<{ updatedCount: number }>("/notifications/me/read-all", { method: "PATCH" });
+}
+
+export async function getMyNotificationPreferences() {
+  return apiRequest<NotificationPreferences>("/notifications/me/preferences");
+}
+
+export async function updateMyNotificationPreferences(payload: Partial<NotificationPreferences>) {
+  return apiRequest<NotificationPreferences>("/notifications/me/preferences", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getNotificationSettings() {
+  return apiRequest<NotificationSettings>("/notifications/admin/settings");
+}
+
+export async function updateNotificationSettings(payload: {
+  provider?: "mock" | "smtp";
+  smtpService?: string;
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpSecure?: boolean;
+  smtpUser?: string;
+  smtpPassword?: string;
+  fromEmail?: string;
+  fromName?: string;
+  replyTo?: string;
+}) {
+  return apiRequest<NotificationSettings>("/notifications/admin/settings", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getNotificationTemplates() {
+  return apiRequest<NotificationTemplatesMap>("/notifications/admin/templates");
+}
+
+export async function updateNotificationTemplates(payload: NotificationTemplatesMap) {
+  return apiRequest<NotificationTemplatesMap>("/notifications/admin/templates", {
+    method: "PUT",
+    body: JSON.stringify({ templates: payload }),
+  });
+}
+
+export async function getNotificationLogs(limit?: number) {
+  const query = typeof limit === "number" && Number.isFinite(limit) ? `?limit=${limit}` : "";
+  return apiRequest<NotificationLogEntry[]>(`/notifications/admin/logs${query}`);
+}
+
+export async function sendTestNotification(payload: {
+  email: string;
+  templateKey: string;
+  recipientName?: string;
+  data?: Record<string, unknown>;
+}) {
+  return apiRequest<{ templateKey: string; channels: string[]; notificationId: string | null; emailStatus: unknown }>(
+    "/notifications/admin/test-email",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}

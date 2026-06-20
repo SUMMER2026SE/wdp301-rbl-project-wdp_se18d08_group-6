@@ -32,10 +32,51 @@ describe("JwtAuthGuard", () => {
     ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
+  it("rejects non-access tokens", async () => {
+    const guard = new JwtAuthGuard(
+      {
+        verifyAsync: vi.fn().mockResolvedValue({ sub: "user-1", tokenType: "password-reset", iat: 100 }),
+      } as never,
+      {
+        userAccount: {
+          findUnique: vi.fn(),
+        },
+      } as never,
+    );
+
+    await expect(
+      guard.canActivate(createContext({ headers: { authorization: "Bearer good-token" } })),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it("rejects stale access tokens after a password reset", async () => {
+    const guard = new JwtAuthGuard(
+      {
+        verifyAsync: vi.fn().mockResolvedValue({ sub: "user-1", tokenType: "access", iat: 100 }),
+      } as never,
+      {
+        userAccount: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "user-1",
+            email: "customer@example.com",
+            role: "customer",
+            isActive: true,
+            updatedAt: new Date(200_000),
+            profile: null,
+          }),
+        },
+      } as never,
+    );
+
+    await expect(
+      guard.canActivate(createContext({ headers: { authorization: "Bearer good-token" } })),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
   it("rejects inactive users even with a valid token", async () => {
     const guard = new JwtAuthGuard(
       {
-        verifyAsync: vi.fn().mockResolvedValue({ sub: "user-1" }),
+        verifyAsync: vi.fn().mockResolvedValue({ sub: "user-1", tokenType: "access", iat: 100 }),
       } as never,
       {
         userAccount: {
@@ -44,6 +85,7 @@ describe("JwtAuthGuard", () => {
             email: "customer@example.com",
             role: "customer",
             isActive: false,
+            updatedAt: new Date(50_000),
             profile: null,
           }),
         },
@@ -61,7 +103,7 @@ describe("JwtAuthGuard", () => {
     };
     const guard = new JwtAuthGuard(
       {
-        verifyAsync: vi.fn().mockResolvedValue({ sub: "user-1" }),
+        verifyAsync: vi.fn().mockResolvedValue({ sub: "user-1", tokenType: "access", iat: 100 }),
       } as never,
       {
         userAccount: {
@@ -70,6 +112,7 @@ describe("JwtAuthGuard", () => {
             email: "customer@example.com",
             role: "customer",
             isActive: true,
+            updatedAt: new Date(50_000),
             profile: {
               fullName: "Nguyen Van A",
               phone: "0909000000",

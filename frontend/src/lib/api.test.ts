@@ -19,7 +19,24 @@ describe("apiRequest", () => {
 
     expect(result).toEqual({ success: true, data: { status: "ok" } });
     expect(fetch).toHaveBeenCalledWith("http://localhost:4000/api/health", {
-      headers: { "Content-Type": "application/json" },
+      headers: { "content-type": "application/json" },
+    });
+  });
+
+  it("builds notification endpoints correctly", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true, data: { unreadCount: 0, notifications: [] } }),
+      }),
+    );
+
+    const result = await apiRequest("/notifications/me?limit=10");
+
+    expect(result.success).toBe(true);
+    expect(fetch).toHaveBeenCalledWith("http://localhost:4000/api/notifications/me?limit=10", {
+      headers: { "content-type": "application/json" },
     });
   });
 

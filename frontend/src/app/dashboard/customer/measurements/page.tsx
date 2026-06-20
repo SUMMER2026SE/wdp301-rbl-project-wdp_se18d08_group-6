@@ -126,22 +126,32 @@ export default function CustomerMeasurementsPage() {
     if (status !== "authenticated") return;
     let cancelled = false;
     setLoading(true);
+    setError(null);
+    setMessage(null);
 
     void (async () => {
-      const result = await apiRequest<CustomerMeasurement | null>("/users/me/measurements");
-      if (cancelled) return;
-      if (!result.success) {
-        setError(result.message ?? "Không thể tải số đo đã lưu.");
-        setLoading(false);
-        return;
+      try {
+        const result = await apiRequest<CustomerMeasurement | null>("/users/me/measurements");
+        if (cancelled) return;
+        if (!result.success) {
+          setError(result.message ?? "Không thể tải số đo đã lưu.");
+          return;
+        }
+        if (result.data) {
+          setForm(toFormState(result.data));
+          setLastSavedAt(result.data.createdAt);
+        } else {
+          setForm(createEmptyForm());
+        }
+      } catch {
+        if (!cancelled) {
+          setError("Không thể kết nối đến hệ thống số đo.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
-      if (result.data) {
-        setForm(toFormState(result.data));
-        setLastSavedAt(result.data.createdAt);
-      } else {
-        setForm(createEmptyForm());
-      }
-      setLoading(false);
     })();
 
     return () => { cancelled = true; };
@@ -183,6 +193,8 @@ export default function CustomerMeasurementsPage() {
       setForm(toFormState(result.data));
       setLastSavedAt(result.data.createdAt);
       setMessage("Cập nhật số đo thành công.");
+    } catch {
+      setError("Không thể kết nối đến hệ thống số đo.");
     } finally {
       setSaving(false);
     }

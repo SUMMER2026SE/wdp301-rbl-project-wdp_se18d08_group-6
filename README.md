@@ -49,6 +49,7 @@ Set `frontend/.env.local`:
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:4000/api
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=replace-with-google-client-id
 ```
 
 ## Setup Backend
@@ -79,6 +80,7 @@ PORT=4000
 FRONTEND_URL=http://localhost:3000
 DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres?sslmode=require
 JWT_SECRET=replace-with-a-long-random-secret
+GOOGLE_CLIENT_ID=replace-with-google-client-id
 ```
 
 ## Supabase Setup
@@ -118,6 +120,8 @@ Frontend:
 - `/catalog`
 - `/login`
 - `/register`
+- `/forgot-password`
+- `/reset-password`
 - `/dashboard`
 - `/dashboard/customer`
 - `/dashboard/staff`
@@ -128,7 +132,13 @@ Backend:
 
 - `GET /api/health`
 - `POST /api/auth/register`
+- `POST /api/auth/google`
 - `POST /api/auth/login`
+- `POST /api/auth/forgot-password`
+- `POST /api/auth/reset-password`
+- `POST /api/auth/verify-email`
+- `POST /api/auth/resend-otp`
+- `GET /api/auth/me`
 - `GET /api/garments`
 
 ## Required Docs For AI/Team Work

@@ -111,6 +111,95 @@ Response:
 }
 ```
 
+### Google Login
+
+```http
+POST /api/auth/google
+```
+
+Request:
+
+```json
+{
+  "idToken": "google-id-token"
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "accessToken": "jwt-token",
+    "user": {
+      "id": "uuid",
+      "email": "customer@example.com",
+      "role": "customer"
+    }
+  }
+}
+```
+### Me
+
+```http
+```
+
+Returns the authenticated user profile and role information.
+
+### Forgot Password
+
+```http
+POST /api/auth/forgot-password
+```
+
+Request:
+
+```json
+{
+  "email": "customer@example.com"
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "email": "customer@example.com"
+  },
+  "message": "Nếu email tồn tại trong hệ thống, chúng tôi đã gửi liên kết đặt lại mật khẩu."
+}
+```
+
+### Reset Password
+
+```http
+POST /api/auth/reset-password
+```
+
+Request:
+
+```json
+{
+  "token": "reset-token",
+  "password": "Password123"
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "email": "customer@example.com"
+  },
+  "message": "Mật khẩu đã được đặt lại thành công. Bạn có thể đăng nhập lại."
+}
+```
+
 ### List Garments
 
 ```http
