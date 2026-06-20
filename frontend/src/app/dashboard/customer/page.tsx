@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getMyBookings, cancelBooking } from "@/lib/api";
-import type { BookingResponse } from "@/lib/api";
+import { getMyBookings, cancelBooking, getCustomerRefund } from "@/lib/api";
+import type { BookingResponse, CustomerRefundResponse } from "@/lib/api";
 import { readStoredSession } from "@/lib/auth";
 import { customerWidgets } from "@/lib/heritage-mock-data";
 
@@ -48,6 +48,8 @@ export default function CustomerDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [userName, setUserName] = useState("Khách hàng");
+  // Refund status map: bookingId → refund
+  const [refundMap, setRefundMap] = useState<Record<string, CustomerRefundResponse | null>>({});
 
   useEffect(() => {
     const session = readStoredSession();
@@ -55,7 +57,23 @@ export default function CustomerDashboardPage() {
     else if (session?.user?.email) setUserName(session.user.email.split("@")[0]);
 
     getMyBookings().then((res) => {
-      if (res.success && res.data) setBookings(res.data);
+      if (res.success && res.data) {
+        const data = res.data;
+        setBookings(data);
+        // Fetch refund status for completed bookings
+        const completedBookingIds = data
+          .filter((b) => b.status === "completed")
+          .map((b) => b.id);
+        completedBookingIds.forEach((bookingId) => {
+          getCustomerRefund(bookingId).then((refundRes) => {
+            if (refundRes.success && refundRes.data && refundRes.data.length > 0) {
+              setRefundMap((prev) => ({ ...prev, [bookingId]: refundRes.data![0] }));
+            } else {
+              setRefundMap((prev) => ({ ...prev, [bookingId]: null }));
+            }
+          });
+        });
+      }
     }).finally(() => setLoading(false));
   }, []);
 
@@ -156,11 +174,13 @@ export default function CustomerDashboardPage() {
                       <th className="px-6 py-4">Thời gian</th>
                       <th className="px-6 py-4">Trạng thái</th>
                       <th className="px-6 py-4">Tổng</th>
+                      <th className="px-6 py-4">Hoàn cọc</th>
                     </tr>
                   </thead>
                   <tbody>
                     {history.map((b) => {
                       const st = statusOf(b.status);
+                      const refund = refundMap[b.id];
                       return (
                         <tr key={b.id} className="border-t border-sand transition hover:bg-[#fff8f6]">
                           <td className="px-6 py-4 font-medium text-ink">{b.items[0]?.garmentName ?? "—"}</td>
@@ -173,6 +193,29 @@ export default function CustomerDashboardPage() {
                             </span>
                           </td>
                           <td className="px-6 py-4 text-stone-600">{formatVND(b.rentalTotal + b.depositTotal)}</td>
+                          <td className="px-6 py-4">
+                            {b.status === "completed" ? (
+                              refund === undefined ? (
+                                <span className="text-xs text-stone-400">Đang tải...</span>
+                              ) : refund ? (
+                                refund.status === "refunded" || refund.status === "partially_refunded" ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-jade/10 px-3 py-1 text-xs font-semibold text-jade">
+                                    <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                                    Đã hoàn {formatVND(refund.amount)}
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-3 py-1 text-xs font-semibold text-yellow-700">
+                                    <span className="material-symbols-outlined text-[14px]">schedule</span>
+                                    Đang xử lý {formatVND(refund.amount)}
+                                  </span>
+                                )
+                              ) : (
+                                <span className="text-xs text-stone-400">—</span>
+                              )
+                            ) : (
+                              <span className="text-xs text-stone-400">—</span>
+                            )}
+                          </td>
                         </tr>
                       );
                     })}

@@ -1,13 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Param,
-  ParseUUIDPipe,
-  Patch,
-  Post,
-  UseGuards,
-} from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
@@ -26,45 +17,42 @@ export class InspectionsController {
   constructor(private readonly inspectionsService: InspectionsService) {}
 
   @Post()
-  create(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() body: CreateInspectionDto,
-  ) {
+  create(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateInspectionDto) {
     return this.inspectionsService.createOrGet(body, user.id);
   }
 
   @Get("booking/:bookingId")
-  findByBooking(@Param("bookingId", ParseUUIDPipe) bookingId: string) {
+  findByBooking(@Param("bookingId") bookingId: string) {
     return this.inspectionsService.findByBooking(bookingId);
   }
 
+  @Get("assets/needing-processing")
+  findAssetsNeedingProcessing() {
+    return this.inspectionsService.findAssetsNeedingProcessing();
+  }
+
   @Get(":id")
-  findOne(@Param("id", ParseUUIDPipe) id: string) {
+  findOne(@Param("id") id: string) {
     return this.inspectionsService.findOne(id);
   }
 
   @Post(":id/findings")
-  addFinding(
-    @Param("id", ParseUUIDPipe) id: string,
-    @Body() body: CreateFindingDto,
-  ) {
+  addFinding(@Param("id") id: string, @Body() body: CreateFindingDto) {
     return this.inspectionsService.addFinding(id, body);
   }
 
   @Post(":id/photos")
-  addPhoto(
-    @Param("id", ParseUUIDPipe) id: string,
-    @Body() body: CreatePhotoDto,
-  ) {
+  addPhoto(@Param("id") id: string, @Body() body: CreatePhotoDto) {
     return this.inspectionsService.addPhoto(id, body);
   }
 
   @Patch(":id/complete")
-  complete(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param("id", ParseUUIDPipe) id: string,
-    @Body() body: CompleteInspectionDto,
-  ) {
+  complete(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() body: CompleteInspectionDto) {
     return this.inspectionsService.complete(id, body, user.id);
+  }
+
+  @Patch("assets/:assetId/mark-ready")
+  markAssetReady(@CurrentUser() user: AuthenticatedUser, @Param("assetId") assetId: string) {
+    return this.inspectionsService.markAssetReady(assetId, user.id);
   }
 }

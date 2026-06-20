@@ -4,7 +4,8 @@ import Link from "next/link";
 import { notFound, useRouter } from "next/navigation";
 import { use, useEffect, useState } from "react";
 import { PublicAtelierNav } from "@/components/heritage/ui";
-import { getGarmentById, type GarmentSummary } from "@/lib/api";
+import { getGarmentsGrouped, type GarmentGrouped } from "@/lib/api";
+import { addToCart, cartCount } from "@/lib/cart";
 import { garmentSpecs, pairingItems } from "@/lib/heritage-mock-data";
 
 function formatVND(amount: number) {
@@ -25,31 +26,72 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
   const { slug: garmentId } = use(params);
   const router = useRouter();
 
-  const [garment, setGarment] = useState<GarmentSummary | null>(null);
+  const [group, setGroup] = useState<GarmentGrouped | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFoundFlag, setNotFoundFlag] = useState(false);
+  const [selectedGarmentId, setSelectedGarmentId] = useState<string | null>(null);
+  const [addedMsg, setAddedMsg] = useState<string | null>(null);
 
   const today = todayIso();
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(addDays(today, 2));
 
   useEffect(() => {
-    getGarmentById(garmentId).then((res) => {
-      if (res.success && res.data) setGarment(res.data);
-      else setNotFoundFlag(true);
-    }).finally(() => setLoading(false));
+    // Tìm garment trong danh sách grouped
+    getGarmentsGrouped().then((res) => {
+      if (res.success && res.data) {
+        for (const g of res.data) {
+          const found = g.sizes.find((s) => s.garmentSizeId === garmentId);
+          if (found) {
+            setGroup(g);
+            setSelectedGarmentId(garmentId);
+            setLoading(false);
+            return;
+          }
+        }
+        setNotFoundFlag(true);
+      } else {
+        setNotFoundFlag(true);
+      }
+      setLoading(false);
+    });
   }, [garmentId]);
 
   if (notFoundFlag) notFound();
 
-  function handleBooking() {
-    const p = new URLSearchParams({ garmentId, startDate, endDate, slug: garmentId });
-    router.push(`/booking/date-selection?${p.toString()}`);
+  const selectedSize = group?.sizes.find((s) => s.garmentSizeId === selectedGarmentId) ?? group?.sizes[0];
+
+  function handleAddToCart() {
+    if (!group || !selectedSize) return;
+    const s = selectedSize;
+    addToCart({
+      garmentSizeId: s.garmentSizeId,
+      garmentId: s.garmentSizeId || "",
+      name: group.name + (s.sizeLabel ? ` (Size ${s.sizeLabel})` : ""),
+      sizeLabel: s.sizeLabel,
+      dailyPrice: s.dailyPrice,
+      depositAmount: s.depositAmount,
+      imageUrl: group.imageUrl,
+    });
+    setAddedMsg("Đã thêm vào giỏ!");
+    setTimeout(() => setAddedMsg(null), 2000);
   }
 
-  const sizeOptions = ["S", "S-M", "M", "M-L", "L", "XL"];
-  const availableSizes = garment?.sizeLabel ? [garment.sizeLabel] : [];
-  const selectedSize = availableSizes[0] ?? "M";
+  function handleBookNow() {
+    if (!group || !selectedSize) return;
+    const s = selectedSize;
+    addToCart({
+      garmentSizeId: s.garmentSizeId,
+      garmentId: s.garmentSizeId || "",
+      name: group.name + (s.sizeLabel ? ` (Size ${s.sizeLabel})` : ""),
+      sizeLabel: s.sizeLabel,
+      dailyPrice: s.dailyPrice,
+      depositAmount: s.depositAmount,
+      imageUrl: group.imageUrl,
+    });
+    const p = new URLSearchParams({ startDate, endDate });
+    router.push(`/booking/date-selection?${p.toString()}`);
+  }
 
   return (
     <div className="min-h-screen bg-[#fff8f6] text-ink">
@@ -59,14 +101,14 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
         <nav className="mb-8 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
           <Link href="/catalog" className="transition hover:text-lotus">Bộ sưu tập</Link>
           <span className="material-symbols-outlined text-[14px]">chevron_right</span>
-          <span>{garment?.categoryName ?? "—"}</span>
+          <span>{group?.categoryName ?? "—"}</span>
           <span className="material-symbols-outlined text-[14px]">chevron_right</span>
-          <span className="text-ink">{loading ? "..." : garment?.name}</span>
+          <span className="text-ink">{loading ? "..." : group?.name}</span>
         </nav>
 
         {loading ? (
           <div className="flex h-64 items-center justify-center text-stone-400">Đang tải...</div>
-        ) : garment ? (
+        ) : group ? (
           <div className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-20">
             {/* Image placeholder */}
             <div className="space-y-4 lg:sticky lg:top-28 lg:self-start">
@@ -77,11 +119,15 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
 
             <div className="pt-2 lg:pt-6">
               <div className="relative mb-8 border-b border-sand/80 pb-8">
-                <p className="text-xs font-semibold uppercase tracking-[0.26em] text-antique">{garment.categoryName} · Bộ sưu tập</p>
-                <h1 className="mt-3 font-display text-5xl text-ink sm:text-6xl">{garment.name}</h1>
+                <p className="text-xs font-semibold uppercase tracking-[0.26em] text-antique">{group.categoryName} · Bộ sưu tập</p>
+                <h1 className="mt-3 font-display text-5xl text-ink sm:text-6xl">{group.name}</h1>
                 <div className="mt-6 flex flex-wrap items-end gap-4">
-                  <p className="text-3xl font-semibold text-lotus">{formatVND(garment.dailyPrice)} / ngày</p>
-                  <p className="pb-1 text-sm text-stone-500">Tiền cọc: <span className="font-semibold text-ink">{formatVND(garment.depositAmount)}</span></p>
+                  <p className="text-3xl font-semibold text-lotus">
+                    {selectedSize ? formatVND(selectedSize.dailyPrice) + " / ngày" : "—"}
+                  </p>
+                  <p className="pb-1 text-sm text-stone-500">
+                    Tiền cọc: <span className="font-semibold text-ink">{selectedSize ? formatVND(selectedSize.depositAmount) : "—"}</span>
+                  </p>
                 </div>
               </div>
 
@@ -107,32 +153,28 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
                       />
                     </div>
                   </div>
-                  <p className="mt-2 flex items-center gap-2 text-sm font-medium text-jade">
-                    <span className="material-symbols-outlined text-[16px]">check_circle</span>
-                    Chọn ngày rồi bấm đặt thuê để kiểm tra lịch trống theo thời gian thực
-                  </p>
                 </div>
 
-                {/* Size */}
+                {/* Size - interactive */}
                 <div>
                   <div className="mb-3 flex items-center justify-between">
                     <label className="text-sm font-semibold uppercase tracking-[0.18em] text-ink">Kích thước</label>
                   </div>
                   <div className="flex flex-wrap gap-3">
-                    {sizeOptions.map((size) => {
-                      const available = availableSizes.some((s) => s.includes(size) || size.includes(s));
-                      const active = size === selectedSize;
-                      if (!available) {
-                        return (
-                          <div key={size} className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded border border-sand bg-[#f9f5f0] text-sm text-stone-400 opacity-60">
-                            {size}
-                            <div className="absolute inset-0 origin-top-left rotate-45 border-t border-stone-300" />
-                          </div>
-                        );
-                      }
+                    {group.sizes.map((s) => {
+                      const active = s.garmentSizeId === selectedGarmentId;
                       return (
-                        <button key={size} type="button" className={active ? "flex h-12 w-12 items-center justify-center rounded border border-lotus bg-[#fff0ee] text-sm font-semibold text-lotus" : "flex h-12 w-12 items-center justify-center rounded border border-sand bg-white text-sm text-ink transition hover:border-antique"}>
-                          {size}
+                        <button
+                          key={s.garmentSizeId}
+                          type="button"
+                          onClick={() => setSelectedGarmentId(s.garmentSizeId)}
+                          className={
+                            active
+                              ? "flex h-12 min-w-[3rem] items-center justify-center rounded border border-lotus bg-[#fff0ee] px-3 text-sm font-semibold text-lotus"
+                              : "flex h-12 min-w-[3rem] items-center justify-center rounded border border-sand bg-white px-3 text-sm text-ink transition hover:border-antique"
+                          }
+                        >
+                          {s.sizeLabel ?? "—"}
                         </button>
                       );
                     })}
@@ -151,15 +193,24 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
                 </Link>
               </div>
 
-              <div className="mt-8 space-y-4">
+              <div className="mt-8 space-y-3">
                 <button
                   type="button"
-                  onClick={handleBooking}
+                  onClick={handleBookNow}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-lotus px-6 py-4 text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-oxblood"
                 >
-                  Thêm vào đơn thuê
+                  Đặt thuê ngay
                   <span className="material-symbols-outlined text-[18px]">shopping_cart</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={handleAddToCart}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-lotus px-6 py-4 text-sm font-semibold uppercase tracking-[0.18em] text-lotus transition hover:bg-[#fff0ee]"
+                >
+                  Thêm vào giỏ
+                  <span className="material-symbols-outlined text-[18px]">shopping_bag</span>
+                </button>
+                {addedMsg && <p className="text-center text-sm font-medium text-jade">{addedMsg}</p>}
                 <p className="text-center text-sm text-stone-500">Đã bao gồm công là ủi, làm sạch và hỗ trợ chỉnh sửa cơ bản.</p>
               </div>
 
@@ -179,7 +230,7 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
         ) : null}
 
         {/* Pairing accessories */}
-        {garment && (
+        {group && (
           <section className="mt-24 rounded-lg border border-sand bg-[#f9f5f0] px-6 py-12 lg:px-12">
             <div className="grid items-center gap-10 lg:grid-cols-[0.95fr_1.05fr]">
               <div>

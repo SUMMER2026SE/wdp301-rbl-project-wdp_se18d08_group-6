@@ -15,7 +15,6 @@ import { UpdateBookingStatusDto } from "./dto/update-booking-status.dto";
 export class BookingsController {
   constructor(private readonly bookingsService: BookingsService) {}
 
-  // Public — không cần đăng nhập để kiểm tra lịch trống
   @Post("check-availability")
   checkAvailability(@Body() body: CheckAvailabilityDto) {
     return this.bookingsService.checkAvailability(body);
@@ -45,74 +44,54 @@ export class BookingsController {
     return this.bookingsService.cancel(user.id, id);
   }
 
-  // ── Staff / Manager endpoints ─────────────────────────────────────────────
-
   @Get("staff/pending")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("staff", "manager_owner", "admin")
-  findAllPending() {
-    return this.bookingsService.findAllPending();
-  }
+  findAllPending() { return this.bookingsService.findAllPending(); }
 
   @Get("staff/all")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("staff", "manager_owner", "admin")
-  findAllForStaff() {
-    return this.bookingsService.findAllForStaff();
-  }
+  findAllForStaff() { return this.bookingsService.findAllForStaff(); }
 
   @Get("staff/returns")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("staff", "manager_owner", "admin")
-  findReturnQueue() {
-    return this.bookingsService.findReturnQueue();
-  }
+  findReturnQueue() { return this.bookingsService.findReturnQueue(); }
+
+  @Get("staff/completed-refunds")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("staff", "manager_owner", "admin")
+  findCompletedWithPendingRefunds() { return this.bookingsService.findCompletedWithPendingRefunds(); }
 
   @Patch(":id/status")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("staff", "manager_owner", "admin")
-  advanceStatus(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param("id", ParseUUIDPipe) id: string,
-    @Body() dto: UpdateBookingStatusDto,
-  ) {
+  advanceStatus(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseUUIDPipe) id: string, @Body() dto: UpdateBookingStatusDto) {
     return this.bookingsService.advanceStatus(id, dto, user.id);
   }
 
   @Patch(":bookingId/items/:itemId/assign-asset")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("manager_owner", "admin")
-  assignAsset(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param("bookingId", ParseUUIDPipe) bookingId: string,
-    @Param("itemId", ParseUUIDPipe) itemId: string,
-    @Body() dto: AssignAssetDto,
-  ) {
+  assignAsset(@CurrentUser() user: AuthenticatedUser, @Param("bookingId", ParseUUIDPipe) bookingId: string, @Param("itemId", ParseUUIDPipe) itemId: string, @Body() dto: AssignAssetDto) {
     return this.bookingsService.assignAsset(bookingId, itemId, dto, user.id);
   }
 
   @Patch(":id/mark-paid")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("staff", "manager_owner", "admin")
-  markPaid(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param("id", ParseUUIDPipe) id: string,
-    @Body() dto: MarkPaidDto,
-  ) {
+  markPaid(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseUUIDPipe) id: string, @Body() dto: MarkPaidDto) {
     return this.bookingsService.markPaid(id, dto, user.id);
   }
 
   @Get("staff/assets-needed")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("manager_owner", "admin")
-  findBookingsNeedingAssets() {
-    return this.bookingsService.findBookingsNeedingAssets();
-  }
+  findBookingsNeedingAssets() { return this.bookingsService.findBookingsNeedingAssets(); }
 
   @Post("cancel-expired-payments")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("manager_owner", "admin")
-  cancelExpiredAwaitingPayments() {
-    return this.bookingsService.cancelExpiredAwaitingPayments();
-  }
+  cancelExpiredAwaitingPayments() { return this.bookingsService.cancelExpiredAwaitingPayments(); }
 }

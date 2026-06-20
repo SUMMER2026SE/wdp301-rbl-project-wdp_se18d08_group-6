@@ -5,8 +5,11 @@ import {
   getStaffAllBookings,
   getAvailableAssets,
   assignAssetToBookingItem,
+  getPendingManagerRefunds,
+  approveRefund,
   type StaffBookingResponse,
   type AvailableAsset,
+  type RefundResponse,
 } from "@/lib/api";
 
 function formatDate(iso: string) {
@@ -39,7 +42,7 @@ type AssetAssignState = Record<string, {
   open: boolean;
 }>;
 
-type Tab = "assets" | "catalog" | "finance";
+type Tab = "assets" | "catalog" | "finance" | "refunds";
 
 export default function ManagerDashboardPage() {
   const [tab, setTab] = useState<Tab>("assets");
@@ -48,6 +51,13 @@ export default function ManagerDashboardPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [assetAssignState, setAssetAssignState] = useState<AssetAssignState>({});
+
+  // Refund approval state
+  const [pendingRefunds, setPendingRefunds] = useState<RefundResponse[]>([]);
+  const [loadingRefunds, setLoadingRefunds] = useState(false);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [proofImageUrl, setProofImageUrl] = useState("");
+  const [approveNote, setApproveNote] = useState("");
 
   useEffect(() => {
     setLoading(true);
@@ -59,6 +69,37 @@ export default function ManagerDashboardPage() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  // Load pending refunds when refund tab is selected
+  useEffect(() => {
+    if (tab !== "refunds") return;
+    setLoadingRefunds(true);
+    getPendingManagerRefunds()
+      .then((res) => {
+        if (res.success && res.data) setPendingRefunds(res.data);
+        else setPendingRefunds([]);
+      })
+      .finally(() => setLoadingRefunds(false));
+  }, [tab]);
+
+  async function handleApproveRefund(refundId: string) {
+    if (!proofImageUrl.trim()) return;
+    setApprovingId(refundId);
+    setErrorMsg(null);
+    const res = await approveRefund(refundId, {
+      status: "refunded",
+      proofImageUrl: proofImageUrl.trim(),
+      note: approveNote || undefined,
+    });
+    setApprovingId(null);
+    if (res.success) {
+      setPendingRefunds((prev) => prev.filter((r) => r.id !== refundId));
+      setProofImageUrl("");
+      setApproveNote("");
+    } else {
+      setErrorMsg(res.message ?? "Không thể duyệt hoàn cọc.");
+    }
+  }
 
   // ── Asset assignment helpers ──
 
@@ -149,6 +190,7 @@ export default function ManagerDashboardPage() {
             { key: "assets" as const, label: "Gán tài sản", icon: "inventory_2", count: bookingsNeedingAssets.length },
             { key: "catalog" as const, label: "Catalog", icon: "apparel", count: 0 },
             { key: "finance" as const, label: "Tài chính", icon: "finance", count: 0 },
+            { key: "refunds" as const, label: "Duyệt hoàn cọc", icon: "payments", count: pendingRefunds.length },
           ]).map((t) => (
             <button
               key={t.key}
@@ -307,7 +349,7 @@ export default function ManagerDashboardPage() {
             </p>
             <p className="mt-2 text-sm text-stone-400">(Đang phát triển — sẽ triển khai trong giai đoạn tiếp theo)</p>
           </div>
-        ) : (
+        ) : tab === "finance" ? (
           /* ── TAB: Tài chính ── */
           <div className="space-y-6">
             {/* Summary cards */}
@@ -339,6 +381,111 @@ export default function ManagerDashboardPage() {
                 Module đối soát chi tiết sẽ được triển khai trong giai đoạn tiếp theo.
               </div>
             </div>
+          </div>
+        ) : (
+          /* ── TAB: Duyệt hoàn cọc ── */
+          <div className="space-y-6">
+            {loadingRefunds ? (
+              <div className="py-20 text-center text-stone-400">Đang tải danh sách hoàn cọc...</div>
+            ) : pendingRefunds.length === 0 ? (
+              <div className="py-20 text-center text-stone-400">
+                <span className="material-symbols-outlined text-5xl text-stone-200 mb-4 block">check_circle</span>
+                Không có yêu cầu hoàn cọc nào đang chờ duyệt.
+              </div>
+            ) : (
+              pendingRefunds.map((refund) => (
+                <div
+                  key={refund.id}
+                  className="overflow-hidden rounded-xl border border-sand bg-white shadow-[0_4px_20px_rgba(0,0,0,0.04)]"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand bg-[#fff8f6] px-6 py-3">
+                    <div className="flex items-center gap-3">
+                      <span className="font-semibold text-ink">#{refund.bookingId.slice(0, 8).toUpperCase()}</span>
+                      <span className="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] bg-yellow-100 text-yellow-700">
+                        Chờ duyệt
+                      </span>
+                    </div>
+                    <span className="text-xs text-stone-400">
+                      Yêu cầu lúc {new Date(refund.createdAt).toLocaleString("vi-VN")}
+                    </span>
+                  </div>
+
+                  <div className="grid gap-6 p-6 sm:grid-cols-2">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Khách hàng</p>
+                      <p className="mt-1 font-medium text-ink">{refund.booking.customerName ?? "—"}</p>
+                      {refund.booking.customerPhone && (
+                        <p className="text-sm text-stone-500">{refund.booking.customerPhone}</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Số tiền hoàn</p>
+                      <p className="mt-1 font-display text-2xl text-jade">{formatVND(refund.amount)}</p>
+                      <p className="text-sm text-stone-500">
+                        Cọc: {formatVND(refund.booking.depositTotal)} — Phạt: {formatVND(refund.booking.penaltyTotal)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Bank info */}
+                  <div className="border-t border-sand bg-[#fff8f6] px-6 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500 mb-3">
+                      Thông tin chuyển khoản
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-3 text-sm">
+                      <div>
+                        <span className="text-stone-500">Ngân hàng: </span>
+                        <span className="font-medium text-ink">{refund.bankName ?? "—"}</span>
+                      </div>
+                      <div>
+                        <span className="text-stone-500">Số TK: </span>
+                        <span className="font-medium text-ink">{refund.bankAccountNumber ?? "—"}</span>
+                      </div>
+                      <div>
+                        <span className="text-stone-500">Chủ TK: </span>
+                        <span className="font-medium text-ink">{refund.bankAccountHolder ?? "—"}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Approval form */}
+                  <div className="border-t border-sand px-6 py-4 space-y-4">
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-stone-500">
+                        Ảnh bill chuyển khoản (URL)
+                      </label>
+                      <input
+                        className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique"
+                        placeholder="Dán URL ảnh chụp giao dịch chuyển khoản..."
+                        value={proofImageUrl}
+                        onChange={(e) => setProofImageUrl(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-stone-500">
+                        Ghi chú (tuỳ chọn)
+                      </label>
+                      <input
+                        className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique"
+                        placeholder="Ghi chú nội bộ..."
+                        value={approveNote}
+                        onChange={(e) => setApproveNote(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        disabled={approvingId === refund.id || !proofImageUrl.trim()}
+                        onClick={() => handleApproveRefund(refund.id)}
+                        className="rounded-lg bg-jade px-6 py-3 text-sm font-semibold text-white transition hover:bg-forest disabled:opacity-50"
+                      >
+                        {approvingId === refund.id ? "Đang xử lý..." : `Duyệt hoàn cọc ${formatVND(refund.amount)}`}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         )}
       </div>

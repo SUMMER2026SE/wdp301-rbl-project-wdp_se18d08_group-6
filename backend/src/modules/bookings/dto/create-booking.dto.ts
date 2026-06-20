@@ -1,10 +1,10 @@
-import { IsDateString, IsOptional, IsString, Matches, MaxLength } from "class-validator";
-
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { ArrayMinSize, IsArray, IsDateString, IsOptional, IsString, IsUUID, MaxLength } from "class-validator";
 
 export class CreateBookingDto {
-  @Matches(UUID_REGEX, { message: "garmentId must be a UUID" })
-  garmentId!: string;
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsUUID("4", { each: true })
+  garmentSizeIds!: string[];
 
   @IsDateString()
   startDate!: string;

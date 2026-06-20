@@ -17,20 +17,19 @@ function BookingLogisticsInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const garmentId = searchParams.get("garmentId") ?? "";
   const startDate = searchParams.get("startDate") ?? "";
   const endDate = searchParams.get("endDate") ?? "";
 
-  const isInvalid = !UUID_RE.test(garmentId) || !startDate || !endDate || endDate < startDate;
+  const isInvalid = !startDate || !endDate || endDate < startDate;
 
   const [pickupMethod, setPickupMethod] = useState<string>(logisticsMethods[0].key);
 
   function handleContinue() {
-    const params = new URLSearchParams({ garmentId, startDate, endDate, pickupMethod });
+    const params = new URLSearchParams({ startDate, endDate, pickupMethod });
     router.push(`/booking/review?${params.toString()}`);
   }
 
-  const backParams = new URLSearchParams({ garmentId, startDate, endDate });
+  const backParams = new URLSearchParams({ startDate, endDate });
 
   if (isInvalid) {
     return (
