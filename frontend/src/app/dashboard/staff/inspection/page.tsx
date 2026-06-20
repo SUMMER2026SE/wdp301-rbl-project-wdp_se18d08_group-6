@@ -780,7 +780,7 @@ export default function StaffInspectionPage() {
                   </div>
 
                   <p className="mt-4 text-sm italic text-stone-500">
-                    Hệ thống yêu cầu ít nhất một ảnh nếu đánh dấu "Mòn nhẹ" hoặc "Hư hỏng nặng".
+                    Hệ thống yêu cầu ít nhất một ảnh nếu đánh dấu &quot;Mòn nhẹ&quot; hoặc &quot;Hư hỏng nặng&quot;.
                   </p>
                 </section>
 

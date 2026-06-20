@@ -5,8 +5,10 @@ import { StaffPortalShell } from "@/components/heritage/ui";
 import {
   getStaffPendingBookings,
   getStaffAllBookings,
+  getStaffCompletedRefundBookings,
   advanceBookingStatus,
   markBookingPaid,
+  createRefund,
   type StaffBookingResponse,
 } from "@/lib/api";
 
@@ -76,7 +78,7 @@ const NEXT_ACTIONS: Partial<Record<string, { status: string; label: string; styl
   ],
 };
 
-type Tab = "pending" | "all";
+type Tab = "pending" | "all" | "refunds";
 
 type PaymentDialog = {
   bookingId: string;
@@ -110,10 +112,27 @@ export default function StaffDashboardPage() {
   const [paymentDialog, setPaymentDialog] = useState<PaymentDialog>(null);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("cash");
 
+  // Refund form state
+  const [refundDialog, setRefundDialog] = useState<{
+    bookingId: string;
+    customerName: string | null;
+    pickupMethod: string;
+    depositTotal: number;
+    penaltyTotal: number;
+  } | null>(null);
+  const [refundBankName, setRefundBankName] = useState("");
+  const [refundBankAccount, setRefundBankAccount] = useState("");
+  const [refundBankHolder, setRefundBankHolder] = useState("");
+
   useEffect(() => {
     setLoading(true);
     setErrorMsg(null);
-    const fetcher = tab === "pending" ? getStaffPendingBookings : getStaffAllBookings;
+    let fetcher;
+    if (tab === "refunds") {
+      fetcher = getStaffCompletedRefundBookings;
+    } else {
+      fetcher = tab === "pending" ? getStaffPendingBookings : getStaffAllBookings;
+    }
     fetcher()
       .then((res) => {
         if (res.success && res.data) setBookings(res.data);
@@ -188,7 +207,105 @@ export default function StaffDashboardPage() {
     }
   }
 
-  const pendingCount = bookings.filter((b) => b.status === "pending_confirmation").length;
+  function openRefundDialog(booking: StaffBookingResponse & { refunds?: Array<{ id: string; amount: number; status: string; refundMethod: string; createdAt: string; updatedAt: string }> }) {
+    setRefundBankName("");
+    setRefundBankAccount("");
+    setRefundBankHolder("");
+    setRefundDialog({
+      bookingId: booking.id,
+      customerName: booking.customerName,
+      pickupMethod: booking.pickupMethod,
+      depositTotal: booking.depositTotal,
+      penaltyTotal: booking.penaltyTotal ?? 0,
+    });
+  }
+
+  async function handleCashRefund() {
+    if (!refundDialog) return;
+    const id = refundDialog.bookingId;
+    setActioningId(id);
+    setErrorMsg(null);
+    setRefundDialog(null);
+    const res = await createRefund({
+      bookingId: id,
+      refundMethod: "cash",
+      reason: "Hoàn cọc tiền mặt tại quầy",
+    });
+    setActioningId(null);
+    if (res.success) {
+      setBookings((prev) => prev.filter((b) => b.id !== id));
+    } else {
+      setErrorMsg(res.message ?? "Không thể hoàn cọc.");
+    }
+  }
+
+  async function handleDirectCashRefund(
+    bookingId: string,
+    customerName: string | null,
+    pickupMethod: string,
+    depositTotal: number,
+    penaltyTotal: number,
+  ) {
+    setActioningId(bookingId);
+    setErrorMsg(null);
+    const res = await createRefund({
+      bookingId,
+      refundMethod: "cash",
+      reason: "Hoàn cọc tiền mặt tại quầy",
+    });
+    setActioningId(null);
+    if (res.success) {
+      setBookings((prev) => prev.filter((b) => b.id !== bookingId));
+    } else {
+      setErrorMsg(res.message ?? "Không thể hoàn cọc.");
+    }
+  }
+
+  async function handleBankTransferRefund() {
+    if (!refundDialog) return;
+    const id = refundDialog.bookingId;
+    setActioningId(id);
+    setErrorMsg(null);
+    setRefundDialog(null);
+    const res = await createRefund({
+      bookingId: id,
+      refundMethod: "bank_transfer",
+      reason: "Yêu cầu hoàn cọc chuyển khoản",
+      bankName: refundBankName,
+      bankAccountNumber: refundBankAccount,
+      bankAccountHolder: refundBankHolder,
+    });
+    setActioningId(null);
+    if (res.success) {
+      setBookings((prev) =>
+        prev.map((b) =>
+          b.id === id
+            ? {
+                ...b,
+                refunds: [
+                  {
+                    id: res.data!.id,
+                    amount: res.data!.amount,
+                    status: res.data!.status,
+                    refundMethod: res.data!.refundMethod,
+                    createdAt: res.data!.createdAt,
+                    updatedAt: res.data!.updatedAt,
+                  },
+                ],
+              }
+            : b,
+        ),
+      );
+    } else {
+      setErrorMsg(res.message ?? "Không thể tạo yêu cầu hoàn cọc.");
+    }
+  }
+
+  const refundAmount = refundDialog
+    ? Math.max(0, refundDialog.depositTotal - refundDialog.penaltyTotal)
+    : 0;
+
+  const pendingRefundCount = tab === "pending" ? bookings.filter((b) => b.status === "pending_confirmation").length : 0;
 
   return (
     <StaffPortalShell
@@ -208,9 +325,9 @@ export default function StaffDashboardPage() {
           }`}
         >
           Chờ xác nhận
-          {pendingCount > 0 && tab !== "pending" && (
+          {pendingRefundCount > 0 && tab !== "pending" && (
             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-lotus text-xs text-white">
-              {pendingCount}
+              {pendingRefundCount}
             </span>
           )}
         </button>
@@ -225,6 +342,17 @@ export default function StaffDashboardPage() {
         >
           Tất cả đơn
         </button>
+        <button
+          type="button"
+          onClick={() => setTab("refunds")}
+          className={`px-5 py-3 text-sm font-semibold uppercase tracking-[0.16em] transition border-b-2 -mb-px ${
+            tab === "refunds"
+              ? "border-lotus text-lotus"
+              : "border-transparent text-stone-500 hover:text-lotus"
+          }`}
+        >
+          Hoàn cọc
+        </button>
       </div>
 
       {errorMsg && (
@@ -237,7 +365,7 @@ export default function StaffDashboardPage() {
         <div className="py-20 text-center text-stone-400">Đang tải...</div>
       ) : bookings.length === 0 ? (
         <div className="py-20 text-center text-stone-400">
-          {tab === "pending" ? "Không có đơn nào đang chờ xác nhận." : "Chưa có đơn nào."}
+          {tab === "pending" ? "Không có đơn nào đang chờ xác nhận." : tab === "refunds" ? "Không có đơn nào cần hoàn cọc." : "Chưa có đơn nào."}
         </div>
       ) : (
         <div className="space-y-4">
@@ -247,6 +375,10 @@ export default function StaffDashboardPage() {
             const isActioning = actioningId === booking.id;
             const garmentName = booking.items[0]?.garmentName ?? "—";
             const sizeLabel = booking.items[0]?.sizeLabel ?? "—";
+            // Refund info for completed bookings
+            const refund = (booking as any).refunds?.[0];
+            const isRefunded = refund && (refund.status === "refunded" || refund.status === "partially_refunded");
+            const isPendingRefund = refund && (refund.status === "pending" || refund.status === "refunding");
 
             return (
               <div
@@ -259,6 +391,16 @@ export default function StaffDashboardPage() {
                     <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${s.color}`}>
                       {s.label}
                     </span>
+                    {tab === "refunds" && isRefunded && (
+                      <span className="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] bg-jade/10 text-jade">
+                        Đã hoàn cọc
+                      </span>
+                    )}
+                    {tab === "refunds" && isPendingRefund && (
+                      <span className="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] bg-yellow-100 text-yellow-700">
+                        Chờ duyệt hoàn cọc
+                      </span>
+                    )}
                   </div>
                   <span className="text-xs text-stone-400">
                     Tạo lúc {new Date(booking.createdAt).toLocaleString("vi-VN")}
@@ -286,14 +428,23 @@ export default function StaffDashboardPage() {
                     <p className="text-sm text-stone-500">{booking.days} ngày</p>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Thanh toán</p>
-                    <p className="mt-1 font-medium text-ink">{formatVND(booking.rentalTotal)}</p>
-                    <p className="text-sm text-stone-500">Cọc: {formatVND(booking.depositTotal)}</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Hoàn cọc</p>
+                    <p className="mt-1 font-medium text-ink">
+                      Cọc: {formatVND(booking.depositTotal)}
+                    </p>
+                    <p className="text-sm text-stone-500">
+                      Phạt: {formatVND(booking.penaltyTotal ?? 0)} → Hoàn: <span className="font-semibold text-jade">{formatVND(Math.max(0, booking.depositTotal - (booking.penaltyTotal ?? 0)))}</span>
+                    </p>
+                    {refund && (
+                      <p className="mt-1 text-xs text-stone-400">
+                        {refund.refundMethod === "cash" ? "Tiền mặt" : "Chuyển khoản"} · {refund.status === "refunded" ? "Đã hoàn" : refund.status === "pending" ? "Chờ duyệt" : refund.status}
+                      </p>
+                    )}
                   </div>
                 </div>
 
                 {/* Cảnh báo: item chưa có asset — staff không có quyền gán, phải báo manager */}
-                {ASSET_NEEDED_STATUSES.includes(booking.status) && booking.items.some((item) => !item.garmentAssetId) && (
+                {tab !== "refunds" && ASSET_NEEDED_STATUSES.includes(booking.status) && booking.items.some((item) => !item.garmentAssetId) && (
                   <div className="border-t border-amber-200 bg-amber-50/70 px-6 py-4">
                     <div className="flex items-start gap-3">
                       <span className="material-symbols-outlined mt-0.5 text-amber-600 text-xl">warning</span>
@@ -321,7 +472,52 @@ export default function StaffDashboardPage() {
                 )}
 
                 {/* Actions bar */}
-                {(actions.length > 0 || booking.status === "awaiting_payment") && (
+                {tab === "refunds" ? (
+                  !isRefunded && (
+                    <div className="flex flex-wrap justify-end gap-2 border-t border-sand px-6 py-4">
+                      {isPendingRefund ? (
+                        <div className="rounded-lg bg-yellow-50 border border-yellow-200 px-4 py-2 text-sm text-yellow-700">
+                          <span className="material-symbols-outlined text-base mr-1 align-middle">schedule</span>
+                          {refund.refundMethod === "bank_transfer"
+                            ? "Đã gửi yêu cầu hoàn cọc — chờ Quản lý duyệt chuyển khoản"
+                            : "Đang chờ xử lý hoàn cọc"}
+                        </div>
+                      ) : (
+                        <>
+                          {booking.pickupMethod === "delivery" ? (
+                            <button
+                              type="button"
+                              disabled={isActioning}
+                              onClick={() => openRefundDialog(booking as any)}
+                              className="rounded-lg bg-lotus px-4 py-2 text-sm font-semibold text-white transition hover:bg-oxblood disabled:opacity-50"
+                            >
+                              {isActioning ? "Đang xử lý..." : "Tạo yêu cầu hoàn cọc (chuyển khoản)"}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={isActioning}
+                              onClick={() => {
+                                setRefundDialog({
+                                  bookingId: booking.id,
+                                  customerName: booking.customerName,
+                                  pickupMethod: booking.pickupMethod,
+                                  depositTotal: booking.depositTotal,
+                                  penaltyTotal: booking.penaltyTotal ?? 0,
+                                });
+                                handleCashRefund();
+                              }}
+                              className="rounded-lg bg-jade px-4 py-2 text-sm font-semibold text-white transition hover:bg-forest disabled:opacity-50"
+                            >
+                              {isActioning ? "Đang xử lý..." : `Hoàn cọc tiền mặt (${formatVND(Math.max(0, booking.depositTotal - (booking.penaltyTotal ?? 0)))})`}
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )
+                ) : (
+                  (actions.length > 0 || booking.status === "awaiting_payment") && (
                   <div className="flex flex-wrap justify-end gap-2 border-t border-sand px-6 py-4">
                     {/* Nút "Đã thanh toán" cho awaiting_payment */}
                     {booking.status === "awaiting_payment" && (
@@ -357,10 +553,85 @@ export default function StaffDashboardPage() {
                       </button>
                     ))}
                   </div>
-                )}
+                ))}
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ── Refund dialog (for bank_transfer) ── */}
+      {refundDialog && refundDialog.pickupMethod === "delivery" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-md rounded-2xl border border-sand bg-white p-8 shadow-2xl">
+            <h3 className="font-display text-2xl text-ink">Yêu cầu hoàn cọc chuyển khoản</h3>
+            <p className="mt-1 text-sm text-stone-500">
+              Khách: <strong>{refundDialog.customerName ?? "—"}</strong>
+            </p>
+
+            <div className="mt-6 rounded-xl bg-[#f9fff8] border border-jade/30 p-4">
+              <div className="flex justify-between text-sm">
+                <span className="text-stone-600">Tiền cọc</span>
+                <span className="font-semibold text-ink">{formatVND(refundDialog.depositTotal)}</span>
+              </div>
+              <div className="mt-2 flex justify-between text-sm">
+                <span className="text-stone-600">Phí phạt</span>
+                <span className="font-semibold text-red-700">-{formatVND(refundDialog.penaltyTotal)}</span>
+              </div>
+              <div className="mt-3 border-t border-jade/30 pt-3 flex justify-between text-base">
+                <span className="font-semibold text-ink">Tiền hoàn</span>
+                <span className="font-bold text-jade">{formatVND(refundAmount)}</span>
+              </div>
+            </div>
+
+            <div className="mt-6 space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-stone-500">Tên ngân hàng</label>
+                <input
+                  className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique"
+                  placeholder="VD: Vietcombank, MB Bank..."
+                  value={refundBankName}
+                  onChange={(e) => setRefundBankName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-stone-500">Số tài khoản</label>
+                <input
+                  className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique"
+                  placeholder="Nhập số tài khoản khách"
+                  value={refundBankAccount}
+                  onChange={(e) => setRefundBankAccount(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-stone-500">Chủ tài khoản</label>
+                <input
+                  className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique"
+                  placeholder="Tên chủ tài khoản"
+                  value={refundBankHolder}
+                  onChange={(e) => setRefundBankHolder(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="mt-8 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setRefundDialog(null)}
+                className="rounded-lg border border-sand px-5 py-2.5 text-sm font-semibold text-stone-600 transition hover:bg-stone-50"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                disabled={actioningId === refundDialog.bookingId || !refundBankName.trim() || !refundBankAccount.trim() || !refundBankHolder.trim()}
+                onClick={handleBankTransferRefund}
+                className="rounded-lg bg-lotus px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-oxblood disabled:opacity-50"
+              >
+                {actioningId === refundDialog.bookingId ? "Đang xử lý..." : "Gửi yêu cầu hoàn cọc"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -447,7 +718,7 @@ export default function StaffDashboardPage() {
               <div className="mt-6 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-left w-full">
                 <p className="text-xs font-semibold text-amber-700 uppercase tracking-[0.14em] mb-1">Gợi ý</p>
                 <p className="text-xs leading-relaxed text-amber-600">
-                  Quay lại tab <strong>"Tất cả đơn"</strong>, tìm đơn này và kiểm tra cột trạng thái. Nếu thấy cảnh báo màu vàng, hãy báo cho Quản lý để gán tài sản.
+                  Quay lại tab <strong>&quot;Tất cả đơn&quot;</strong>, tìm đơn này và kiểm tra cột trạng thái. Nếu thấy cảnh báo màu vàng, hãy báo cho Quản lý để gán tài sản.
                 </p>
               </div>
             </div>

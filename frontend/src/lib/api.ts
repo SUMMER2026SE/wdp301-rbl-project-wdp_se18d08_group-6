@@ -58,6 +58,26 @@ export type GarmentSummary = {
   depositAmount: number;
 };
 
+export type GarmentGrouped = {
+  name: string;
+  slug: string;
+  garmentId: string;
+  categoryName: string | null;
+  description: string | null;
+  imageUrl: string | null;
+  sizes: Array<{
+    garmentSizeId: string;
+    garmentId?: string;
+    sizeLabel: string | null;
+    dailyPrice: number;
+    depositAmount: number;
+  }>;
+};
+
+export async function getGarmentsGrouped() {
+  return apiRequest<GarmentGrouped[]>("/garments/grouped");
+}
+
 export async function getGarments() {
   return apiRequest<GarmentSummary[]>("/garments");
 }
@@ -71,6 +91,7 @@ export async function getGarmentById(id: string) {
 export type BookingItem = {
   id: string;
   garmentId: string;
+  garmentSizeId?: string;
   garmentName: string | null;
   sizeLabel: string | null;
   dailyPrice: number;
@@ -99,20 +120,21 @@ export type BookingResponse = {
 export type AvailabilityResponse = {
   garmentId: string;
   available: boolean;
-  conflictDates: { bookingId: string; startDate: string; endDate: string }[];
+  availableCount: number;
+  totalAssets: number;
 };
 
 // ---------- Booking API functions ----------
 
-export async function checkAvailability(garmentId: string, startDate: string, endDate: string) {
+export async function checkAvailability(garmentSizeId: string, startDate: string, endDate: string) {
   return apiRequest<AvailabilityResponse>("/bookings/check-availability", {
     method: "POST",
-    body: JSON.stringify({ garmentId, startDate, endDate }),
+    body: JSON.stringify({ garmentSizeId, startDate, endDate }),
   });
 }
 
 export async function createBooking(payload: {
-  garmentId: string;
+  garmentSizeIds: string[];
   startDate: string;
   endDate: string;
   pickupMethod?: string;
@@ -320,4 +342,137 @@ export async function assignAssetToBookingItem(
     method: "PATCH",
     body: JSON.stringify({ garmentAssetId }),
   });
+}
+
+export async function getStaffCompletedRefundBookings() {
+  return apiRequest<StaffBookingResponse[]>("/bookings/staff/completed-refunds");
+}
+
+// ---------- Refund types ----------
+
+export type RefundResponse = {
+  id: string;
+  bookingId: string;
+  amount: number;
+  status: string;
+  refundMethod: string;
+  reason: string | null;
+  bankName: string | null;
+  bankAccountNumber: string | null;
+  bankAccountHolder: string | null;
+  proofImageUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+  booking: {
+    id: string;
+    depositTotal: number;
+    penaltyTotal: number;
+    pickupMethod: string;
+    customerName: string | null;
+    customerPhone: string | null;
+  };
+  processedBy: string | null;
+};
+
+export type RefundCalculationResponse = {
+  bookingId: string;
+  depositTotal: number;
+  penaltyTotal: number;
+  refundAmount: number;
+};
+
+export type CustomerRefundResponse = {
+  id: string;
+  bookingId: string;
+  amount: number;
+  status: string;
+  refundMethod: string;
+  reason: string | null;
+  bankName: string | null;
+  bankAccountNumber: string | null;
+  bankAccountHolder: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+// ---------- Refund API functions ----------
+
+export async function calculateRefund(bookingId: string) {
+  return apiRequest<RefundCalculationResponse>(`/refunds/calculate/${bookingId}`, {
+    method: "POST",
+  });
+}
+
+export async function createRefund(payload: {
+  bookingId: string;
+  refundMethod: "cash" | "bank_transfer";
+  reason?: string;
+  bankName?: string;
+  bankAccountNumber?: string;
+  bankAccountHolder?: string;
+}) {
+  return apiRequest<RefundResponse>("/refunds", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function approveRefund(
+  refundId: string,
+  payload: {
+    status: "refunded" | "partially_refunded";
+    proofImageUrl?: string;
+    note?: string;
+  },
+) {
+  return apiRequest<RefundResponse>(`/refunds/${refundId}/approve`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getPendingStaffRefunds() {
+  return apiRequest<RefundResponse[]>("/refunds/staff/pending");
+}
+
+export async function getPendingManagerRefunds() {
+  return apiRequest<RefundResponse[]>("/refunds/manager/pending");
+}
+
+export async function getBookingRefunds(bookingId: string) {
+  return apiRequest<RefundResponse[]>(`/refunds/booking/${bookingId}`);
+}
+
+export async function getRefund(id: string) {
+  return apiRequest<RefundResponse>(`/refunds/${id}`);
+}
+
+export async function getCustomerRefund(bookingId: string) {
+  return apiRequest<CustomerRefundResponse[]>(`/refunds/customer/booking/${bookingId}`);
+}
+
+// ---------- Asset maintenance API functions ----------
+
+export type AssetNeedingProcessing = {
+  id: string;
+  assetCode: string;
+  status: string;
+  conditionNote: string | null;
+  garment: {
+    id: string;
+    name: string;
+    sizeLabel: string | null;
+  };
+  hasOpenTicket: boolean;
+};
+
+export async function markAssetReady(assetId: string) {
+  return apiRequest<{ id: string; assetCode: string; status: string; conditionNote: string | null }>(
+    `/inspections/assets/${assetId}/mark-ready`,
+    { method: "PATCH" },
+  );
+}
+
+export async function getAssetsNeedingProcessing() {
+  return apiRequest<AssetNeedingProcessing[]>("/inspections/assets/needing-processing");
 }
