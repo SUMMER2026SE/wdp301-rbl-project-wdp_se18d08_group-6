@@ -4,14 +4,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Header } from "./header";
 
 const usePathnameMock = vi.fn();
+const useAuthMock = vi.fn();
 
 vi.mock("next/navigation", () => ({
   usePathname: () => usePathnameMock(),
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
+vi.mock("@/components/auth/auth-provider", () => ({
+  useAuth: () => useAuthMock(),
 }));
 
 describe("Header", () => {
   beforeEach(() => {
     usePathnameMock.mockReset();
+    useAuthMock.mockReturnValue({
+      session: null,
+      signOut: vi.fn(),
+      status: "unauthenticated",
+    });
   });
 
   it("renders public navigation links on the landing page", () => {
@@ -24,8 +35,8 @@ describe("Header", () => {
     expect(screen.getByRole("link", { name: "Tài khoản" })).toHaveAttribute("href", "/login");
   });
 
-  it("hides the header on auth routes", () => {
-    usePathnameMock.mockReturnValue("/login");
+  it.each(["/login", "/register", "/verify-email", "/forgot-password", "/reset-password"])('hides the header on auth route %s', (pathname) => {
+    usePathnameMock.mockReturnValue(pathname);
     const { container } = render(createElement(Header));
 
     expect(container).toBeEmptyDOMElement();

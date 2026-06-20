@@ -1,9 +1,14 @@
 import { BadRequestException, Injectable, Logger, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
+import { randomUUID, webcrypto } from "node:crypto";
 import * as bcrypt from "bcryptjs";
 import { ok } from "../../common/api-response";
+import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { toAuthenticatedUser, type UserWithProfile } from "./auth-user";
+
+const GOOGLE_JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs";
+const GOOGLE_ISSUERS = new Set(["accounts.google.com", "https://accounts.google.com"]);
 
 type RegisterInput = {
   fullName: string;
@@ -16,9 +21,50 @@ type LoginInput = {
   password: string;
 };
 
+type GoogleLoginInput = {
+  idToken: string;
+};
+
 type VerifyEmailInput = {
   email: string;
   code: string;
+};
+
+type ForgotPasswordInput = {
+  email: string;
+};
+
+type ResetPasswordInput = {
+  token: string;
+  password: string;
+};
+
+type ResetPasswordTokenPayload = {
+  sub?: string;
+  email?: string;
+  tokenType?: "access" | "password-reset";
+  iat?: number;
+};
+
+type GoogleJwtHeader = {
+  alg?: string;
+  kid?: string;
+};
+
+type GoogleTokenPayload = {
+  iss?: string;
+  aud?: string | string[];
+  sub?: string;
+  email?: string;
+  email_verified?: boolean | string;
+  name?: string;
+  exp?: number;
+  iat?: number;
+};
+
+type GoogleJwk = {
+  kid: string;
+  [key: string]: unknown;
 };
 
 @Injectable()
@@ -28,6 +74,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async register(input: RegisterInput) {
@@ -120,6 +167,49 @@ export class AuthService {
 
     await this.sendVerificationCode(user.id, normalizedEmail);
     return ok({ email: normalizedEmail }, "Mã OTP mới đã được gửi. Vui lòng kiểm tra email.");
+
+  }
+  async forgotPassword(input: ForgotPasswordInput) {
+    const normalizedEmail = input.email.trim().toLowerCase();
+    const user = await this.prisma.userAccount.findUnique({ where: { email: normalizedEmail } });
+
+    if (user) {
+      await this.sendPasswordResetLink(user.id, normalizedEmail);
+    }
+
+    return ok(
+      { email: normalizedEmail },
+      "Nếu email tồn tại trong hệ thống, chúng tôi đã gửi liên kết đặt lại mật khẩu.",
+    );
+  }
+
+  async resetPassword(input: ResetPasswordInput) {
+    const payload = await this.verifyPasswordResetToken(input.token);
+
+    if (!payload.sub || !payload.email || payload.tokenType !== "password-reset") {
+      throw new BadRequestException("Mã đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.");
+    }
+
+    const user = await this.prisma.userAccount.findUnique({ where: { id: payload.sub } });
+
+    if (!user || user.email !== payload.email) {
+      throw new BadRequestException("Mã đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.");
+    }
+
+    if (typeof payload.iat !== "number" || payload.iat * 1000 < user.updatedAt.getTime()) {
+      throw new BadRequestException("Mã đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.");
+    }
+
+    const passwordHash = await bcrypt.hash(input.password, 12);
+    await this.prisma.userAccount.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        updatedAt: new Date(),
+      },
+    });
+
+    return ok({ email: user.email }, "Mật khẩu đã được đặt lại thành công. Bạn có thể đăng nhập lại.");
   }
 
   async login(input: LoginInput) {
@@ -146,16 +236,15 @@ export class AuthService {
       throw new UnauthorizedException("Email hoặc mật khẩu không đúng.");
     }
 
-    const accessToken = await this.jwtService.signAsync({
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-    });
+    return ok(await this.buildLoginSession(user));
+  }
 
-    return ok({
-      accessToken,
-      user: this.serializeLoginUser(user),
-    });
+  async loginWithGoogle(input: GoogleLoginInput) {
+    const googleToken = await this.verifyGoogleIdToken(input.idToken);
+    const normalizedEmail = googleToken.email!.trim().toLowerCase();
+    const user = await this.findOrProvisionGoogleUser(googleToken, normalizedEmail);
+
+    return ok(await this.buildLoginSession(user));
   }
 
   async me(userId: string) {
@@ -174,52 +263,290 @@ export class AuthService {
   // ─── Private helpers ──────────────────────────────────────────────────────
 
   private async sendVerificationCode(userId: string, email: string) {
-    // Vô hiệu hoá tất cả OTP cũ chưa dùng của user này
+    // V� hi?u ho� t?t c? OTP cu chua d�ng c?a user n�y
     await this.prisma.emailVerificationCode.updateMany({
       where: { userId, used: false },
       data: { used: true },
     });
 
-    // Tạo mã OTP 6 số
+    // T?o m� OTP 6 s?
     const code = Math.floor(100_000 + Math.random() * 900_000).toString();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 phút
+
+    if (process.env.NODE_ENV !== "production") {
+      this.logger.log(`DEV OTP for ${email}: ${code}`);
+    }
+
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 ph�t
 
     await this.prisma.emailVerificationCode.create({
       data: { userId, code, expiresAt },
     });
 
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const transporter = require("nodemailer").createTransport({
-        service: "gmail",
-        auth: {
-          user: process.env.SMTP_EMAIL,
-          pass: process.env.SMTP_PASSWORD,
-        },
-      });
+    const result = await this.notificationsService.sendAuthVerificationEmail({
+      email,
+      code,
+      expiresIn: 10,
+    });
 
-      await transporter.sendMail({
-        from: `"Cổ Phục ERP" <${process.env.SMTP_EMAIL}>`,
-        to: email,
-        subject: "Mã xác nhận đăng ký tài khoản Cổ Phục ERP",
-        html: `
-          <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; color: #1f2933;">
-            <h2 style="color: #b91c1c; text-align: center; font-family: serif; font-size: 24px; margin-bottom: 24px;">Cổ Phục ERP</h2>
-            <p>Chào bạn,</p>
-            <p>Bạn vừa yêu cầu đăng ký tài khoản trên hệ thống Cổ Phục ERP. Đây là mã xác thực (OTP) của bạn:</p>
-            <div style="background-color: #f8fafc; padding: 16px; border-radius: 8px; text-align: center; margin: 24px 0;">
-              <span style="font-size: 32px; font-weight: bold; letter-spacing: 4px; color: #0f766e;">${code}</span>
-            </div>
-            <p style="font-size: 14px; color: #64748b;">Mã này sẽ hết hạn sau <strong>10 phút</strong>. Vui lòng không chia sẻ mã này cho bất kỳ ai.</p>
-            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
-            <p style="font-size: 12px; color: #94a3b8; text-align: center;">Nếu bạn không yêu cầu đăng ký, hãy bỏ qua email này.</p>
-          </div>
-        `,
-      });
-      this.logger.log(`Đã gửi OTP qua email đến: ${email}`);
-    } catch (error) {
-      this.logger.error(`Lỗi khi gửi email đến ${email}:`, error);
+    if (result.status === "skipped") {
+      this.logger.warn(`SMTP not configured. Skipping email delivery for ${email}. Use the backend terminal OTP above.`);
+      return;
     }
+
+    if (result.status === "sent") {
+      this.logger.log(`�� g?i OTP qua email d?n: ${email}`);
+      return;
+    }
+
+    this.logger.error(`L?i khi g?i email d?n ${email}:`, result.reason ?? "unknown error");
+  }
+
+  private async sendPasswordResetLink(userId: string, email: string) {
+    const resetToken = await this.jwtService.signAsync(
+      {
+        sub: userId,
+        email,
+        tokenType: "password-reset",
+      },
+      { expiresIn: "1h" },
+    );
+
+    const frontendUrl = (process.env.FRONTEND_URL ?? "http://localhost:3000").replace(/\/$/, "");
+    const resetUrl = `${frontendUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
+
+    if (process.env.NODE_ENV !== "production") {
+      this.logger.log(`DEV password reset link for ${email}: ${resetUrl}`);
+    }
+
+    const result = await this.notificationsService.sendPasswordResetEmail({
+      email,
+      resetUrl,
+    });
+
+    if (result.status === "skipped") {
+      this.logger.warn(
+        `SMTP not configured. Skipping email delivery for ${email}. Use the backend terminal reset link above.`,
+      );
+      return;
+    }
+
+    if (result.status === "sent") {
+      this.logger.log(`�� g?i email d?t l?i m?t kh?u d?n: ${email}`);
+      return;
+    }
+
+    this.logger.error(`L?i khi g?i email d?t l?i m?t kh?u d?n ${email}:`, result.reason ?? "unknown error");
+  }
+
+  private async verifyPasswordResetToken(token: string) {
+    try {
+      return await this.jwtService.verifyAsync<ResetPasswordTokenPayload>(token);
+    } catch {
+      throw new BadRequestException("Mã đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.");
+    }
+  }
+
+  private async verifyGoogleIdToken(idToken: string) {
+    const [encodedHeader, encodedPayload, encodedSignature] = idToken.trim().split(".");
+
+    if (!encodedHeader || !encodedPayload || !encodedSignature) {
+      throw new UnauthorizedException("Google token không hợp lệ hoặc đã hết hạn.");
+    }
+
+    let header: GoogleJwtHeader;
+    try {
+      header = this.decodeJwtPart<GoogleJwtHeader>(encodedHeader);
+    } catch {
+      throw new UnauthorizedException("Google token không hợp lệ hoặc đã hết hạn.");
+    }
+
+    if (header.alg !== "RS256" || !header.kid) {
+      throw new UnauthorizedException("Google token không hợp lệ hoặc đã hết hạn.");
+    }
+
+    const jwks = await this.fetchGoogleJwks();
+    const jwk = jwks.find((key): key is GoogleJwk => key.kid === header.kid);
+
+    if (!jwk) {
+      throw new UnauthorizedException("Google token không hợp lệ hoặc đã hết hạn.");
+    }
+
+    const subtle = webcrypto.subtle;
+    const cryptoKey = await subtle.importKey(
+      "jwk",
+      jwk as any,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+
+    const signature = this.base64UrlToUint8Array(encodedSignature);
+    const signedBytes = new TextEncoder().encode(encodedHeader + "." + encodedPayload);
+    const signatureValid = await subtle.verify("RSASSA-PKCS1-v1_5", cryptoKey, signature, signedBytes);
+
+    if (!signatureValid) {
+      throw new UnauthorizedException("Google token không hợp lệ hoặc đã hết hạn.");
+    }
+
+    let payload: GoogleTokenPayload;
+    try {
+      payload = this.decodeJwtPart<GoogleTokenPayload>(encodedPayload);
+    } catch {
+      throw new UnauthorizedException("Google token không hợp lệ hoặc đã hết hạn.");
+    }
+
+    const googleClientId = process.env.GOOGLE_CLIENT_ID?.trim();
+    if (!googleClientId) {
+      throw new BadRequestException("Google login chưa được cấu hình.");
+    }
+
+    if (!payload.sub || !payload.email || !this.isGoogleEmailVerified(payload.email_verified)) {
+      throw new UnauthorizedException("Google token không hợp lệ hoặc đã hết hạn.");
+    }
+
+    if (!payload.iss || !GOOGLE_ISSUERS.has(payload.iss)) {
+      throw new UnauthorizedException("Google token không hợp lệ hoặc đã hết hạn.");
+    }
+
+    if (!this.isGoogleAudienceValid(payload.aud, googleClientId)) {
+      throw new UnauthorizedException("Google token không hợp lệ hoặc đã hết hạn.");
+    }
+
+    if (typeof payload.exp !== "number" || payload.exp * 1000 <= Date.now()) {
+      throw new UnauthorizedException("Google token không hợp lệ hoặc đã hết hạn.");
+    }
+
+    return payload;
+  }
+
+  private async fetchGoogleJwks() {
+    const response = await fetch(GOOGLE_JWKS_URL, {
+      headers: { Accept: "application/json" },
+    });
+
+    if (!response.ok) {
+      throw new UnauthorizedException("Google token không hợp lệ hoặc đã hết hạn.");
+    }
+
+    const data = (await response.json().catch(() => null)) as { keys?: GoogleJwk[] } | null;
+
+    if (!data?.keys?.length) {
+      throw new UnauthorizedException("Google token không hợp lệ hoặc đã hết hạn.");
+    }
+
+    return data.keys;
+  }
+
+  private async findOrProvisionGoogleUser(googleToken: GoogleTokenPayload, email: string) {
+    const displayName = this.resolveGoogleDisplayName(googleToken, email);
+    const existingUser = await this.prisma.userAccount.findUnique({
+      where: { email },
+      include: { profile: true },
+    });
+
+    if (!existingUser) {
+      const passwordHash = await bcrypt.hash(randomUUID(), 12);
+
+      return this.prisma.userAccount.create({
+        data: {
+          email,
+          passwordHash,
+          role: "customer",
+          isActive: true,
+          isEmailVerified: true,
+          profile: {
+            create: {
+              fullName: displayName,
+            },
+          },
+        },
+        include: { profile: true },
+      });
+    }
+
+    if (!existingUser.isActive) {
+      throw new UnauthorizedException("Tài khoản đã bị khoá. Vui lòng liên hệ hỗ trợ.");
+    }
+
+    const shouldVerifyEmail = !existingUser.isEmailVerified;
+    const existingFullName = existingUser.profile?.fullName?.trim() ?? "";
+    const shouldSyncProfile = displayName.length > 0 && !existingFullName;
+
+    if (!shouldVerifyEmail && !shouldSyncProfile) {
+      return existingUser;
+    }
+
+    return this.prisma.userAccount.update({
+      where: { id: existingUser.id },
+      data: {
+        ...(shouldVerifyEmail
+          ? {
+              isEmailVerified: true,
+              isActive: true,
+              updatedAt: new Date(),
+            }
+          : {}),
+        ...(shouldSyncProfile
+          ? {
+              profile: {
+                upsert: {
+                  create: {
+                    fullName: displayName,
+                  },
+                  update: {
+                    fullName: displayName,
+                  },
+                },
+              },
+            }
+          : {}),
+      },
+      include: { profile: true },
+    });
+  }
+
+  private async buildLoginSession(user: UserWithProfile) {
+    const accessToken = await this.jwtService.signAsync({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      tokenType: "access",
+    });
+
+    return {
+      accessToken,
+      user: this.serializeLoginUser(user),
+    };
+  }
+
+  private decodeJwtPart<T>(part: string) {
+    const normalizedPart = part.replace(/-/g, "+").replace(/_/g, "/");
+    const paddedPart = normalizedPart.padEnd(Math.ceil(normalizedPart.length / 4) * 4, "=");
+    return JSON.parse(Buffer.from(paddedPart, "base64").toString("utf8")) as T;
+  }
+
+  private base64UrlToUint8Array(value: string) {
+    const normalizedValue = value.replace(/-/g, "+").replace(/_/g, "/");
+    const paddedValue = normalizedValue.padEnd(Math.ceil(normalizedValue.length / 4) * 4, "=");
+    return Uint8Array.from(Buffer.from(paddedValue, "base64"));
+  }
+
+  private isGoogleEmailVerified(value: GoogleTokenPayload["email_verified"]) {
+    return value === true || value === "true";
+  }
+
+  private isGoogleAudienceValid(aud: GoogleTokenPayload["aud"], clientId: string) {
+    return Array.isArray(aud) ? aud.includes(clientId) : aud === clientId;
+  }
+
+  private resolveGoogleDisplayName(googleToken: GoogleTokenPayload, email: string) {
+    const name = googleToken.name?.trim();
+    if (name) {
+      return name;
+    }
+
+    const localPart = email.split("@")[0]?.trim();
+    return localPart && localPart.length > 0 ? localPart : "Google User";
   }
 
   private serializeLoginUser(user: UserWithProfile) {
@@ -230,3 +557,7 @@ export class AuthService {
     };
   }
 }
+
+
+
+

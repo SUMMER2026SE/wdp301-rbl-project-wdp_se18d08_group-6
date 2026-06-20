@@ -1,10 +1,12 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
-import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
+import { FormEvent, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
+import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 import { apiRequest } from "@/lib/api";
+import { PasswordVisibilityToggle } from "@/components/auth/password-visibility-toggle";
 import { resolveDashboardPath, toAuthenticatedUser, type AppRole } from "@/lib/auth";
 
 type LoginResult = {
@@ -27,16 +29,57 @@ function LoginPageContent() {
 
   const [email, setEmail] = useState(searchParams.get("email") ?? "");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() ?? "";
 
-  const registeredMessage = useMemo(() => {
-    if (searchParams.get("registered") !== "1") {
-      return null;
+  const authNotice = useMemo(() => {
+    if (searchParams.get("reset") === "1") {
+      return "Mật khẩu đã được đặt lại thành công. Bạn có thể đăng nhập lại.";
     }
-    return "Tài khoản mới đã được tạo. Bạn có thể đăng nhập ngay.";
+
+    if (searchParams.get("verified") === "1") {
+      return "Email đã được xác thực. Bạn có thể đăng nhập ngay.";
+    }
+
+    if (searchParams.get("registered") === "1") {
+      return "Tài khoản mới đã được tạo. Bạn có thể đăng nhập ngay.";
+    }
+
+    return null;
   }, [searchParams]);
+
+  const isBusy = loading || googleLoading;
+
+  const handleGoogleCredential = useCallback(
+    async (credential: string) => {
+      setError(null);
+      setGoogleLoading(true);
+
+      try {
+        const result = await apiRequest<LoginResult>("/auth/google", {
+          method: "POST",
+          body: JSON.stringify({ idToken: credential }),
+        });
+
+        if (!result.success || !result.data) {
+          setError(result.message ?? "Không thể đăng nhập bằng Google.");
+          return;
+        }
+
+        signIn({ accessToken: result.data.accessToken, user: toAuthenticatedUser(result.data.user), persist: rememberMe });
+        router.push(getSafeRedirectPath(searchParams.get("next"), resolveDashboardPath(result.data.user.role)));
+      } catch {
+        setError("Không thể kết nối đến hệ thống đăng nhập.");
+      } finally {
+        setGoogleLoading(false);
+      }
+    },
+    [rememberMe, router, searchParams, signIn],
+  );
 
   // Tự động chuyển hướng nếu đã đăng nhập
   useEffect(() => {
@@ -68,7 +111,7 @@ function LoginPageContent() {
       }
 
       // Đăng nhập qua context AuthProvider (thay thế cách lưu localStorage thủ công)
-      signIn({ accessToken: result.data.accessToken, user: toAuthenticatedUser(result.data.user) });
+      signIn({ accessToken: result.data.accessToken, user: toAuthenticatedUser(result.data.user), persist: rememberMe });
       router.push(getSafeRedirectPath(searchParams.get("next"), resolveDashboardPath(result.data.user.role)));
     } catch {
       setError("Không thể kết nối đến hệ thống đăng nhập.");
@@ -83,9 +126,10 @@ function LoginPageContent() {
         {/* Cột trái: Ảnh di sản đẹp mắt */}
         <section className="relative hidden overflow-hidden bg-[#fee2dd] md:flex md:w-1/2">
           <img
-            alt="Cổ Phục Rental - Heritage"
-            className="absolute inset-0 h-full w-full object-cover"
-            src="https://lh3.googleusercontent.com/aida/AP1WRLuW52zIUPG8s28NGtCZDox-IsYxTuydKP_K4rWuLOB5gdlIbvRy8-CQNiUTpxBOgVzlCIwzOIK5CJaNf_t1rMKqLDdnjDInRE0TNkAdMx6NI7c4eRsVAwhIP0ScRVOczYYBJVIeDilq85F_r-OAQt01_S6j_TMgwFkNP7Un6GJq5OuB8ZiGPluckIqInH7ZBKk1SVSbQzjYyyJs6sMyoV_Szs72Fh4piXP_iHDwm_elQjCRJvQJMbHn6Ds"
+            alt="Cổ Phục Rental"
+            className="absolute inset-0 h-full w-full object-cover object-center"
+            src="/images/bg-ao-dai.png"
+            loading="eager"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-oxblood/60 to-transparent" />
           <div className="absolute bottom-0 left-0 p-12 text-white">
@@ -109,9 +153,9 @@ function LoginPageContent() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
-              {registeredMessage ? (
+              {authNotice ? (
                 <div className="rounded-sm border border-jade/20 bg-jade/10 px-4 py-3 text-sm text-jade">
-                  {registeredMessage}
+                  {authNotice}
                 </div>
               ) : null}
 
@@ -126,21 +170,31 @@ function LoginPageContent() {
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   required
+                  suppressHydrationWarning
                 />
               </div>
 
               <div>
                 <label className="mb-1 block text-sm font-semibold text-ink" htmlFor="password">Mật khẩu</label>
-                <input
-                  id="password"
-                  className="focus-ring block w-full border border-sand bg-white px-4 py-3 text-ink shadow-sm"
-                  autoComplete="current-password"
-                  placeholder="••••••••"
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  required
-                />
+                <div className="relative">
+                  <input
+                    id="password"
+                    className="focus-ring block w-full border border-sand bg-white px-4 py-3 pr-12 text-ink shadow-sm"
+                    autoComplete="current-password"
+                    placeholder="••••••••"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    required
+                    suppressHydrationWarning
+                  />
+                  <PasswordVisibilityToggle
+                    visible={showPassword}
+                    label="mật khẩu"
+                    onToggle={() => setShowPassword((current) => !current)}
+                    className="!top-[calc(50%+2px)]"
+                  />
+                </div>
               </div>
 
               <div className="flex items-center justify-between gap-4 pt-1 text-sm">
@@ -151,16 +205,16 @@ function LoginPageContent() {
                     type="checkbox"
                     checked={rememberMe}
                     onChange={(event) => setRememberMe(event.target.checked)}
+                    suppressHydrationWarning
                   />
                   Ghi nhớ đăng nhập
                 </label>
-                <button
-                  type="button"
+                <Link
+                  href="/forgot-password"
                   className="font-semibold text-lotus transition hover:text-oxblood"
-                  onClick={() => setError("Chức năng quên mật khẩu đang được cập nhật.")}
                 >
                   Quên mật khẩu?
-                </button>
+                </Link>
               </div>
 
               {error ? (
@@ -173,9 +227,9 @@ function LoginPageContent() {
                 <button
                   className="focus-ring flex w-full justify-center rounded-sm bg-lotus px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-oxblood disabled:cursor-not-allowed disabled:opacity-60"
                   type="submit"
-                  disabled={loading}
+                  disabled={isBusy}
                 >
-                  {loading ? "Đang xử lý..." : "Đăng nhập"}
+                  {isBusy ? "Đang xử lý..." : "Đăng nhập"}
                 </button>
               </div>
             </form>
@@ -190,6 +244,16 @@ function LoginPageContent() {
                 </div>
               </div>
             </div>
+
+            {googleClientId ? (
+              <div className="mt-6">
+                <GoogleSignInButton
+                  clientId={googleClientId}
+                  disabled={isBusy}
+                  onCredential={handleGoogleCredential}
+                />
+              </div>
+            ) : null}
 
             <div className="mt-6 text-center">
               <p className="text-sm text-[#5a403c]">

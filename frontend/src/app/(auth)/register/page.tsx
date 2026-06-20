@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
 import { apiRequest } from "@/lib/api";
 import { resolveDashboardPath } from "@/lib/auth";
+import { PasswordVisibilityToggle } from "@/components/auth/password-visibility-toggle";
 
 type RegisterResult = {
   id: string;
@@ -55,6 +56,8 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [passwordTouched, setPasswordTouched] = useState(false);
@@ -189,14 +192,19 @@ export default function RegisterPage() {
               <div className="relative mt-6">
                 <input
                   id="password"
-                  className="peer block w-full border-0 border-b border-sand bg-transparent px-0 py-3 text-ink placeholder-transparent focus:border-antique focus:outline-none focus:ring-0"
+                  className="peer block w-full border-0 border-b border-sand bg-transparent px-0 py-3 pr-12 text-ink placeholder-transparent focus:border-antique focus:outline-none focus:ring-0"
                   name="password"
                   placeholder=" "
                   required
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   onBlur={() => setPasswordTouched(true)}
+                />
+                <PasswordVisibilityToggle
+                  visible={showPassword}
+                  label="mật khẩu"
+                  onToggle={() => setShowPassword((current) => !current)}
                 />
                 <label
                   className="absolute left-0 top-3 cursor-text text-sm text-[#5a403c] transition-all duration-200 peer-focus:-top-3.5 peer-focus:text-[11px] peer-focus:text-antique peer-[:not(:placeholder-shown)]:-top-3.5 peer-[:not(:placeholder-shown)]:text-[11px]"
@@ -219,15 +227,20 @@ export default function RegisterPage() {
               <div className="relative mt-6">
                 <input
                   id="confirm_password"
-                  className={`peer block w-full border-0 border-b bg-transparent px-0 py-3 text-ink placeholder-transparent focus:outline-none focus:ring-0 ${
+                  className={`peer block w-full border-0 border-b bg-transparent px-0 py-3 pr-12 text-ink placeholder-transparent focus:outline-none focus:ring-0 ${
                     passwordMismatch ? "border-red-400 focus:border-red-400" : "border-sand focus:border-antique"
                   }`}
                   name="confirm_password"
                   placeholder=" "
                   required
-                  type="password"
+                  type={showConfirmPassword ? "text" : "password"}
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
+                />
+                <PasswordVisibilityToggle
+                  visible={showConfirmPassword}
+                  label="xác nhận mật khẩu"
+                  onToggle={() => setShowConfirmPassword((current) => !current)}
                 />
                 <label
                   className="absolute left-0 top-3 cursor-text text-sm text-[#5a403c] transition-all duration-200 peer-focus:-top-3.5 peer-focus:text-[11px] peer-focus:text-antique peer-[:not(:placeholder-shown)]:-top-3.5 peer-[:not(:placeholder-shown)]:text-[11px]"

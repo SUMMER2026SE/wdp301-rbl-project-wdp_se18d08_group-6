@@ -658,6 +658,9 @@ export default function ManagerDashboardPage() {
           garment={editingGarment}
           categories={categories}
           submitting={submitting}
+          onCreateCategory={handleCreateCategory}
+          categorySubmitting={categorySubmitting}
+          onAddImage={handleAddImage}
           onClose={() => { setGarmentModalOpen(false); setEditingGarment(null); }}
           onSubmit={(payload, images) => {
             if (editingGarment) handleUpdateGarment(editingGarment.id, payload, images);
@@ -1234,15 +1237,17 @@ function InventoryTab({
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function GarmentFormModal({
-  garment, categories, submitting, onClose, onSubmit,
+  garment, categories, submitting, onClose, onSubmit, onCreateCategory, categorySubmitting, onAddImage,
 }: {
   garment: GarmentDetail | null;
   categories: GarmentCategory[];
   submitting: boolean;
   onClose: () => void;
   onSubmit: (payload: Parameters<typeof createGarment>[0], imagesToAdd: string[]) => void;
-}) {
-  const [name, setName] = useState(garment?.name ?? "");
+  onCreateCategory: (name: string) => Promise<GarmentCategory | null>;
+  categorySubmitting: boolean;
+  onAddImage: (garmentId: string, imageUrl: string) => Promise<void>;
+}) {  const [name, setName] = useState(garment?.name ?? "");
   const [categoryId, setCategoryId] = useState(garment?.categoryId ?? "");
   const [description, setDescription] = useState(garment?.description ?? "");
   const [sizeLabel, setSizeLabel] = useState(garment?.sizeLabel ?? "");
@@ -1813,6 +1818,7 @@ function ShortcutButton({
     </button>
   );
 }
+
 
 
 // ═══════════════════════════════════════════════════════════════════════════════

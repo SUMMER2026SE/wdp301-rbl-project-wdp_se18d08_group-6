@@ -3,6 +3,7 @@ import { ConfigModule } from "@nestjs/config";
 import { AssetsModule } from "./modules/assets/assets.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { BookingsModule } from "./modules/bookings/bookings.module";
+import { NotificationsModule } from "./modules/notifications/notifications.module";
 import { GarmentsModule } from "./modules/garments/garments.module";
 import { HealthModule } from "./modules/health/health.module";
 import { InspectionsModule } from "./modules/inspections/inspections.module";
@@ -20,6 +21,7 @@ import { PrismaModule } from "./prisma/prisma.module";
     UsersModule,
     GarmentsModule,
     BookingsModule,
+    NotificationsModule,
     InspectionsModule,
     RefundsModule,
   ],
