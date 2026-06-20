@@ -12,6 +12,7 @@ export type AuthenticatedUser = {
 export type AuthSession = {
   accessToken: string;
   user: AuthenticatedUser;
+  persist?: boolean;
 };
 
 export const AUTH_SESSION_STORAGE_KEY = "co_phuc_auth_session";
@@ -33,7 +34,9 @@ const roleLabelByRole: Record<AppRole, string> = {
   admin: "Admin",
 };
 
-export function toAuthenticatedUser(user: Pick<AuthenticatedUser, "id" | "email" | "role"> & Partial<Omit<AuthenticatedUser, "id" | "email" | "role">>): AuthenticatedUser {
+export function toAuthenticatedUser(
+  user: Pick<AuthenticatedUser, "id" | "email" | "role"> & Partial<Omit<AuthenticatedUser, "id" | "email" | "role">>,
+): AuthenticatedUser {
   return {
     id: user.id,
     email: user.email,
@@ -61,20 +64,81 @@ function isRole(value: unknown): value is AppRole {
   return value === "customer" || value === "staff" || value === "manager_owner" || value === "admin";
 }
 
-function isAuthSession(value: unknown): value is AuthSession {
+type StoredSessionCandidate = {
+  accessToken?: unknown;
+  user?: {
+    id?: unknown;
+    email?: unknown;
+    role?: unknown;
+    isActive?: unknown;
+    fullName?: unknown;
+    phone?: unknown;
+  };
+  persist?: unknown;
+};
+
+function normalizeStoredSession(value: unknown): AuthSession | null {
   if (!value || typeof value !== "object") {
-    return false;
+    return null;
   }
 
-  const candidate = value as { accessToken?: unknown; user?: Partial<AuthenticatedUser> & { id?: unknown; email?: unknown; role?: unknown } };
-  return typeof candidate.accessToken === "string" && typeof candidate.user?.id === "string" && typeof candidate.user?.email === "string" && isRole(candidate.user?.role);
+  const candidate = value as StoredSessionCandidate;
+  const user = candidate.user;
+  if (
+    typeof candidate.accessToken !== "string" ||
+    !user ||
+    typeof user !== "object" ||
+    typeof user.id !== "string" ||
+    typeof user.email !== "string" ||
+    !isRole(user.role)
+  ) {
+    return null;
+  }
+
+  return {
+    accessToken: candidate.accessToken,
+    user: toAuthenticatedUser({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      isActive: typeof user.isActive === "boolean" ? user.isActive : undefined,
+      fullName: typeof user.fullName === "string" ? user.fullName : undefined,
+      phone: typeof user.phone === "string" ? user.phone : undefined,
+    }),
+    persist: typeof candidate.persist === "boolean" ? candidate.persist : true,
+  };
 }
 
-function readLegacySession(): AuthSession | null {
-  const accessToken = window.localStorage.getItem(LEGACY_ACCESS_TOKEN_KEY);
-  const role = window.localStorage.getItem(LEGACY_ROLE_KEY);
+function readSessionFromStorage(storage: Storage) {
+  const rawValue = storage.getItem(AUTH_SESSION_STORAGE_KEY);
+  if (!rawValue) {
+    return null;
+  }
 
-  return accessToken && isRole(role) ? { accessToken, user: toAuthenticatedUser({ id: "", email: "", role }) } : null;
+  try {
+    return normalizeStoredSession(JSON.parse(rawValue) as unknown);
+  } catch {
+    return null;
+  }
+}
+
+function readLegacySession(storage: Storage): AuthSession | null {
+  const accessToken = storage.getItem(LEGACY_ACCESS_TOKEN_KEY);
+  const role = storage.getItem(LEGACY_ROLE_KEY);
+
+  return accessToken && isRole(role)
+    ? {
+        accessToken,
+        user: toAuthenticatedUser({ id: "", email: "", role }),
+        persist: true,
+      }
+    : null;
+}
+
+function clearAuthStorage(storage: Storage) {
+  storage.removeItem(AUTH_SESSION_STORAGE_KEY);
+  storage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
+  storage.removeItem(LEGACY_ROLE_KEY);
 }
 
 export function readStoredSession(): AuthSession | null {
@@ -82,18 +146,9 @@ export function readStoredSession(): AuthSession | null {
     return null;
   }
 
-  const rawValue = window.localStorage.getItem(AUTH_SESSION_STORAGE_KEY);
-  if (!rawValue) {
-    return readLegacySession();
-  }
-
-  try {
-    const parsed = JSON.parse(rawValue) as unknown;
-    return isAuthSession(parsed) ? { accessToken: parsed.accessToken, user: toAuthenticatedUser(parsed.user) } : readLegacySession();
-  } catch {
-    return readLegacySession();
-  }
+  return readSessionFromStorage(window.localStorage) ?? readSessionFromStorage(window.sessionStorage) ?? readLegacySession(window.localStorage);
 }
+
 export function readStoredAccessToken() {
   return readStoredSession()?.accessToken ?? null;
 }
@@ -103,14 +158,30 @@ export function storeAuthSession(session: AuthSession) {
     return;
   }
 
-  const normalizedSession = { accessToken: session.accessToken, user: toAuthenticatedUser(session.user) };
-  window.localStorage.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify(normalizedSession));
-  window.localStorage.setItem(LEGACY_ACCESS_TOKEN_KEY, normalizedSession.accessToken);
-  window.localStorage.setItem(LEGACY_ROLE_KEY, normalizedSession.user.role);
+  const persist = session.persist ?? true;
+  const normalizedSession = {
+    accessToken: session.accessToken,
+    user: toAuthenticatedUser(session.user),
+    persist,
+  };
+
+  clearAuthStorage(window.localStorage);
+  clearAuthStorage(window.sessionStorage);
+
+  const targetStorage = persist ? window.localStorage : window.sessionStorage;
+  targetStorage.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify(normalizedSession));
+
+  if (persist) {
+    targetStorage.setItem(LEGACY_ACCESS_TOKEN_KEY, normalizedSession.accessToken);
+    targetStorage.setItem(LEGACY_ROLE_KEY, normalizedSession.user.role);
+  }
 }
 
 export function clearAuthSession() {
-  window.localStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
-  window.localStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
-  window.localStorage.removeItem(LEGACY_ROLE_KEY);
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  clearAuthStorage(window.localStorage);
+  clearAuthStorage(window.sessionStorage);
 }

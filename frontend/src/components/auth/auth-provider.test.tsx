@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { clearAuthSession, storeAuthSession } from "@/lib/auth";
+import { AUTH_SESSION_STORAGE_KEY, clearAuthSession, storeAuthSession } from "@/lib/auth";
 
 vi.mock("@/lib/api", () => ({
   apiRequest: vi.fn(),
@@ -63,6 +63,43 @@ describe("AuthProvider", () => {
       authToken: "jwt-token",
       cache: "no-store",
     });
+  });
+
+  it("keeps temporary sessions in sessionStorage after refresh", async () => {
+    storeAuthSession({
+      accessToken: "temporary-token",
+      persist: false,
+      user: {
+        id: "user-2",
+        email: "customer@example.com",
+        role: "customer",
+        isActive: true,
+        fullName: null,
+        phone: null,
+      },
+    });
+    vi.mocked(apiRequest).mockResolvedValue({
+      success: true,
+      data: {
+        id: "user-2",
+        email: "customer@example.com",
+        role: "customer",
+        isActive: true,
+        fullName: "Nguyen Van A",
+        phone: "0909000000",
+      },
+    });
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("authenticated"));
+    expect(screen.getByTestId("name")).toHaveTextContent("Nguyen Van A");
+    expect(window.sessionStorage.getItem(AUTH_SESSION_STORAGE_KEY)).toContain("temporary-token");
+    expect(window.localStorage.getItem(AUTH_SESSION_STORAGE_KEY)).toBeNull();
   });
 
   it("clears the stored session when refresh fails", async () => {

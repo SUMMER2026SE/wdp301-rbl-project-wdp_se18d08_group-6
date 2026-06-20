@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { AssetStatus, BookingStatus, PaymentStatus } from "@prisma/client";
 import { ok } from "../../common/api-response";
 import { PrismaService } from "../../prisma/prisma.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import type { CheckAvailabilityDto } from "./dto/check-availability.dto";
 import type { CreateBookingDto } from "./dto/create-booking.dto";
 import type { UpdateBookingStatusDto } from "./dto/update-booking-status.dto";
@@ -50,7 +51,10 @@ const STAFF_ALLOWED_TRANSITIONS: Partial<Record<BookingStatus, BookingStatus[]>>
 
 @Injectable()
 export class BookingsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   private parseDateRange(startDate: string, endDate: string) {
     const start = new Date(startDate);
@@ -174,6 +178,15 @@ export class BookingsService {
         },
       },
     });
+    await this.notificationsService.sendBookingNotification({
+      userId: booking.customerId,
+      templateKey: "booking.created",
+      bookingId: booking.id,
+      garmentName: null,
+      startDate: booking.rentalStartDate.toISOString().slice(0, 10),
+      endDate: booking.rentalEndDate.toISOString().slice(0, 10),
+    });
+
 
     return ok(this.serializeBooking(booking, days));
   }
@@ -255,12 +268,20 @@ export class BookingsService {
         },
       });
     });
+
+    await this.notificationsService.sendBookingNotification({
+      userId: booking.customerId,
+      templateKey: "booking.cancelled",
+      bookingId: updated.id,
+      garmentName: updated.items[0]?.garment?.name ?? null,
+      startDate: updated.rentalStartDate.toISOString().slice(0, 10),
+      endDate: updated.rentalEndDate.toISOString().slice(0, 10),
+      note: "�on thu� d� b? h?y.",
+    });
+
+
     return ok(this.serializeBooking(updated));
-  }
-
-  // ── Staff / Manager endpoints ──────────────────────────────────────────────
-
-  async findAllPending() {
+  }  async findAllPending() {
     const bookings = await this.prisma.booking.findMany({
       where: { status: BookingStatus.pending_confirmation },
       orderBy: { createdAt: "asc" },
@@ -427,6 +448,29 @@ export class BookingsService {
         },
       });
     });
+
+    await this.notificationsService.sendBookingNotification({
+      userId: booking.customerId,
+      templateKey: "booking.cancelled",
+      bookingId: updated.id,
+      garmentName: updated.items[0]?.garment?.name ?? null,
+      startDate: updated.rentalStartDate.toISOString().slice(0, 10),
+      endDate: updated.rentalEndDate.toISOString().slice(0, 10),
+      note: "�on thu� d� b? h?y.",
+    });
+
+    await this.notificationsService.sendBookingNotification({
+      userId: booking.customerId,
+      templateKey: "booking.status_changed",
+      bookingId: updated.id,
+      garmentName: updated.items[0]?.garment?.name ?? null,
+      startDate: updated.rentalStartDate.toISOString().slice(0, 10),
+      endDate: updated.rentalEndDate.toISOString().slice(0, 10),
+      statusLabel: dto.status,
+      note: dto.note ?? null,
+    });
+
+
     return ok(this.serializeBooking(updated));
   }
 
@@ -473,6 +517,7 @@ export class BookingsService {
         },
       },
     });
+
     return ok(this.serializeBooking(updated!));
   }
 
@@ -493,6 +538,7 @@ export class BookingsService {
         data: {
           bookingId: id, provider: isDelivery ? "online" : "manual", paymentMethod,
           amount: totalAmount + depositAmount, depositAmount, status: PaymentStatus.paid, paidAt: new Date(),
+
         },
       });
       await tx.bookingStatusHistory.create({
@@ -510,6 +556,18 @@ export class BookingsService {
         },
       });
     });
+
+    await this.notificationsService.sendBookingNotification({
+      userId: booking.customerId,
+      templateKey: "booking.payment_received",
+      bookingId: updated!.id,
+      garmentName: updated!.items[0]?.garment?.name ?? null,
+      startDate: updated!.rentalStartDate.toISOString().slice(0, 10),
+      endDate: updated!.rentalEndDate.toISOString().slice(0, 10),
+      amount: Number(booking.rentalTotal) + Number(booking.depositTotal),
+    });
+
+
     return ok(this.serializeBooking(updated!));
   }
 
@@ -530,7 +588,18 @@ export class BookingsService {
         });
         await tx.booking.update({ where: { id: booking.id }, data: { status: BookingStatus.cancelled } });
       });
+
+      await this.notificationsService.sendBookingNotification({
+        userId: booking.customerId,
+        templateKey: "booking.cancelled",
+        bookingId: booking.id,
+        garmentName: null,
+        startDate: booking.rentalStartDate.toISOString().slice(0, 10),
+        endDate: booking.rentalEndDate.toISOString().slice(0, 10),
+        note: "Đơn thuê đã tự động hủy do quá hạn thanh toán.",
+      });
       results.push({ bookingId: booking.id, released: booking.items.filter((i) => i.garmentAssetId).length });
+
     }
     return ok({ expiredCount: results.length, releasedAssets: results.reduce((s, r) => s + r.released, 0), bookings: results.map((r) => r.bookingId) });
   }
@@ -581,3 +650,8 @@ export class BookingsService {
     };
   }
 }
+
+
+
+
+

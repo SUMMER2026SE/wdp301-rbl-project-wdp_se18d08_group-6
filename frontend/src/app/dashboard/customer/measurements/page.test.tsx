@@ -79,10 +79,9 @@ describe("CustomerMeasurementsPage", () => {
 
     render(<CustomerMeasurementsPage />);
 
-    await waitFor(() => expect(screen.getByLabelText("Usual size")).toHaveValue("M"));
-    await user.clear(screen.getByLabelText("Usual size"));
-    await user.type(screen.getByLabelText("Usual size"), "L");
-    await user.click(screen.getByRole("button", { name: "Save measurements" }));
+    await waitFor(() => expect(screen.getByLabelText("Size thường dùng")).toHaveValue("M"));
+    await user.selectOptions(screen.getByLabelText("Size thường dùng"), "L");
+    await user.click(screen.getByRole("button", { name: /Cập nhật số đo/i }));
 
     await waitFor(() => expect(apiRequest).toHaveBeenNthCalledWith(2, "/users/me/measurements", {
       method: "PATCH",
@@ -95,6 +94,6 @@ describe("CustomerMeasurementsPage", () => {
         usualSize: "L",
       }),
     }));
-    expect(screen.getByText("Measurements saved successfully.")).toBeInTheDocument();
+    expect(screen.getByText(/Cập nhật số đo thành công/i)).toBeInTheDocument();
   });
 });

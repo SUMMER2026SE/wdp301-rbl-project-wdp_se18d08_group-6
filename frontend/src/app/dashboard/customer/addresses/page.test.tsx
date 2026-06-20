@@ -111,11 +111,11 @@ describe("CustomerAddressesPage", () => {
     render(<CustomerAddressesPage />);
 
     await waitFor(() => expect(screen.getByText("123 Le Loi, District 1, Ho Chi Minh City")).toBeInTheDocument());
-    await user.type(screen.getByLabelText("Receiver name"), "Kha Tran");
-    await user.type(screen.getByLabelText("Phone"), "0911222333");
-    await user.type(screen.getByLabelText("Address line"), "456 Nguyen Hue");
-    await user.type(screen.getByLabelText("City"), "Ho Chi Minh City");
-    await user.click(screen.getByRole("button", { name: "Add address" }));
+    await user.type(screen.getByLabelText(/Tên người nhận/i), "Kha Tran");
+    await user.type(screen.getByLabelText(/SĐT người nhận/i), "0911222333");
+    await user.type(screen.getByLabelText(/Địa chỉ cụ thể/i), "456 Nguyen Hue");
+    await user.type(screen.getByLabelText(/Tỉnh\/Thành phố/i), "Ho Chi Minh City");
+    await user.click(screen.getByRole("button", { name: /Lưu địa chỉ mới/i }));
 
     await waitFor(() => expect(apiRequest).toHaveBeenNthCalledWith(2, "/users/me/addresses", {
       method: "POST",
@@ -130,6 +130,6 @@ describe("CustomerAddressesPage", () => {
       }),
     }));
     await waitFor(() => expect(screen.getByText("456 Nguyen Hue, Ho Chi Minh City")).toBeInTheDocument());
-    expect(screen.getByText("Address saved successfully.")).toBeInTheDocument();
+    expect(screen.getByText(/Thêm địa chỉ thành công/i)).toBeInTheDocument();
   });
 });

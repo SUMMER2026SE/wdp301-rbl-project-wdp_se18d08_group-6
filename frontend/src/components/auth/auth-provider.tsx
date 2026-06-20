@@ -41,7 +41,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = useCallback((nextSession: AuthSession) => {
-    const normalizedSession = { accessToken: nextSession.accessToken, user: toAuthenticatedUser(nextSession.user) };
+    const normalizedSession = {
+      accessToken: nextSession.accessToken,
+      user: toAuthenticatedUser(nextSession.user),
+      persist: nextSession.persist ?? true,
+    };
     storeAuthSession(normalizedSession);
     setSession(normalizedSession);
     setStatus("authenticated");
@@ -53,7 +57,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return currentSession;
       }
 
-      const nextSession = { ...currentSession, user: toAuthenticatedUser(user) };
+      const nextSession = {
+        ...currentSession,
+        user: toAuthenticatedUser(user),
+        persist: currentSession.persist ?? true,
+      };
       storeAuthSession(nextSession);
       return nextSession;
     });
@@ -77,7 +85,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return null;
     }
 
-    const nextSession = { accessToken: currentSession.accessToken, user: toAuthenticatedUser(result.data) };
+    const nextSession = {
+      accessToken: currentSession.accessToken,
+      user: toAuthenticatedUser(result.data),
+      persist: currentSession.persist ?? true,
+    };
     signIn(nextSession);
     return nextSession.user;
   }, [signIn, signOut]);

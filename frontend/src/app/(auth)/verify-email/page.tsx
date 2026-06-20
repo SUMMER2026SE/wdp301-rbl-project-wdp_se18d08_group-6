@@ -86,7 +86,7 @@ function VerifyEmailContent() {
 
       setSuccess("Xác thực thành công! Đang chuyển hướng về trang đăng nhập...");
       setTimeout(() => {
-        router.push(`/login?email=${encodeURIComponent(email)}`);
+        router.push(`/login?email=${encodeURIComponent(email)}&verified=1`);
       }, 1500);
     } finally {
       setLoading(false);
