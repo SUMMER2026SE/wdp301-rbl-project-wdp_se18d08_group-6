@@ -6,6 +6,8 @@ type PublicNavKey = "collection" | "heritage" | "atelier" | "erp";
 type BookingStepKey = (typeof bookingFlowSteps)[number]["key"];
 type StaffNavKey = "overview" | "inspection";
 type ManagerNavKey = "overview" | "inventory" | "inspection-log" | "laundry" | "damaged" | "finance" | "assets";
+type AdminNavKey = "overview" | "roles" | "config" | "logs";
+
 
 function navClass(active: boolean) {
   return active
@@ -380,3 +382,124 @@ export function ManagerPortalShell({
     </div>
   );
 }
+
+export function AdminPortalShell({
+  active,
+  title,
+  subtitle,
+  onTabChange,
+  adminName = "Quản trị viên",
+  adminEmail,
+  onProfile,
+  onSignOut,
+  currentDateLabel = "",
+  children,
+}: {
+  active: AdminNavKey;
+  title: string;
+  subtitle: string;
+  onTabChange?: (key: AdminNavKey) => void;
+  adminName?: string;
+  adminEmail?: string | null;
+  onProfile?: () => void;
+  onSignOut?: () => void;
+  currentDateLabel?: string;
+  children: ReactNode;
+}) {
+  const initials = adminName
+    .split(" ")
+    .filter(Boolean)
+    .slice(-2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "AD";
+
+  const items = [
+    { key: "overview", label: "Tổng quan", icon: "dashboard", href: "/dashboard/admin" },
+    { key: "roles", label: "Vai trò & Tài khoản", icon: "admin_panel_settings", href: "/dashboard/admin#roles" },
+    { key: "config", label: "Cấu hình hệ thống", icon: "psychology", href: "/dashboard/admin#config" },
+    { key: "logs", label: "Nhật ký kiểm soát", icon: "history_edu", href: "/dashboard/admin#logs" },
+  ] as const;
+
+  return (
+    <div className="min-h-screen bg-[#f9f5f0] text-ink lg:flex">
+      {/* Side Navigation */}
+      <aside className="hidden w-72 shrink-0 flex-col border-r border-sand bg-[#fff4ef] p-4 lg:flex">
+        <div className="mb-8 px-3 pt-4">
+          <h1 className="font-display text-3xl text-lotus">Cổ Phục Rental</h1>
+          <p className="mt-1 text-sm text-stone-500">Hệ thống quản trị</p>
+        </div>
+        <div className="mb-8 flex items-center gap-4 rounded-xl border border-sand/70 bg-white p-4">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#ffe9e6] font-display text-xl text-lotus">
+            {initials}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-ink">{adminName}</p>
+            <p className="truncate text-xs uppercase tracking-[0.16em] text-antique">{adminEmail ?? "Super Admin"}</p>
+          </div>
+        </div>
+        <nav className="flex flex-1 flex-col gap-2">
+          {items.map((item) => {
+            const isActive = item.key === active;
+            return (
+              <a
+                key={item.key}
+                href={item.href}
+                onClick={(e) => {
+                  e.preventDefault();
+                  onTabChange?.(item.key);
+                }}
+                className={isActive
+                  ? "flex items-center gap-3 rounded-xl bg-[#ffe9e6] px-4 py-3 text-sm font-semibold text-lotus"
+                  : "flex items-center gap-3 rounded-xl px-4 py-3 text-sm text-stone-600 transition hover:bg-white hover:text-lotus"}
+              >
+                <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
+                <span>{item.label}</span>
+              </a>
+            );
+          })}
+        </nav>
+        <div className="mt-6 border-t border-sand pt-4">
+          <button type="button" className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm text-stone-600 transition hover:bg-white hover:text-lotus">
+            <span className="material-symbols-outlined text-[20px]">support_agent</span>
+            <span>Hỗ trợ quản trị</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content Area */}
+      <div className="min-w-0 flex-1">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-sand bg-[#fff8f6]/95 px-4 backdrop-blur md:px-6 lg:px-8">
+          <div>
+            <h2 className="font-display text-3xl text-lotus">Cổ Phục Rental</h2>
+            <p className="text-xs uppercase tracking-[0.18em] text-stone-500">{subtitle}</p>
+          </div>
+          <div className="hidden items-center gap-3 md:flex">
+            <div className="rounded-full border border-sand bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+              {currentDateLabel || "Đang đồng bộ"}
+            </div>
+            <button type="button" onClick={onProfile} className="inline-flex items-center gap-2 rounded-full border border-sand bg-white px-3 py-2 text-sm font-semibold text-stone-600 transition hover:border-lotus hover:text-lotus">
+              <span className="material-symbols-outlined text-[18px]">account_circle</span>
+              Hồ sơ
+            </button>
+            <button type="button" onClick={onSignOut} className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100">
+              <span className="material-symbols-outlined text-[18px]">logout</span>
+              Đăng xuất
+            </button>
+          </div>
+        </header>
+
+        <main className="mx-auto max-w-[1440px] px-4 py-8 sm:px-6 lg:px-8">
+          <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h1 className="font-display text-4xl text-ink sm:text-5xl">{title}</h1>
+              <p className="mt-2 text-base text-stone-600">{subtitle}</p>
+            </div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-bronze">Super Admin</p>
+          </div>
+          {children}
+        </main>
+      </div>
+    </div>
+  );
+}
+

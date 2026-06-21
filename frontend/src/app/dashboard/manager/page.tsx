@@ -23,8 +23,8 @@ getGarments,
   completeMaintenanceJob,
   createGarment,
   updateGarment,
-  createGarmentCategory,
   addGarmentImage,
+  removeGarmentImage,
   getGarmentCategories,
   createAsset,
   getAllAssets,
@@ -34,7 +34,6 @@ getGarments,
   type GarmentSummary,
   type GarmentDetail,
   type GarmentCategory,
-  type GarmentImage,
   type AssetDetail,
   type AssetInspectionHistory,
   type InspectionLogEntry,
@@ -163,7 +162,6 @@ export default function ManagerDashboardPage() {
   const [garmentModalOpen, setGarmentModalOpen] = useState(false);
   const [editingGarment, setEditingGarment] = useState<GarmentDetail | null>(null);
   const [assetModalOpen, setAssetModalOpen] = useState(false);
-  const [categorySubmitting, setCategorySubmitting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -232,22 +230,10 @@ export default function ManagerDashboardPage() {
     });
   }
 
-  async function handleCreateCategory(name: string) {
-    const trimmed = name.trim();
-    if (!trimmed) return null;
-    setCategorySubmitting(true);
-    setErrorMsg(null);
-    const res = await createGarmentCategory(trimmed);
-    setCategorySubmitting(false);
-    if (res.success && res.data) {
-      await refreshCategories();
-      return res.data;
-    }
-    setErrorMsg(res.message ?? "Không thể tạo danh mục.");
-    return null;
-  }
-
-  async function handleCreateGarment(payload: Parameters<typeof createGarment>[0], imagesToAdd: string[]) {
+  async function handleCreateGarment(
+    payload: Parameters<typeof createGarment>[0],
+    imagesToAdd: string[],
+  ) {
     setSubmitting(true);
     setErrorMsg(null);
     const res = await createGarment(payload);
@@ -265,33 +251,37 @@ export default function ManagerDashboardPage() {
     setSubmitting(false);
   }
 
-  async function handleUpdateGarment(id: string, payload: Parameters<typeof updateGarment>[1], imagesToAdd: string[]) {
+  async function handleUpdateGarment(
+    id: string,
+    payload: Parameters<typeof updateGarment>[1],
+    imagesToAdd: string[],
+    imageIdsToRemove: string[],
+  ) {
     setSubmitting(true);
     setErrorMsg(null);
     const res = await updateGarment(id, payload);
     if (res.success) {
+      let imageOpsFailed = false;
+      for (const imageId of imageIdsToRemove) {
+        const removeRes = await removeGarmentImage(id, imageId);
+        if (!removeRes.success) imageOpsFailed = true;
+      }
       for (const imgUrl of imagesToAdd) {
-        await addGarmentImage(id, { imageUrl: imgUrl });
+        const addRes = await addGarmentImage(id, { imageUrl: imgUrl });
+        if (!addRes.success) imageOpsFailed = true;
       }
       await refreshGarments();
+      if (imageOpsFailed) {
+        setErrorMsg("Không thể cập nhật đầy đủ ảnh. Vui lòng thử lại.");
+        setSubmitting(false);
+        return;
+      }
       setGarmentModalOpen(false);
       setEditingGarment(null);
     } else {
       setErrorMsg(res.message ?? "Không thể cập nhật trang phục.");
     }
     setSubmitting(false);
-  }
-
-  async function handleAddImage(garmentId: string, imageUrl: string) {
-    setErrorMsg(null);
-    const res = await addGarmentImage(garmentId, { imageUrl });
-    if (!res.success) {
-      setErrorMsg(res.message ?? "Không thể thêm ảnh.");
-      return;
-    }
-    await refreshGarments();
-    const detail = await getGarmentById(garmentId);
-    if (detail.success && detail.data) setEditingGarment(detail.data as GarmentDetail);
   }
 
   async function handleCreateAsset(payload: Parameters<typeof createAsset>[0]) {
@@ -595,14 +585,13 @@ export default function ManagerDashboardPage() {
           onCreateGarment={openCreateGarment}
           onEditGarment={openEditGarment}
           onCreateAsset={() => setAssetModalOpen(true)}
-          onAddImage={handleAddImage}
-          onCreateCategory={handleCreateCategory}
-          categorySubmitting={categorySubmitting}
           onUpdateAssetStatus={handleUpdateAssetStatus}
           garmentModalOpen={garmentModalOpen}
           editingGarment={editingGarment}
           onCloseGarmentModal={() => { setGarmentModalOpen(false); setEditingGarment(null); }}
-          onSubmitGarment={(id, p) => id ? handleUpdateGarment(id, p, []) : handleCreateGarment(p, [])}
+          onSubmitGarment={(id, p, images, imageIdsToRemove) => id
+            ? handleUpdateGarment(id, p, images, imageIdsToRemove)
+            : handleCreateGarment(p, images)}
           submitting={submitting}
           assetModalOpen={assetModalOpen}
           onCloseAssetModal={() => setAssetModalOpen(false)}
@@ -922,7 +911,7 @@ function InventoryTab({
   garments, categories, selectedGarmentId, onSelectGarment,
   assets, assetsLoading, selectedAssetId, onSelectAsset,
   selectedAsset, assetHistory, assetHistoryLoading,
-  onCreateGarment, onEditGarment, onCreateAsset, onAddImage, onCreateCategory, categorySubmitting, onUpdateAssetStatus,
+  onCreateGarment, onEditGarment, onCreateAsset, onUpdateAssetStatus,
   garmentModalOpen, editingGarment, onCloseGarmentModal, onSubmitGarment, submitting,
   assetModalOpen, onCloseAssetModal, onSubmitAsset,
 }: {
@@ -940,14 +929,16 @@ function InventoryTab({
   onCreateGarment: () => void;
   onEditGarment: (g: GarmentSummary) => void;
   onCreateAsset: () => void;
-  onAddImage: (garmentId: string, imageUrl: string) => Promise<void>;
-  onCreateCategory: (name: string) => Promise<GarmentCategory | null>;
-  categorySubmitting: boolean;
   onUpdateAssetStatus: (assetId: string, status: string) => Promise<void>;
   garmentModalOpen: boolean;
   editingGarment: GarmentDetail | null;
   onCloseGarmentModal: () => void;
-  onSubmitGarment: (id: string | null, payload: Parameters<typeof createGarment>[0]) => Promise<void>;
+  onSubmitGarment: (
+    id: string | null,
+    payload: Parameters<typeof createGarment>[0],
+    imagesToAdd: string[],
+    imageIdsToRemove: string[],
+  ) => Promise<void>;
   submitting: boolean;
   assetModalOpen: boolean;
   onCloseAssetModal: () => void;
@@ -972,6 +963,8 @@ function InventoryTab({
       return byText && byStatus;
     });
   }, [assets, assetSearch, assetStatusFilter]);
+
+  const selectedGarment = garments.find((g) => g.id === selectedGarmentId) ?? null;
 
   return (
     <div className="flex h-[calc(100vh-240px)] -mx-4 sm:-mx-6 lg:-mx-8 overflow-hidden border-y border-sand bg-white">
@@ -1003,7 +996,7 @@ function InventoryTab({
                 return (
                   <div
                     key={g.id}
-                    className={`rounded-lg border overflow-hidden text-left transition relative ${
+                    className={`group rounded-lg border overflow-hidden text-left transition relative ${
                       isSelected ? "border-lotus ring-2 ring-lotus/20" : "border-outline-variant hover:shadow-md"
                     }`}
                   >
@@ -1012,9 +1005,16 @@ function InventoryTab({
                     onClick={() => onSelectGarment(g.id)}
                     className="w-full text-left"
                   >
-                    <div className="aspect-[3/4] relative bg-surface-container-highest flex items-center justify-center">
-                      <span className="material-symbols-outlined text-[48px] text-antique/30">checkroom</span>
-                      <div className="absolute top-2 left-2 bg-surface/80 backdrop-blur-sm px-2 py-0.5 rounded text-[10px] font-semibold text-ink">
+                    <div className="aspect-[3/4] relative overflow-hidden bg-[#f8dcd8]">
+                      {g.images && g.images.length > 0 ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={g.images[0].imageUrl} alt={g.name} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+                      ) : (
+                        <div className="flex h-full items-center justify-center bg-surface-container-highest">
+                          <span className="material-symbols-outlined text-[48px] text-antique/30">checkroom</span>
+                        </div>
+                      )}
+                      <div className="absolute top-2 left-2 rounded bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-ink backdrop-blur-sm">
                         {g.categoryName ?? "Trang phục"}
                       </div>
                     </div>
@@ -1128,9 +1128,21 @@ function InventoryTab({
                   </button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-5">
-                  {/* Image placeholder */}
-                  <div className="aspect-square bg-surface-container-highest rounded border border-outline-variant flex items-center justify-center">
-                    <span className="material-symbols-outlined text-[48px] text-antique/30">checkroom</span>
+                  {/* Garment preview */}
+                  <div className="overflow-hidden rounded border border-outline-variant bg-[#f8dcd8]">
+                    <div className="aspect-square">
+                      {selectedGarment?.images && selectedGarment.images.length > 0 ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={selectedGarment.images[0].imageUrl} alt={selectedGarment.name} className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full items-center justify-center bg-surface-container-highest">
+                          <span className="material-symbols-outlined text-[48px] text-antique/30">checkroom</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="border-t border-outline-variant bg-white px-3 py-2 text-xs text-stone-500">
+                      {selectedGarment?.name ?? selectedAsset.garmentName}
+                    </div>
                   </div>
 
                   {/* Status with update control */}
@@ -1210,11 +1222,8 @@ function InventoryTab({
           garment={editingGarment}
           categories={categories}
           submitting={submitting}
-          categorySubmitting={categorySubmitting}
-          onCreateCategory={onCreateCategory}
-          onAddImage={onAddImage}
           onClose={onCloseGarmentModal}
-          onSubmit={(payload) => onSubmitGarment(editingGarment?.id ?? null, payload)}
+          onSubmit={(payload, imagesToAdd, imageIdsToRemove) => onSubmitGarment(editingGarment?.id ?? null, payload, imagesToAdd, imageIdsToRemove)}
         />
       )}
 
@@ -1243,7 +1252,11 @@ function GarmentFormModal({
   categories: GarmentCategory[];
   submitting: boolean;
   onClose: () => void;
-  onSubmit: (payload: Parameters<typeof createGarment>[0], imagesToAdd: string[]) => void;
+  onSubmit: (
+    payload: Parameters<typeof createGarment>[0],
+    imagesToAdd: string[],
+    imageIdsToRemove: string[],
+  ) => void;
   onCreateCategory: (name: string) => Promise<GarmentCategory | null>;
   categorySubmitting: boolean;
   onAddImage: (garmentId: string, imageUrl: string) => Promise<void>;
@@ -1255,9 +1268,9 @@ function GarmentFormModal({
   const [dailyPrice, setDailyPrice] = useState(String(garment?.dailyPrice ?? ""));
   const [depositAmount, setDepositAmount] = useState(String(garment?.depositAmount ?? ""));
   
-  // Image states
+  const [existingImages, setExistingImages] = useState(garment?.images ?? []);
   const [pendingImages, setPendingImages] = useState<string[]>([]);
-  const [imageUrl, setImageUrl] = useState("");
+  const [removedImageIds, setRemovedImageIds] = useState<string[]>([]);
   const [uploadingImage, setUploadingImage] = useState(false);
 
   function handleSubmit(e: React.FormEvent) {
@@ -1270,34 +1283,36 @@ function GarmentFormModal({
       color: color || undefined,
       dailyPrice: Number(dailyPrice),
       depositAmount: Number(depositAmount),
-    }, pendingImages);
+    }, pendingImages, removedImageIds);
+  }
+
+  function handleRemoveExistingImage(imageId: string) {
+    setExistingImages((prev) => prev.filter((img) => img.id !== imageId));
+    setRemovedImageIds((prev) => (prev.includes(imageId) ? prev : [...prev, imageId]));
   }
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
     setUploadingImage(true);
-    const formData = new FormData();
-    formData.append("file", file);
     try {
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      const data = await res.json();
-      if (data.success && data.url) {
-        setPendingImages((prev) => [...prev, data.url]);
-      } else {
-        alert("Upload thất bại: " + (data.message || JSON.stringify(data)));
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch("/api/upload", { method: "POST", body: formData });
+        const data = await res.json();
+        if (data.success && data.url) {
+          setPendingImages((prev) => [...prev, data.url]);
+        } else {
+          alert("Upload thất bại: " + (data.message || JSON.stringify(data)));
+        }
       }
     } catch (err: any) {
       alert("Lỗi upload: " + err.message);
     } finally {
+      e.target.value = "";
       setUploadingImage(false);
     }
-  }
-
-  function handleAddImageUrl() {
-    if (!imageUrl.trim()) return;
-    setPendingImages((prev) => [...prev, imageUrl.trim()]);
-    setImageUrl("");
   }
 
   return (
@@ -1353,44 +1368,63 @@ function GarmentFormModal({
           <div className="flex items-center justify-between gap-3 mb-3">
             <div>
               <h4 className="text-sm font-semibold text-ink">Ảnh trang phục</h4>
-              <p className="text-xs text-stone-500">Tải ảnh lên hoặc dùng URL để hiển thị.</p>
+              <p className="text-xs text-stone-500">Ảnh hiện có và ảnh mới sẽ được quản lý riêng.</p>
             </div>
-            <span className="text-xs text-stone-400">{(garment?.images?.length ?? 0) + pendingImages.length} ảnh</span>
+            <span className="text-xs text-stone-400">{existingImages.length + pendingImages.length} ảnh</span>
           </div>
-          
-          {(garment?.images && garment.images.length > 0 || pendingImages.length > 0) && (
-            <div className="mt-3 mb-4 flex gap-2 overflow-x-auto pb-2">
-              {garment?.images?.map((img) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img key={img.id} src={img.imageUrl} alt={img.altText ?? "Ảnh trang phục"} className="h-20 w-16 flex-shrink-0 rounded border border-sand object-cover" />
-              ))}
-              {pendingImages.map((imgUrl, i) => (
-                <div key={i} className="relative group flex-shrink-0">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={imgUrl} alt="Pending" className="h-20 w-16 rounded border border-lotus object-cover opacity-80" />
-                  <div className="absolute inset-0 rounded bg-lotus/10 pointer-events-none" />
-                  <button type="button" onClick={() => setPendingImages(prev => prev.filter((_, idx) => idx !== i))} className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white shadow opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span className="material-symbols-outlined text-[10px]">close</span>
-                  </button>
-                </div>
-              ))}
+
+          {existingImages.length > 0 && (
+            <div className="mt-3">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Ảnh hiện có</p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {existingImages.map((img, index) => (
+                  <div key={img.id} className="group relative overflow-hidden rounded border border-sand bg-white">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={img.imageUrl} alt={img.altText ?? "Ảnh trang phục"} className="h-24 w-full object-cover" />
+                    <div className="absolute left-2 top-2 rounded bg-white/90 px-1.5 py-0.5 text-[10px] font-semibold text-ink">
+                      {index === 0 ? "Ảnh chính" : `Ảnh ${index + 1}`}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveExistingImage(img.id)}
+                      className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80"
+                      aria-label="Xóa ảnh"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">close</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {pendingImages.length > 0 && (
+            <div className="mt-4">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Ảnh mới</p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {pendingImages.map((imgUrl, i) => (
+                  <div key={`${imgUrl}-${i}`} className="group relative overflow-hidden rounded border border-lotus bg-white">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={imgUrl} alt="Pending" className="h-24 w-full object-cover opacity-90" />
+                    <button
+                      type="button"
+                      onClick={() => setPendingImages((prev) => prev.filter((_, idx) => idx !== i))}
+                      className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80"
+                      aria-label="Xóa ảnh mới"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">close</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="rounded border border-sand bg-white p-3">
               <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-stone-500">Tải ảnh lên (File)</label>
-              <input type="file" accept="image/*" onChange={handleFileUpload} disabled={uploadingImage} className="block w-full text-xs text-stone-500 file:mr-3 file:rounded file:border-0 file:bg-sand/30 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-ink hover:file:bg-sand/50" />
+              <input type="file" accept="image/*" multiple onChange={handleFileUpload} disabled={uploadingImage} className="block w-full text-xs text-stone-500 file:mr-3 file:rounded file:border-0 file:bg-sand/30 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-ink hover:file:bg-sand/50" />
               {uploadingImage && <p className="mt-1 text-[10px] text-stone-400">Đang tải lên...</p>}
-            </div>
-            <div className="rounded border border-sand bg-white p-3">
-              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-stone-500">Hoặc dùng URL ảnh</label>
-              <div className="flex gap-2">
-                <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="min-w-0 flex-1 rounded border border-sand px-2 py-1.5 text-xs outline-none focus:border-antique" placeholder="https://..." />
-                <button type="button" disabled={!imageUrl.trim()} onClick={handleAddImageUrl} className="rounded bg-lotus px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-oxblood disabled:opacity-50">
-                  Thêm
-                </button>
-              </div>
             </div>
           </div>
         </div>

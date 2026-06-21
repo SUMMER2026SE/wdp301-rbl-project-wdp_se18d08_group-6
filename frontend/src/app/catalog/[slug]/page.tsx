@@ -113,22 +113,13 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
             {/* Image */}
             <div className="space-y-4 lg:sticky lg:top-28 lg:self-start">
               <div className="flex aspect-[3/4] items-center justify-center overflow-hidden rounded-lg border border-sand bg-[#ffe9e6]">
-                {garment.images && garment.images.length > 0 ? (
+                {group.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={garment.images[0].imageUrl} alt={garment.name} className="h-full w-full object-cover" />
+                  <img src={group.imageUrl} alt={group.name} className="h-full w-full object-cover" />
                 ) : (
                   <span className="material-symbols-outlined text-[80px] text-antique/30">checkroom</span>
                 )}
               </div>
-              {/* Thumbnail strip */}
-              {garment.images && garment.images.length > 1 && (
-                <div className="flex gap-2 overflow-x-auto">
-                  {garment.images.map((img) => (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img key={img.id} src={img.imageUrl} alt={img.altText ?? ''} className="h-20 w-16 flex-shrink-0 rounded border border-sand object-cover" />
-                  ))}
-                </div>
-              )}
             </div>
 
             <div className="pt-2 lg:pt-6">
