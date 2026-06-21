@@ -662,9 +662,6 @@ export default function ManagerDashboardPage() {
           garment={editingGarment}
           categories={categories}
           submitting={submitting}
-          onCreateCategory={handleCreateCategory}
-          categorySubmitting={categorySubmitting}
-          onAddImage={handleAddImage}
           onClose={() => { setGarmentModalOpen(false); setEditingGarment(null); }}
           onSubmit={(payload, images, removedImageIds) => {
             if (editingGarment) handleUpdateGarment(editingGarment.id, payload, images, removedImageIds);
@@ -1249,7 +1246,7 @@ function InventoryTab({
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function GarmentFormModal({
-  garment, categories, submitting, onClose, onSubmit, onCreateCategory, categorySubmitting, onAddImage,
+  garment, categories, submitting, onClose, onSubmit,
 }: {
   garment: GarmentDetail | null;
   categories: GarmentCategory[];
