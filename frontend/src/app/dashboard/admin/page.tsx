@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
+import { NotificationConfigPanel } from "@/components/admin/notification-config-panel";
 import { AdminPortalShell } from "@/components/heritage/ui";
 import {
   getAdminOverview,
@@ -18,8 +19,8 @@ import {
   type AdminSettingEntry,
 } from "@/lib/api";
 
-type Tab = "overview" | "roles" | "config" | "logs";
-const VALID_TABS: Tab[] = ["overview", "roles", "config", "logs"];
+type Tab = "overview" | "roles" | "config" | "notification-config" | "logs";
+const VALID_TABS: Tab[] = ["overview", "roles", "config", "notification-config", "logs"];
 
 function tabFromHash(): Tab {
   if (typeof window === "undefined") return "overview";
@@ -39,6 +40,10 @@ const TAB_META: Record<Tab, { title: string; subtitle: string }> = {
   config: {
     title: "Cấu Hình Hệ Thống & AI",
     subtitle: "Quản lý tham số AI Engine, phân bổ tính toán và tích hợp cổng thanh toán.",
+  },
+  "notification-config": {
+    title: "Cấu Hình Thông Báo",
+    subtitle: "Quản lý kênh gửi, mẫu thông báo và gửi thử email từ hệ thống.",
   },
   logs: {
     title: "Nhật Ký Kiểm Toán",
@@ -841,6 +846,7 @@ export default function AdminOverviewPage() {
           TAB: SYSTEM CONFIG & AI
       ──────────────────────────────────────────────────────── */}
       {tab === "config" && (
+        <>
         <form onSubmit={handleSaveConfig} className="grid gap-8 lg:grid-cols-12 items-start">
           {/* AI Settings Form */}
           <div className="lg:col-span-8 space-y-6">
@@ -1104,6 +1110,11 @@ export default function AdminOverviewPage() {
             </div>
           </div>
         </form>
+        </>
+      )}
+
+      {tab === "notification-config" && (
+        <NotificationConfigPanel />
       )}
 
       {/* ────────────────────────────────────────────────────────

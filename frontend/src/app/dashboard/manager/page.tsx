@@ -647,12 +647,9 @@ export default function ManagerDashboardPage() {
           garment={editingGarment}
           categories={categories}
           submitting={submitting}
-          onCreateCategory={handleCreateCategory}
-          categorySubmitting={categorySubmitting}
-          onAddImage={handleAddImage}
           onClose={() => { setGarmentModalOpen(false); setEditingGarment(null); }}
-          onSubmit={(payload, images) => {
-            if (editingGarment) handleUpdateGarment(editingGarment.id, payload, images);
+          onSubmit={(payload, images, removedImageIds) => {
+            if (editingGarment) handleUpdateGarment(editingGarment.id, payload, images, removedImageIds);
             else handleCreateGarment(payload, images);
           }}
         />
@@ -1246,7 +1243,7 @@ function InventoryTab({
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function GarmentFormModal({
-  garment, categories, submitting, onClose, onSubmit, onCreateCategory, categorySubmitting, onAddImage,
+  garment, categories, submitting, onClose, onSubmit,
 }: {
   garment: GarmentDetail | null;
   categories: GarmentCategory[];
@@ -1257,9 +1254,6 @@ function GarmentFormModal({
     imagesToAdd: string[],
     imageIdsToRemove: string[],
   ) => void;
-  onCreateCategory: (name: string) => Promise<GarmentCategory | null>;
-  categorySubmitting: boolean;
-  onAddImage: (garmentId: string, imageUrl: string) => Promise<void>;
 }) {  const [name, setName] = useState(garment?.name ?? "");
   const [categoryId, setCategoryId] = useState(garment?.categoryId ?? "");
   const [description, setDescription] = useState(garment?.description ?? "");
@@ -1854,6 +1848,7 @@ function ShortcutButton({
 }
 
 
+<<<<<<< HEAD
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TAB: Refunds (Duyệt hoàn cọc)
