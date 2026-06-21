@@ -8,7 +8,7 @@ import { getRoleLabel, resolveDashboardPath } from "@/lib/auth";
 import { publicNavItems } from "@/lib/site-content";
 
 const authRoutes = new Set(["/login", "/register", "/verify-email", "/forgot-password", "/reset-password"]);
-const hiddenPrefixes = ["/catalog", "/booking", "/try-on", "/dashboard/customer", "/dashboard/staff", "/dashboard/manager"];
+const hiddenPrefixes = ["/catalog", "/booking", "/try-on", "/dashboard/customer", "/dashboard/staff", "/dashboard/manager", "/dashboard/admin"];
 
 const appNavItems = [
   { href: "/catalog", label: "Danh mục" },

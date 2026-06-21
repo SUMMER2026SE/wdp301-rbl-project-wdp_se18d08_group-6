@@ -6,7 +6,7 @@ type PublicNavKey = "collection" | "heritage" | "atelier" | "erp";
 type BookingStepKey = (typeof bookingFlowSteps)[number]["key"];
 type StaffNavKey = "overview" | "inspection";
 type ManagerNavKey = "overview" | "inventory" | "inspection-log" | "laundry" | "damaged" | "finance" | "assets";
-type AdminNavKey = "overview" | "roles" | "config" | "logs";
+type AdminNavKey = "overview" | "roles" | "config" | "notification-config" | "logs";
 
 
 function navClass(active: boolean) {
@@ -417,6 +417,7 @@ export function AdminPortalShell({
     { key: "overview", label: "Tổng quan", icon: "dashboard", href: "/dashboard/admin" },
     { key: "roles", label: "Vai trò & Tài khoản", icon: "admin_panel_settings", href: "/dashboard/admin#roles" },
     { key: "config", label: "Cấu hình hệ thống", icon: "psychology", href: "/dashboard/admin#config" },
+    { key: "notification-config", label: "Cấu hình thông báo", icon: "notifications", href: "/dashboard/admin#notification-config" },
     { key: "logs", label: "Nhật ký kiểm soát", icon: "history_edu", href: "/dashboard/admin#logs" },
   ] as const;
 
@@ -502,4 +503,3 @@ export function AdminPortalShell({
     </div>
   );
 }
-
