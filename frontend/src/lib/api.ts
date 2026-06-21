@@ -715,6 +715,117 @@ export async function createAsset(payload: {
     body: JSON.stringify(payload),
   });
 }
+
+// ---------- Admin API ----------
+
+export type AdminSummaryCard = {
+  key: string;
+  label: string;
+  value: number;
+  hint: string;
+  tone: "rose" | "emerald" | "amber" | "slate";
+};
+
+export type AdminQueueCard = {
+  key: string;
+  label: string;
+  value: number;
+  hint: string;
+  tone: "rose" | "emerald" | "amber" | "slate";
+};
+
+export type AdminOverviewResponse = {
+  summary: AdminSummaryCard[];
+  queues: AdminQueueCard[];
+  assetBreakdown: { status: string; label: string; count: number }[];
+  bookingBreakdown: { status: string; label: string; count: number }[];
+  recentActivity: AdminAuditLogEntry[];
+  settingsSnapshot: AdminSettingEntry[];
+};
+
+export type AdminAuditLogEntry = {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  metadata: any;
+  actorId: string | null;
+  actorName: string | null;
+  actorEmail: string | null;
+  actorRole: string | null;
+  createdAt: string;
+  summary: string;
+};
+
+export type AdminUserEntry = {
+  id: string;
+  email: string;
+  role: string;
+  isActive: boolean;
+  isEmailVerified: boolean;
+  fullName: string | null;
+  phone: string | null;
+  createdAt: string;
+  updatedAt: string;
+  bookingCount: number;
+};
+
+export type AdminSettingEntry = {
+  key: string;
+  label: string;
+  description: string;
+  kind: "number" | "text" | "json";
+  value: any;
+  updatedAt: string | null;
+  isDefault: boolean;
+};
+
+export async function getAdminOverview() {
+  return apiRequest<AdminOverviewResponse>("/admin/overview");
+}
+
+export async function getAdminUsers(query?: { search?: string; role?: string; status?: string; page?: number; limit?: number }) {
+  const params = new URLSearchParams();
+  if (query?.search) params.append("search", query.search);
+  if (query?.role) params.append("role", query.role);
+  if (query?.status) params.append("status", query.status);
+  if (query?.page) params.append("page", String(query.page));
+  if (query?.limit) params.append("limit", String(query.limit));
+  
+  const queryStr = params.toString() ? `?${params.toString()}` : "";
+  return apiRequest<{ items: AdminUserEntry[]; total: number; page: number; limit: number }>(`/admin/users${queryStr}`);
+}
+
+export async function updateAdminUser(userId: string, payload: { fullName?: string | null; phone?: string | null; role?: string; isActive?: boolean }) {
+  return apiRequest<AdminUserEntry>(`/admin/users/${userId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getAdminAuditLogs(query?: { search?: string; action?: string; entityType?: string; page?: number; limit?: number }) {
+  const params = new URLSearchParams();
+  if (query?.search) params.append("search", query.search);
+  if (query?.action) params.append("action", query.action);
+  if (query?.entityType) params.append("entityType", query.entityType);
+  if (query?.page) params.append("page", String(query.page));
+  if (query?.limit) params.append("limit", String(query.limit));
+  
+  const queryStr = params.toString() ? `?${params.toString()}` : "";
+  return apiRequest<{ items: AdminAuditLogEntry[]; total: number; page: number; limit: number }>(`/admin/audit-logs${queryStr}`);
+}
+
+export async function getAdminSettings() {
+  return apiRequest<AdminSettingEntry[]>("/admin/settings");
+}
+
+export async function updateAdminSetting(key: string, value: any) {
+  return apiRequest<AdminSettingEntry>(`/admin/settings/${key}`, {
+    method: "PATCH",
+    body: JSON.stringify({ value }),
+  });
+}
+
 // ---------- Notifications ----------
 
 export type NotificationItem = {

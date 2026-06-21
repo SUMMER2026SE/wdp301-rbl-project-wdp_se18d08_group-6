@@ -1,12 +1,13 @@
-import { IsNotEmpty, IsOptional, IsString, IsUUID } from "class-validator";
+import { IsNotEmpty, IsOptional, IsString, Matches } from "class-validator";
+import { CANONICAL_UUID_REGEX } from "../../../common/validation/uuid-pattern";
 
 export class CreateInspectionDto {
   @IsNotEmpty()
-  @IsUUID()
+  @Matches(CANONICAL_UUID_REGEX, { message: "bookingId must be a UUID" })
   bookingId!: string;
 
   @IsNotEmpty()
-  @IsUUID()
+  @Matches(CANONICAL_UUID_REGEX, { message: "garmentAssetId must be a UUID" })
   garmentAssetId!: string;
 
   @IsOptional()

@@ -3,9 +3,12 @@ import {
   IsNotEmpty,
   IsNumber,
   IsOptional,
+  Matches,
   IsString,
-  IsUUID,
 } from "class-validator";
+import { Transform } from "class-transformer";
+import { normalizeOptionalString } from "../../users/dto/transformers";
+import { CANONICAL_UUID_REGEX } from "../../../common/validation/uuid-pattern";
 
 export class UpdateGarmentDto {
   @IsOptional()
@@ -14,7 +17,8 @@ export class UpdateGarmentDto {
   name?: string;
 
   @IsOptional()
-  @IsUUID()
+  @Transform(normalizeOptionalString)
+  @Matches(CANONICAL_UUID_REGEX, { message: "categoryId must be a UUID" })
   categoryId?: string;
 
   @IsOptional()
