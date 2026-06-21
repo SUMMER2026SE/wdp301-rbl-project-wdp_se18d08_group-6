@@ -130,7 +130,13 @@ export class GarmentsService {
     });
     if (!garment) throw new NotFoundException("Garment not found.");
 
-    const sortOrder = dto.sortOrder ? Number(dto.sortOrder) : 0;
+    const nextSortOrder = await this.prisma.garmentImage.aggregate({
+      where: { garmentId },
+      _max: { sortOrder: true },
+    });
+    const sortOrder = dto.sortOrder !== undefined
+      ? Number(dto.sortOrder)
+      : (nextSortOrder._max.sortOrder ?? -1) + 1;
 
     const image = await this.prisma.garmentImage.create({
       data: {

@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import type { ReactNode } from "react";
 import { bookingFlowSteps } from "@/lib/heritage-mock-data";
 
@@ -6,6 +6,7 @@ type PublicNavKey = "collection" | "heritage" | "atelier" | "erp";
 type BookingStepKey = (typeof bookingFlowSteps)[number]["key"];
 type StaffNavKey = "overview" | "inspection";
 type ManagerNavKey = "overview" | "inventory" | "inspection-log" | "laundry" | "damaged" | "finance" | "refunds" | "assets";
+type AdminNavKey = "overview" | "roles" | "config" | "logs";
 
 function navClass(active: boolean) {
   return active
@@ -15,17 +16,17 @@ function navClass(active: boolean) {
 
 export function PublicAtelierNav({ active }: { active: PublicNavKey }) {
   const items = [
-    { key: "collection", label: "Bộ sưu tập", href: "/catalog" },
-    { key: "heritage", label: "Di sản", href: "/#di-san" },
-    { key: "atelier", label: "Thử đồ AI", href: "/try-on" },
-    { key: "erp", label: "Bảng điều hành ERP", href: "/dashboard/staff" },
+    { key: "collection", label: "Bá»™ sÆ°u táº­p", href: "/catalog" },
+    { key: "heritage", label: "Di sáº£n", href: "/#di-san" },
+    { key: "atelier", label: "Thá»­ Ä‘á»“ AI", href: "/try-on" },
+    { key: "erp", label: "Báº£ng Ä‘iá»u hÃ nh ERP", href: "/dashboard/staff" },
   ] as const;
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-sand/60 bg-mist/90 backdrop-blur-md">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-4 py-4 sm:px-6 lg:px-8">
         <Link href="/" className="font-display text-3xl text-lotus sm:text-4xl">
-          Cổ Phục Rental
+          Cá»• Phá»¥c Rental
         </Link>
         <nav className="hidden items-center gap-8 md:flex">
           {items.map((item) => (
@@ -35,10 +36,10 @@ export function PublicAtelierNav({ active }: { active: PublicNavKey }) {
           ))}
         </nav>
         <div className="flex items-center gap-3 text-lotus">
-          <Link href="/booking/review" aria-label="Giỏ thuê đồ" className="rounded-full p-2 transition hover:bg-lotus/10">
+          <Link href="/booking/review" aria-label="Giá» thuÃª Ä‘á»“" className="rounded-full p-2 transition hover:bg-lotus/10">
             <span className="material-symbols-outlined text-[22px]">shopping_bag</span>
           </Link>
-          <Link href="/dashboard/customer" aria-label="Tài khoản" className="rounded-full p-2 transition hover:bg-lotus/10">
+          <Link href="/dashboard/customer" aria-label="TÃ i khoáº£n" className="rounded-full p-2 transition hover:bg-lotus/10">
             <span className="material-symbols-outlined text-[22px]">person</span>
           </Link>
         </div>
@@ -62,11 +63,11 @@ export function BookingFlowShell({
     <div className="min-h-screen bg-[#fff8f6] text-ink">
       <header className="fixed inset-x-0 top-0 z-50 border-b border-sand/70 bg-mist/95 backdrop-blur-md">
         <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link href="/" className="font-display text-3xl text-lotus">Áo Dài Atelier</Link>
+          <Link href="/" className="font-display text-3xl text-lotus">Ão DÃ i Atelier</Link>
           <nav className="hidden gap-8 text-sm text-stone-600 md:flex">
-            <Link href="/catalog" className="transition hover:text-lotus">Bộ sưu tập</Link>
-            <Link href="/#di-san" className="transition hover:text-lotus">Di sản</Link>
-            <Link href="/try-on" className="transition hover:text-lotus">Thử đồ AI</Link>
+            <Link href="/catalog" className="transition hover:text-lotus">Bá»™ sÆ°u táº­p</Link>
+            <Link href="/#di-san" className="transition hover:text-lotus">Di sáº£n</Link>
+            <Link href="/try-on" className="transition hover:text-lotus">Thá»­ Ä‘á»“ AI</Link>
           </nav>
           <Link href="/dashboard/customer" className="text-lotus">
             <span className="material-symbols-outlined text-[24px]">account_circle</span>
@@ -77,8 +78,8 @@ export function BookingFlowShell({
       <div className="flex pt-20">
         <aside className="hidden h-[calc(100vh-80px)] w-64 shrink-0 border-r border-sand/70 bg-[#fff4ef] p-6 lg:sticky lg:top-20 lg:flex lg:flex-col">
           <div className="mb-8">
-            <h2 className="font-display text-2xl text-lotus">Tiến trình đặt thuê</h2>
-            <p className="mt-1 text-sm text-stone-500">Theo dõi từng bước xác nhận</p>
+            <h2 className="font-display text-2xl text-lotus">Tiáº¿n trÃ¬nh Ä‘áº·t thuÃª</h2>
+            <p className="mt-1 text-sm text-stone-500">Theo dÃµi tá»«ng bÆ°á»›c xÃ¡c nháº­n</p>
           </div>
           <nav className="flex flex-1 flex-col gap-2">
             {bookingFlowSteps.map((step) => {
@@ -98,7 +99,7 @@ export function BookingFlowShell({
             })}
           </nav>
           <button type="button" className="mt-6 rounded-lg border border-sand bg-white px-4 py-3 text-sm font-medium text-lotus transition hover:bg-[#fff8f6]">
-            Hỗ trợ đặt thuê
+            Há»— trá»£ Ä‘áº·t thuÃª
           </button>
         </aside>
 
@@ -116,32 +117,32 @@ export function BookingFlowShell({
 
 export function CustomerDashboardShell({ children }: { children: ReactNode }) {
   const items = [
-    { label: "Đơn thuê", icon: "calendar_today", href: "/dashboard/customer", active: true },
-    { label: "Thử đồ AI", icon: "face_retouching_natural", href: "/try-on" },
-    { label: "Số đo", icon: "straighten", href: "/dashboard/customer" },
-    { label: "Hồ sơ", icon: "person", href: "/dashboard/customer" },
+    { label: "ÄÆ¡n thuÃª", icon: "calendar_today", href: "/dashboard/customer", active: true },
+    { label: "Thá»­ Ä‘á»“ AI", icon: "face_retouching_natural", href: "/try-on" },
+    { label: "Sá»‘ Ä‘o", icon: "straighten", href: "/dashboard/customer" },
+    { label: "Há»“ sÆ¡", icon: "person", href: "/dashboard/customer" },
   ];
 
   return (
     <div className="min-h-screen bg-[#f9f5f0] text-ink md:flex">
       <aside className="hidden w-72 shrink-0 flex-col border-r border-sand bg-[#fff8f6] p-6 md:flex">
         <div className="mb-8">
-          <h1 className="font-display text-4xl text-lotus">Áo Dài Atelier</h1>
+          <h1 className="font-display text-4xl text-lotus">Ão DÃ i Atelier</h1>
         </div>
         <div className="mb-8 flex items-center gap-4 rounded-xl border border-sand/70 bg-white p-4">
           <img
-            alt="Khách hàng"
+            alt="KhÃ¡ch hÃ ng"
             className="h-12 w-12 rounded-full object-cover"
             src="https://lh3.googleusercontent.com/aida-public/AB6AXuB_QN_tItDbrCaf8a7smjJ-LiW9FTeIP80Lomru3jba9_6LS_8WweViMDVmnOMibpAF6CI4z9S-J6Au5JDR8pTr2CbeX2y8oKDRBbMAyNe31d8iomBXmoLiiwWDBFlNQ6LVtet4kZyp4v0_gpYddfFCpReV54CK_MyiqPq0fOwMG7qaX5gp0AqESHobBR2h7KFa-pgLH5wW79xwrtFqIoqAX3oybSTevo27JHCgK_QsJpcT5dVnePGv6saMN7rI04PgHAClY1sIw2aa"
           />
           <div>
-            <p className="text-lg font-semibold text-ink">Xin chào</p>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-antique">Thành viên di sản</p>
+            <p className="text-lg font-semibold text-ink">Xin chÃ o</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-antique">ThÃ nh viÃªn di sáº£n</p>
           </div>
         </div>
         <Link href="/catalog" className="mb-6 inline-flex items-center justify-center gap-2 rounded-lg bg-lotus px-4 py-3 text-sm font-semibold text-white transition hover:bg-oxblood">
           <span className="material-symbols-outlined text-[18px]">add</span>
-          Thuê bộ mới
+          ThuÃª bá»™ má»›i
         </Link>
         <nav className="flex flex-1 flex-col gap-2">
           {items.map((item) => (
@@ -177,20 +178,20 @@ export function StaffPortalShell({
   onTabChange?: (key: StaffNavKey) => void;
 }) {
   const items = [
-    { key: "overview", label: "Tổng quan", icon: "dashboard", href: "/dashboard/staff" },
-    { key: "inspection", label: "Kiểm tra", icon: "search_check", href: "/dashboard/staff/inspection" },
+    { key: "overview", label: "Tá»•ng quan", icon: "dashboard", href: "/dashboard/staff" },
+    { key: "inspection", label: "Kiá»ƒm tra", icon: "search_check", href: "/dashboard/staff/inspection" },
   ] as const;
 
   return (
     <div className="min-h-screen bg-[#f9f5f0] text-ink lg:flex">
       <aside className="hidden w-64 shrink-0 flex-col border-r border-sand bg-[#fff4ef] p-4 lg:flex">
         <div className="mb-8 px-3 pt-4">
-          <h1 className="font-display text-3xl text-lotus">Nhân sự Atelier</h1>
+          <h1 className="font-display text-3xl text-lotus">NhÃ¢n sá»± Atelier</h1>
           <p className="mt-1 text-sm text-stone-500">Central Operations</p>
         </div>
         <Link href="/catalog" className="mb-8 inline-flex items-center justify-center gap-2 rounded-xl bg-lotus px-4 py-3 text-sm font-semibold text-white transition hover:bg-oxblood">
           <span className="material-symbols-outlined text-[18px]">add</span>
-          Tạo booking mới
+          Táº¡o booking má»›i
         </Link>
         <nav className="flex flex-1 flex-col gap-2">
           {items.map((item) => {
@@ -218,7 +219,7 @@ export function StaffPortalShell({
       <div className="min-w-0 flex-1">
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-sand bg-[#fff8f6]/95 px-4 backdrop-blur md:px-6 lg:px-8">
           <div>
-            <h2 className="font-display text-3xl text-lotus">Cổ Phục Rental</h2>
+            <h2 className="font-display text-3xl text-lotus">Cá»• Phá»¥c Rental</h2>
             <p className="text-xs uppercase tracking-[0.18em] text-stone-500">{subtitle}</p>
           </div>
           <div className="hidden items-center gap-3 md:flex">
@@ -226,7 +227,7 @@ export function StaffPortalShell({
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-stone-400">search</span>
               <input
                 className="w-72 rounded-full border border-sand bg-white py-2 pl-10 pr-4 text-sm text-ink outline-none transition focus:border-antique"
-                placeholder="Tìm mã đơn, khách hàng..."
+                placeholder="TÃ¬m mÃ£ Ä‘Æ¡n, khÃ¡ch hÃ ng..."
                 type="text"
               />
             </div>
@@ -253,7 +254,7 @@ export function ManagerPortalShell({
   title,
   subtitle,
   onTabChange,
-  managerName = "Quản lý cửa hàng",
+  managerName = "Quáº£n lÃ½ cá»­a hÃ ng",
   managerEmail,
   onProfile,
   onSignOut,
@@ -277,23 +278,23 @@ export function ManagerPortalShell({
     .slice(-2)
     .map((part) => part[0]?.toUpperCase())
     .join("") || "QL";
-  // Manager: nút chính là thêm trang phục (đi tới inventory), không phải tạo booking
+  // Manager: nÃºt chÃ­nh lÃ  thÃªm trang phá»¥c (Ä‘i tá»›i inventory), khÃ´ng pháº£i táº¡o booking
   const items = [
-    { key: "overview", label: "Tổng quan", icon: "dashboard", href: "/dashboard/manager" },
-    { key: "assets", label: "Gán tài sản", icon: "swap_horiz", href: "/dashboard/manager#assets" },
-    { key: "inventory", label: "Kho trang phục", icon: "inventory_2", href: "/dashboard/manager#inventory" },
-    { key: "inspection-log", label: "Nhật ký kiểm tra", icon: "fact_check", href: "/dashboard/manager#inspection-log" },
-    { key: "laundry", label: "Giặt sấy", icon: "dry_cleaning", href: "/dashboard/manager#laundry" },
-    { key: "damaged", label: "Hư hỏng & Mất", icon: "report_problem", href: "/dashboard/manager#damaged" },
-    { key: "finance", label: "Tài chính", icon: "payments", href: "/dashboard/manager#finance" },
-    { key: "refunds", label: "Duyệt hoàn cọc", icon: "request_quote", href: "/dashboard/manager#refunds" },
+    { key: "overview", label: "Tá»•ng quan", icon: "dashboard", href: "/dashboard/manager" },
+    { key: "assets", label: "GÃ¡n tÃ i sáº£n", icon: "swap_horiz", href: "/dashboard/manager#assets" },
+    { key: "inventory", label: "Kho trang phá»¥c", icon: "inventory_2", href: "/dashboard/manager#inventory" },
+    { key: "inspection-log", label: "Nháº­t kÃ½ kiá»ƒm tra", icon: "fact_check", href: "/dashboard/manager#inspection-log" },
+    { key: "laundry", label: "Giáº·t sáº¥y", icon: "dry_cleaning", href: "/dashboard/manager#laundry" },
+    { key: "damaged", label: "HÆ° há»ng & Máº¥t", icon: "report_problem", href: "/dashboard/manager#damaged" },
+    { key: "finance", label: "TÃ i chÃ­nh", icon: "payments", href: "/dashboard/manager#finance" },
+    { key: "refunds", label: "Duyá»‡t hoÃ n cá»c", icon: "request_quote", href: "/dashboard/manager#refunds" },
   ] as const;
   return (
     <div className="min-h-screen bg-[#f9f5f0] text-ink lg:flex">
       <aside className="hidden w-72 shrink-0 flex-col border-r border-sand bg-[#fff4ef] p-4 lg:flex">
         <div className="mb-8 px-3 pt-4">
-          <h1 className="font-display text-3xl text-lotus">Cổ Phục Rental</h1>
-          <p className="mt-1 text-sm text-stone-500">Bảng quản lý vận hành</p>
+          <h1 className="font-display text-3xl text-lotus">Cá»• Phá»¥c Rental</h1>
+          <p className="mt-1 text-sm text-stone-500">Báº£ng quáº£n lÃ½ váº­n hÃ nh</p>
         </div>
         <div className="mb-8 flex items-center gap-4 rounded-xl border border-sand/70 bg-white p-4">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#ffe9e6] font-display text-xl text-lotus">
@@ -310,7 +311,7 @@ export function ManagerPortalShell({
           className="mb-6 inline-flex items-center justify-center gap-2 rounded-xl bg-lotus px-4 py-3 text-sm font-semibold text-white transition hover:bg-oxblood"
         >
           <span className="material-symbols-outlined text-[18px]">add</span>
-          Thêm trang phục
+          ThÃªm trang phá»¥c
         </button>
         <nav className="flex flex-1 flex-col gap-2">
           {items.map((item) => {
@@ -336,7 +337,7 @@ export function ManagerPortalShell({
         <div className="mt-6 border-t border-sand pt-4">
           <button type="button" className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm text-stone-600 transition hover:bg-white hover:text-lotus">
             <span className="material-symbols-outlined text-[20px]">support_agent</span>
-            <span>Hỗ trợ vận hành</span>
+            <span>Há»— trá»£ váº­n hÃ nh</span>
           </button>
         </div>
       </aside>
@@ -344,24 +345,24 @@ export function ManagerPortalShell({
       <div className="min-w-0 flex-1">
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-sand bg-[#fff8f6]/95 px-4 backdrop-blur md:px-6 lg:px-8">
           <div>
-            <h2 className="font-display text-3xl text-lotus">Cổ Phục Rental</h2>
+            <h2 className="font-display text-3xl text-lotus">Cá»• Phá»¥c Rental</h2>
             <p className="text-xs uppercase tracking-[0.18em] text-stone-500">{subtitle}</p>
           </div>
           <div className="hidden items-center gap-3 md:flex">
             <div className="rounded-full border border-sand bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
-              {currentDateLabel || "Đang đồng bộ"}
+              {currentDateLabel || "Äang Ä‘á»“ng bá»™"}
             </div>
             <button type="button" onClick={() => onTabChange?.("assets")} className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-100">
               <span className="material-symbols-outlined text-[18px]">priority_high</span>
-              Cần xử lý
+              Cáº§n xá»­ lÃ½
             </button>
             <button type="button" onClick={onProfile} className="inline-flex items-center gap-2 rounded-full border border-sand bg-white px-3 py-2 text-sm font-semibold text-stone-600 transition hover:border-lotus hover:text-lotus">
               <span className="material-symbols-outlined text-[18px]">account_circle</span>
-              Hồ sơ
+              Há»“ sÆ¡
             </button>
             <button type="button" onClick={onSignOut} className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100">
               <span className="material-symbols-outlined text-[18px]">logout</span>
-              Đăng xuất
+              ÄÄƒng xuáº¥t
             </button>
           </div>
         </header>
@@ -380,5 +381,128 @@ export function ManagerPortalShell({
     </div>
   );
 }
+
+
+
+export function AdminPortalShell({
+  active,
+  title,
+  subtitle,
+  onTabChange,
+  adminName = "Quáº£n trá»‹ viÃªn",
+  adminEmail,
+  onProfile,
+  onSignOut,
+  currentDateLabel = "",
+  children,
+}: {
+  active: AdminNavKey;
+  title: string;
+  subtitle: string;
+  onTabChange?: (key: AdminNavKey) => void;
+  adminName?: string;
+  adminEmail?: string | null;
+  onProfile?: () => void;
+  onSignOut?: () => void;
+  currentDateLabel?: string;
+  children: ReactNode;
+}) {
+  const initials = adminName
+    .split(" ")
+    .filter(Boolean)
+    .slice(-2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "AD";
+
+  const items = [
+    { key: "overview", label: "Tá»•ng quan", icon: "dashboard", href: "/dashboard/admin" },
+    { key: "roles", label: "Vai trÃ² & TÃ i khoáº£n", icon: "admin_panel_settings", href: "/dashboard/admin#roles" },
+    { key: "config", label: "Cáº¥u hÃ¬nh há»‡ thá»‘ng", icon: "psychology", href: "/dashboard/admin#config" },
+    { key: "logs", label: "Nháº­t kÃ½ kiá»ƒm soÃ¡t", icon: "history_edu", href: "/dashboard/admin#logs" },
+  ] as const;
+
+  return (
+    <div className="min-h-screen bg-[#f9f5f0] text-ink lg:flex">
+      {/* Side Navigation */}
+      <aside className="hidden w-72 shrink-0 flex-col border-r border-sand bg-[#fff4ef] p-4 lg:flex">
+        <div className="mb-8 px-3 pt-4">
+          <h1 className="font-display text-3xl text-lotus">Cá»• Phá»¥c Rental</h1>
+          <p className="mt-1 text-sm text-stone-500">Há»‡ thá»‘ng quáº£n trá»‹</p>
+        </div>
+        <div className="mb-8 flex items-center gap-4 rounded-xl border border-sand/70 bg-white p-4">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#ffe9e6] font-display text-xl text-lotus">
+            {initials}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-ink">{adminName}</p>
+            <p className="truncate text-xs uppercase tracking-[0.16em] text-antique">{adminEmail ?? "Super Admin"}</p>
+          </div>
+        </div>
+        <nav className="flex flex-1 flex-col gap-2">
+          {items.map((item) => {
+            const isActive = item.key === active;
+            return (
+              <a
+                key={item.key}
+                href={item.href}
+                onClick={(e) => {
+                  e.preventDefault();
+                  onTabChange?.(item.key);
+                }}
+                className={isActive
+                  ? "flex items-center gap-3 rounded-xl bg-[#ffe9e6] px-4 py-3 text-sm font-semibold text-lotus"
+                  : "flex items-center gap-3 rounded-xl px-4 py-3 text-sm text-stone-600 transition hover:bg-white hover:text-lotus"}
+              >
+                <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
+                <span>{item.label}</span>
+              </a>
+            );
+          })}
+        </nav>
+        <div className="mt-6 border-t border-sand pt-4">
+          <button type="button" className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm text-stone-600 transition hover:bg-white hover:text-lotus">
+            <span className="material-symbols-outlined text-[20px]">support_agent</span>
+            <span>Há»— trá»£ quáº£n trá»‹</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content Area */}
+      <div className="min-w-0 flex-1">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-sand bg-[#fff8f6]/95 px-4 backdrop-blur md:px-6 lg:px-8">
+          <div>
+            <h2 className="font-display text-3xl text-lotus">Cá»• Phá»¥c Rental</h2>
+            <p className="text-xs uppercase tracking-[0.18em] text-stone-500">{subtitle}</p>
+          </div>
+          <div className="hidden items-center gap-3 md:flex">
+            <div className="rounded-full border border-sand bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+              {currentDateLabel || "Äang Ä‘á»“ng bá»™"}
+            </div>
+            <button type="button" onClick={onProfile} className="inline-flex items-center gap-2 rounded-full border border-sand bg-white px-3 py-2 text-sm font-semibold text-stone-600 transition hover:border-lotus hover:text-lotus">
+              <span className="material-symbols-outlined text-[18px]">account_circle</span>
+              Há»“ sÆ¡
+            </button>
+            <button type="button" onClick={onSignOut} className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100">
+              <span className="material-symbols-outlined text-[18px]">logout</span>
+              ÄÄƒng xuáº¥t
+            </button>
+          </div>
+        </header>
+
+        <main className="mx-auto max-w-[1440px] px-4 py-8 sm:px-6 lg:px-8">
+          <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h1 className="font-display text-4xl text-ink sm:text-5xl">{title}</h1>
+              <p className="mt-2 text-base text-stone-600">{subtitle}</p>
+            </div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-bronze">Super Admin</p>
+          </div>
+          {children}
+        </main>
+      </div>
+    </div>
+  );
+}
+
 
 

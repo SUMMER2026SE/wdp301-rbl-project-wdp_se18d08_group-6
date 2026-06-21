@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { notFound, useRouter } from "next/navigation";
@@ -73,7 +73,7 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
       depositAmount: s.depositAmount,
       imageUrl: group.imageUrl,
     });
-    setAddedMsg("Đã thêm vào giỏ!");
+    setAddedMsg("ÄÃ£ thÃªm vÃ o giá»!");
     setTimeout(() => setAddedMsg(null), 2000);
   }
 
@@ -99,48 +99,38 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
 
       <main className="mx-auto max-w-7xl px-4 pb-24 pt-24 sm:px-6 lg:px-8 lg:pt-28">
         <nav className="mb-8 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
-          <Link href="/catalog" className="transition hover:text-lotus">Bộ sưu tập</Link>
+          <Link href="/catalog" className="transition hover:text-lotus">Bá»™ sÆ°u táº­p</Link>
           <span className="material-symbols-outlined text-[14px]">chevron_right</span>
-          <span>{group?.categoryName ?? "—"}</span>
+          <span>{group?.categoryName ?? "â€”"}</span>
           <span className="material-symbols-outlined text-[14px]">chevron_right</span>
           <span className="text-ink">{loading ? "..." : group?.name}</span>
         </nav>
 
         {loading ? (
-          <div className="flex h-64 items-center justify-center text-stone-400">Đang tải...</div>
+          <div className="flex h-64 items-center justify-center text-stone-400">Äang táº£i...</div>
         ) : group ? (
           <div className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-20">
-            {/* Image */}
             <div className="space-y-4 lg:sticky lg:top-28 lg:self-start">
               <div className="flex aspect-[3/4] items-center justify-center overflow-hidden rounded-lg border border-sand bg-[#ffe9e6]">
-                {garment.images && garment.images.length > 0 ? (
+                {group.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={garment.images[0].imageUrl} alt={garment.name} className="h-full w-full object-cover" />
+                  <img src={group.imageUrl} alt={group.name} className="h-full w-full object-cover" />
                 ) : (
                   <span className="material-symbols-outlined text-[80px] text-antique/30">checkroom</span>
                 )}
               </div>
-              {/* Thumbnail strip */}
-              {garment.images && garment.images.length > 1 && (
-                <div className="flex gap-2 overflow-x-auto">
-                  {garment.images.map((img) => (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img key={img.id} src={img.imageUrl} alt={img.altText ?? ''} className="h-20 w-16 flex-shrink-0 rounded border border-sand object-cover" />
-                  ))}
-                </div>
-              )}
             </div>
 
             <div className="pt-2 lg:pt-6">
               <div className="relative mb-8 border-b border-sand/80 pb-8">
-                <p className="text-xs font-semibold uppercase tracking-[0.26em] text-antique">{group.categoryName} · Bộ sưu tập</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.26em] text-antique">{group.categoryName} Â· Bá»™ sÆ°u táº­p</p>
                 <h1 className="mt-3 font-display text-5xl text-ink sm:text-6xl">{group.name}</h1>
                 <div className="mt-6 flex flex-wrap items-end gap-4">
                   <p className="text-3xl font-semibold text-lotus">
-                    {selectedSize ? formatVND(selectedSize.dailyPrice) + " / ngày" : "—"}
+                    {selectedSize ? formatVND(selectedSize.dailyPrice) + " / ngÃ y" : "â€”"}
                   </p>
                   <p className="pb-1 text-sm text-stone-500">
-                    Tiền cọc: <span className="font-semibold text-ink">{selectedSize ? formatVND(selectedSize.depositAmount) : "—"}</span>
+                    Tiá»n cá»c: <span className="font-semibold text-ink">{selectedSize ? formatVND(selectedSize.depositAmount) : "â€”"}</span>
                   </p>
                 </div>
               </div>
@@ -148,7 +138,7 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
               <div className="space-y-8">
                 {/* Date range picker */}
                 <div>
-                  <label className="mb-3 block text-sm font-semibold uppercase tracking-[0.18em] text-ink">Khoảng thời gian thuê</label>
+                  <label className="mb-3 block text-sm font-semibold uppercase tracking-[0.18em] text-ink">Khoáº£ng thá»i gian thuÃª</label>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="relative">
                       <span className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-stone-400">calendar_month</span>
@@ -172,7 +162,7 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
                 {/* Size - interactive */}
                 <div>
                   <div className="mb-3 flex items-center justify-between">
-                    <label className="text-sm font-semibold uppercase tracking-[0.18em] text-ink">Kích thước</label>
+                    <label className="text-sm font-semibold uppercase tracking-[0.18em] text-ink">KÃ­ch thÆ°á»›c</label>
                   </div>
                   <div className="flex flex-wrap gap-3">
                     {group.sizes.map((s) => {
@@ -188,7 +178,7 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
                               : "flex h-12 min-w-[3rem] items-center justify-center rounded border border-sand bg-white px-3 text-sm text-ink transition hover:border-antique"
                           }
                         >
-                          {s.sizeLabel ?? "—"}
+                          {s.sizeLabel ?? "â€”"}
                         </button>
                       );
                     })}
@@ -199,9 +189,9 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
                   <div className="flex items-start gap-3">
                     <span className="material-symbols-outlined text-lotus">magic_button</span>
                     <div>
-                      <h2 className="font-display text-3xl text-ink">Thử đồ AI <span className="font-sans text-base font-normal text-stone-500">(mô phỏng thử trên ảnh)</span></h2>
-                      <p className="mt-2 max-w-xl text-sm leading-7 text-stone-600">Tải ảnh chân dung để xem thử cách bộ trang phục ôm dáng trước khi đặt thuê.</p>
-                      <span className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-lotus">Khám phá ngay<span className="material-symbols-outlined text-[16px]">arrow_forward</span></span>
+                      <h2 className="font-display text-3xl text-ink">Thá»­ Ä‘á»“ AI <span className="font-sans text-base font-normal text-stone-500">(mÃ´ phá»ng thá»­ trÃªn áº£nh)</span></h2>
+                      <p className="mt-2 max-w-xl text-sm leading-7 text-stone-600">Táº£i áº£nh chÃ¢n dung Ä‘á»ƒ xem thá»­ cÃ¡ch bá»™ trang phá»¥c Ã´m dÃ¡ng trÆ°á»›c khi Ä‘áº·t thuÃª.</p>
+                      <span className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-lotus">KhÃ¡m phÃ¡ ngay<span className="material-symbols-outlined text-[16px]">arrow_forward</span></span>
                     </div>
                   </div>
                 </Link>
@@ -213,7 +203,7 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
                   onClick={handleBookNow}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-lotus px-6 py-4 text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-oxblood"
                 >
-                  Đặt thuê ngay
+                  Äáº·t thuÃª ngay
                   <span className="material-symbols-outlined text-[18px]">shopping_cart</span>
                 </button>
                 <button
@@ -221,15 +211,15 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
                   onClick={handleAddToCart}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-lotus px-6 py-4 text-sm font-semibold uppercase tracking-[0.18em] text-lotus transition hover:bg-[#fff0ee]"
                 >
-                  Thêm vào giỏ
+                  ThÃªm vÃ o giá»
                   <span className="material-symbols-outlined text-[18px]">shopping_bag</span>
                 </button>
                 {addedMsg && <p className="text-center text-sm font-medium text-jade">{addedMsg}</p>}
-                <p className="text-center text-sm text-stone-500">Đã bao gồm công là ủi, làm sạch và hỗ trợ chỉnh sửa cơ bản.</p>
+                <p className="text-center text-sm text-stone-500">ÄÃ£ bao gá»“m cÃ´ng lÃ  á»§i, lÃ m sáº¡ch vÃ  há»— trá»£ chá»‰nh sá»­a cÆ¡ báº£n.</p>
               </div>
 
               <section className="mt-12 border-t border-sand pt-8">
-                <h2 className="font-display text-4xl text-ink">Thông số chi tiết</h2>
+                <h2 className="font-display text-4xl text-ink">ThÃ´ng sá»‘ chi tiáº¿t</h2>
                 <ul className="mt-6 space-y-4">
                   {garmentSpecs.map((spec) => (
                     <li key={spec.label} className="flex items-center justify-between gap-4 border-b border-sand/70 pb-3 text-sm">
@@ -248,8 +238,8 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
           <section className="mt-24 rounded-lg border border-sand bg-[#f9f5f0] px-6 py-12 lg:px-12">
             <div className="grid items-center gap-10 lg:grid-cols-[0.95fr_1.05fr]">
               <div>
-                <h2 className="font-display text-5xl text-ink">Phối hợp phụ kiện</h2>
-                <p className="mt-4 text-base leading-8 text-stone-600">Gợi ý phụ kiện để hoàn thiện thần thái trang phục.</p>
+                <h2 className="font-display text-5xl text-ink">Phá»‘i há»£p phá»¥ kiá»‡n</h2>
+                <p className="mt-4 text-base leading-8 text-stone-600">Gá»£i Ã½ phá»¥ kiá»‡n Ä‘á»ƒ hoÃ n thiá»‡n tháº§n thÃ¡i trang phá»¥c.</p>
                 <div className="mt-8 space-y-4">
                   {pairingItems.map((item) => (
                     <div key={item.title} className="flex items-center gap-4 rounded-lg border border-sand bg-white p-4 transition hover:border-antique">
@@ -273,3 +263,5 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
     </div>
   );
 }
+
+

@@ -1,4 +1,4 @@
-"use client";
+Ôªø"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -22,8 +22,9 @@ import {
   completeMaintenanceJob,
   createGarment,
   updateGarment,
-  createGarmentCategory,
+   createGarmentCategory,
   addGarmentImage,
+  removeGarmentImage,
   getGarmentCategories,
   createAsset,
   getAllAssets,
@@ -33,7 +34,6 @@ import {
   type GarmentSummary,
   type GarmentDetail,
   type GarmentCategory,
-  type GarmentImage,
   type AssetDetail,
   type AssetInspectionHistory,
   type InspectionLogEntry,
@@ -52,31 +52,31 @@ function formatVND(amount: number) {
 }
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  pending_confirmation: { label: "Ch? x·c nh?n",        color: "bg-amber-100 text-amber-700" },
-  confirmed:            { label: "–„ x·c nh?n",         color: "bg-blue-100 text-blue-700" },
-  awaiting_payment:     { label: "Ch? thanh to·n",      color: "bg-yellow-100 text-yellow-700" },
-  paid:                 { label: "–„ thanh to·n",       color: "bg-green-100 text-green-700" },
-  preparing:            { label: "–ang chu?n b?",       color: "bg-purple-100 text-purple-700" },
-  ready_for_pickup:     { label: "S?n s‡ng nh?n",       color: "bg-teal-100 text-teal-700" },
-  delivering:           { label: "–ang giao",           color: "bg-indigo-100 text-indigo-700" },
-  renting:              { label: "–ang thuÍ",           color: "bg-lotus/10 text-lotus" },
-  returned:             { label: "–„ tr?",              color: "bg-stone-100 text-stone-600" },
+  pending_confirmation: { label: "Ch? x√°c nh?n",        color: "bg-amber-100 text-amber-700" },
+  confirmed:            { label: "√ê√£ x√°c nh?n",         color: "bg-blue-100 text-blue-700" },
+  awaiting_payment:     { label: "Ch? thanh to√°n",      color: "bg-yellow-100 text-yellow-700" },
+  paid:                 { label: "√ê√£ thanh to√°n",       color: "bg-green-100 text-green-700" },
+  preparing:            { label: "√êang chu?n b?",       color: "bg-purple-100 text-purple-700" },
+  ready_for_pickup:     { label: "S?n s√†ng nh?n",       color: "bg-teal-100 text-teal-700" },
+  delivering:           { label: "√êang giao",           color: "bg-indigo-100 text-indigo-700" },
+  renting:              { label: "√êang thu√™",           color: "bg-lotus/10 text-lotus" },
+  returned:             { label: "√ê√£ tr?",              color: "bg-stone-100 text-stone-600" },
   inspection_pending:   { label: "Ch? ki?m tra",        color: "bg-orange-100 text-orange-700" },
-  completed:            { label: "Ho‡n th‡nh",          color: "bg-jade/10 text-jade" },
-  cancelled:            { label: "–„ h?y",              color: "bg-red-100 text-red-600" },
+  completed:            { label: "Ho√†n th√†nh",          color: "bg-jade/10 text-jade" },
+  cancelled:            { label: "√ê√£ h?y",              color: "bg-red-100 text-red-600" },
   rejected:             { label: "T? ch?i",             color: "bg-red-100 text-red-700" },
-  overdue:              { label: "Qu· h?n",             color: "bg-red-200 text-red-800" },
+  overdue:              { label: "Qu√° h?n",             color: "bg-red-200 text-red-800" },
 };
 
 const ASSET_STATUS_META: Record<string, { label: string; color: string }> = {
-  available:         { label: "S?n s‡ng",       color: "bg-state-available/10 text-state-available border border-state-available/20" },
-  reserved:          { label: "–„ gi? ch?",     color: "bg-amber-100 text-amber-700 border border-amber-200" },
-  rented:            { label: "–ang thuÍ",      color: "bg-state-rented/10 text-state-rented border border-state-rented/20" },
+  available:         { label: "S?n s√†ng",       color: "bg-state-available/10 text-state-available border border-state-available/20" },
+  reserved:          { label: "√ê√£ gi? ch?",     color: "bg-amber-100 text-amber-700 border border-amber-200" },
+  rented:            { label: "√êang thu√™",      color: "bg-state-rented/10 text-state-rented border border-state-rented/20" },
   inspection_pending:{ label: "Ch? ki?m tra",   color: "bg-orange-100 text-orange-700 border border-orange-200" },
   laundry:           { label: "Gi?t s?y",       color: "bg-state-laundry/10 text-state-laundry border border-state-laundry/20" },
-  maintenance:       { label: "B?o trÏ",        color: "bg-state-maintenance/10 text-state-maintenance border border-state-maintenance/20" },
+  maintenance:       { label: "B?o tr√¨",        color: "bg-state-maintenance/10 text-state-maintenance border border-state-maintenance/20" },
   damaged:           { label: "Hu h?ng",        color: "bg-state-damaged/10 text-state-damaged border border-state-damaged/20" },
-  retired:           { label: "–„ thanh l˝",    color: "bg-stone-100 text-stone-500 border border-stone-200" },
+  retired:           { label: "√ê√£ thanh l√Ω",    color: "bg-stone-100 text-stone-500 border border-stone-200" },
   lost:              { label: "M?t",            color: "bg-red-100 text-red-700 border border-red-200" },
 };
 
@@ -97,14 +97,14 @@ function tabFromHash(): Tab {
 }
 
 const TAB_META: Record<Tab, { title: string; subtitle: string }> = {
-  overview:      { title: "T?ng Quan V?n H‡nh",        subtitle: "Theo dıi doanh thu, don thuÍ v‡ tÏnh tr?ng kho theo th?i gian th?c." },
-  assets:        { title: "G·n T‡i S?n",             subtitle: "G·n t‡i s?n v?t l˝ cho c·c don d?t ch?." },
-  inventory:     { title: "Qu?n L˝ Kho Trang Ph?c",          subtitle: "Qu?n l˝ m?u trang ph?c, ?nh catalog v‡ t‡i s?n v?t l˝." },
-  "inspection-log": { title: "Nh?t K˝ Ki?m Tra",     subtitle: "L?ch s? ki?m tra tÏnh tr?ng trang ph?c sau khi tr?." },
-  laundry:       { title: "Gi?t S?y",                subtitle: "Qu?n l˝ h‡ng ch? gi?t s?y v‡ di?u ph?i." },
-  damaged:       { title: "Hu H?ng & M?t",           subtitle: "B·o c·o t‡i s?n hu h?ng, m?t v‡ b?o trÏ." },
-  finance:       { title: "–?i So·t T‡i ChÌnh",                subtitle: "Theo dıi doanh thu, ti?n c?c v‡ phÌ ph?t ph·t sinh." },
-  refunds:       { title: "Duy?t Ho‡n C?c",                subtitle: "Duy?t c·c yÍu c?u ho‡n c?c ch? x? l˝." },
+  overview:      { title: "T?ng Quan V?n H√†nh",        subtitle: "Theo d√µi doanh thu, don thu√™ v√† t√¨nh tr?ng kho theo th?i gian th?c." },
+  assets:        { title: "G√°n T√†i S?n",             subtitle: "G√°n t√†i s?n v?t l√Ω cho c√°c don d?t ch?." },
+  inventory:     { title: "Qu?n L√Ω Kho Trang Ph?c",          subtitle: "Qu?n l√Ω m?u trang ph?c, ?nh catalog v√† t√†i s?n v?t l√Ω." },
+  "inspection-log": { title: "Nh?t K√Ω Ki?m Tra",     subtitle: "L?ch s? ki?m tra t√¨nh tr?ng trang ph?c sau khi tr?." },
+  laundry:       { title: "Gi?t S?y",                subtitle: "Qu?n l√Ω h√†ng ch? gi?t s?y v√† di?u ph?i." },
+  damaged:       { title: "Hu H?ng & M?t",           subtitle: "B√°o c√°o t√†i s?n hu h?ng, m?t v√† b?o tr√¨." },
+  finance:       { title: "√ê?i So√°t T√†i Ch√≠nh",                subtitle: "Theo d√µi doanh thu, ti?n c?c v√† ph√≠ ph?t ph√°t sinh." },
+  refunds:       { title: "Duy?t Ho√†n C?c",                subtitle: "Duy?t c√°c y√™u c?u ho√†n c?c ch? x? l√Ω." },
 };
 
 export default function ManagerDashboardPage() {
@@ -124,7 +124,7 @@ export default function ManagerDashboardPage() {
   const [allAssets, setAllAssets] = useState<AssetDetail[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(false);
 
-  // Asset assignment state (g·n t‡i s?n)
+  // Asset assignment state (g√°n t√†i s?n)
   type AssetAssignState = Record<string, {
     assets: AvailableAsset[];
     loading: boolean;
@@ -155,8 +155,8 @@ export default function ManagerDashboardPage() {
   const [garmentModalOpen, setGarmentModalOpen] = useState(false);
   const [editingGarment, setEditingGarment] = useState<GarmentDetail | null>(null);
   const [assetModalOpen, setAssetModalOpen] = useState(false);
-  const [categorySubmitting, setCategorySubmitting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [categorySubmitting, setCategorySubmitting] = useState(false);
 
   // Refund approval state
   const [pendingRefunds, setPendingRefunds] = useState<RefundResponse[]>([]);
@@ -202,7 +202,7 @@ export default function ManagerDashboardPage() {
       getAllAssets().then(res => { if (res.success && res.data) setAllAssets(res.data); }),
       getGarmentCategories().then(res => { if (res.success && res.data) setCategories(res.data); })
     ]).catch(() => {
-      setErrorMsg("CÛ l?i x?y ra khi t?i d? li?u.");
+      setErrorMsg("C√≥ l?i x?y ra khi t?i d? li?u.");
     }).finally(() => setLoading(false));
   }, []);
 
@@ -241,11 +241,14 @@ export default function ManagerDashboardPage() {
       await refreshCategories();
       return res.data;
     }
-    setErrorMsg(res.message ?? "KhÙng th? t?o danh m?c.");
+    setErrorMsg(res.message ?? "Kh√¥ng th·ªÉ t·∫°o danh m·ª•c.");
     return null;
   }
 
-  async function handleCreateGarment(payload: Parameters<typeof createGarment>[0], imagesToAdd: string[]) {
+  async function handleCreateGarment(
+    payload: Parameters<typeof createGarment>[0],
+    imagesToAdd: string[],
+  ) {
     setSubmitting(true);
     setErrorMsg(null);
     const res = await createGarment(payload);
@@ -258,24 +261,40 @@ export default function ManagerDashboardPage() {
       setGarmentModalOpen(false);
       setEditingGarment(null);
     } else {
-      setErrorMsg(res.message ?? "KhÙng th? t?o trang ph?c.");
+      setErrorMsg(res.message ?? "Kh√¥ng th? t?o trang ph?c.");
     }
     setSubmitting(false);
   }
 
-  async function handleUpdateGarment(id: string, payload: Parameters<typeof updateGarment>[1], imagesToAdd: string[]) {
+  async function handleUpdateGarment(
+    id: string,
+    payload: Parameters<typeof updateGarment>[1],
+    imagesToAdd: string[],
+    imageIdsToRemove: string[],
+  ) {
     setSubmitting(true);
     setErrorMsg(null);
     const res = await updateGarment(id, payload);
     if (res.success) {
+      let imageOpsFailed = false;
+      for (const imageId of imageIdsToRemove) {
+        const removeRes = await removeGarmentImage(id, imageId);
+        if (!removeRes.success) imageOpsFailed = true;
+      }
       for (const imgUrl of imagesToAdd) {
-        await addGarmentImage(id, { imageUrl: imgUrl });
+        const addRes = await addGarmentImage(id, { imageUrl: imgUrl });
+        if (!addRes.success) imageOpsFailed = true;
       }
       await refreshGarments();
+      if (imageOpsFailed) {
+        setErrorMsg("Kh√É¬¥ng th√°¬ª∆í c√°¬∫¬≠p nh√°¬∫¬≠t √Ñ‚Äò√°¬∫¬ßy √Ñ‚Äò√°¬ª¬ß √°¬∫¬£nh. Vui l√É¬≤ng th√°¬ª¬≠ l√°¬∫¬°i.");
+        setSubmitting(false);
+        return;
+      }
       setGarmentModalOpen(false);
       setEditingGarment(null);
     } else {
-      setErrorMsg(res.message ?? "KhÙng th? c?p nh?t trang ph?c.");
+      setErrorMsg(res.message ?? "Kh√¥ng th? c?p nh?t trang ph?c.");
     }
     setSubmitting(false);
   }
@@ -284,7 +303,7 @@ export default function ManagerDashboardPage() {
     setErrorMsg(null);
     const res = await addGarmentImage(garmentId, { imageUrl });
     if (!res.success) {
-      setErrorMsg(res.message ?? "KhÙng th? thÍm ?nh.");
+      setErrorMsg(res.message ?? "Kh√¥ng th·ªÉ th√™m ·∫£nh.");
       return;
     }
     await refreshGarments();
@@ -302,7 +321,7 @@ export default function ManagerDashboardPage() {
       await refreshAllAssets();
       setAssetModalOpen(false);
     } else {
-      setErrorMsg(res.message ?? "KhÙng th? t?o t‡i s?n.");
+      setErrorMsg(res.message ?? "Kh√¥ng th? t?o t√†i s?n.");
     }
   }
 
@@ -317,7 +336,7 @@ export default function ManagerDashboardPage() {
         if (detail.success && detail.data) setSelectedAsset(detail.data);
       }
     } else {
-      setErrorMsg(res.message ?? "KhÙng th? c?p nh?t tr?ng th·i.");
+      setErrorMsg(res.message ?? "Kh√¥ng th? c?p nh?t tr?ng th√°i.");
     }
   }
 
@@ -393,7 +412,7 @@ export default function ManagerDashboardPage() {
         return next;
       });
     } else {
-      setErrorMsg(res.message ?? "KhÙng th? g·n t‡i s?n.");
+      setErrorMsg(res.message ?? "Kh√¥ng th? g√°n t√†i s?n.");
     }
   }
 
@@ -412,7 +431,7 @@ export default function ManagerDashboardPage() {
       setProofImageUrl("");
       setApproveNote("");
     } else {
-      setErrorMsg(res.message ?? "KhÙng th? duy?t ho‡n c?c.");
+      setErrorMsg(res.message ?? "Kh√¥ng th? duy?t ho√†n c?c.");
     }
   }
 
@@ -531,7 +550,7 @@ export default function ManagerDashboardPage() {
       title={meta.title}
       subtitle={meta.subtitle}
       onTabChange={goToTab}
-      managerName={hasMounted ? (user?.fullName ?? user?.email?.split("@")[0] ?? "Qu?n l˝ c?a h‡ng") : "Qu?n l˝ c?a h‡ng"}
+      managerName={hasMounted ? (user?.fullName ?? user?.email?.split("@")[0] ?? "Qu?n l√Ω c?a h√†ng") : "Qu?n l√Ω c?a h√†ng"}
       managerEmail={hasMounted ? (user?.email ?? null) : null}
       currentDateLabel={hasMounted ? currentDateLabel : ""}
       onProfile={() => router.push("/dashboard/manager/profile")}
@@ -544,7 +563,7 @@ export default function ManagerDashboardPage() {
       )}
 
       {loading ? (
-        <div className="py-20 text-center text-stone-400">–ang t?i d? li?u...</div>
+        <div className="py-20 text-center text-stone-400">√êang t?i d? li?u...</div>
       ) : tab === "overview" ? (
         <OverviewTab
           totalRentalRevenue={totalRentalRevenue}
@@ -593,14 +612,13 @@ export default function ManagerDashboardPage() {
           onCreateGarment={openCreateGarment}
           onEditGarment={openEditGarment}
           onCreateAsset={() => setAssetModalOpen(true)}
-          onAddImage={handleAddImage}
-          onCreateCategory={handleCreateCategory}
-          categorySubmitting={categorySubmitting}
           onUpdateAssetStatus={handleUpdateAssetStatus}
           garmentModalOpen={garmentModalOpen}
           editingGarment={editingGarment}
           onCloseGarmentModal={() => { setGarmentModalOpen(false); setEditingGarment(null); }}
-          onSubmitGarment={(id, p) => id ? handleUpdateGarment(id, p, []) : handleCreateGarment(p, [])}
+          onSubmitGarment={(id, p, images, imageIdsToRemove) => id
+            ? handleUpdateGarment(id, p, images, imageIdsToRemove)
+            : handleCreateGarment(p, images)}
           submitting={submitting}
           assetModalOpen={assetModalOpen}
           onCloseAssetModal={() => setAssetModalOpen(false)}
@@ -672,7 +690,7 @@ export default function ManagerDashboardPage() {
           onAddImage={handleAddImage}
           onClose={() => { setGarmentModalOpen(false); setEditingGarment(null); }}
           onSubmit={(payload, images) => {
-            if (editingGarment) handleUpdateGarment(editingGarment.id, payload, images);
+            if (editingGarment) handleUpdateGarment(editingGarment.id, payload, images, []);
             else handleCreateGarment(payload, images);
           }}
         />
@@ -682,7 +700,7 @@ export default function ManagerDashboardPage() {
 }
 
 // -------------------------------------------------------------------------------
-// TAB: Assets Assignment (G·n t‡i s?n)
+// TAB: Assets Assignment (G√°n t√†i s?n)
 // -------------------------------------------------------------------------------
 
 function AssetsAssignTab({
@@ -712,7 +730,7 @@ function AssetsAssignTab({
       {bookingsNeedingAssets.length === 0 ? (
         <div className="py-20 text-center text-stone-400">
           <span className="material-symbols-outlined mb-4 block text-5xl text-stone-200">check_circle</span>
-          T?t c? don d?u d„ du?c g·n t‡i s?n. KhÙng cÛ gÏ c?n x? l˝.
+          T?t c? don d?u d√£ du?c g√°n t√†i s?n. Kh√¥ng c√≥ g√¨ c?n x? l√Ω.
         </div>
       ) : (
         bookingsNeedingAssets.map((booking) => {
@@ -726,13 +744,13 @@ function AssetsAssignTab({
                   <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${s.color}`}>{s.label}</span>
                 </div>
                 <span className="text-xs text-stone-400">
-                  {booking.customerName ?? "ó"} ∑ {formatDate(booking.rentalStartDate)} ñ {formatDate(booking.rentalEndDate)}
+                  {booking.customerName ?? "‚Äî"} ¬∑ {formatDate(booking.rentalStartDate)} ‚Äì {formatDate(booking.rentalEndDate)}
                 </span>
               </div>
               <div className="space-y-3 px-6 py-4">
                 <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">
                   <span className="material-symbols-outlined text-[16px]">warning</span>
-                  {unassignedItems.length} item chua g·n t‡i s?n
+                  {unassignedItems.length} item chua g√°n t√†i s?n
                 </p>
                 {unassignedItems.map((item) => {
                   const itemKey = `${booking.id}-${item.id}`;
@@ -745,31 +763,31 @@ function AssetsAssignTab({
                           {item.sizeLabel && <span className="ml-1 text-stone-500">({item.sizeLabel})</span>}
                         </p>
                         <div className="mt-1 flex gap-4 text-xs text-stone-500">
-                          <span>{formatVND(item.dailyPrice)}/ng‡y</span>
+                          <span>{formatVND(item.dailyPrice)}/ng√†y</span>
                           <span>C?c: {formatVND(item.depositAmount)}</span>
                         </div>
                       </div>
                       {!state?.open ? (
                         <button type="button" className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-100" onClick={() => onOpenPicker(itemKey, item.garmentId)}>
                           <span className="material-symbols-outlined mr-1 align-middle text-[16px]">add</span>
-                          G·n t‡i s?n
+                          G√°n t√†i s?n
                         </button>
                       ) : state.loading ? (
-                        <span className="text-sm text-stone-400">–ang t?i...</span>
+                        <span className="text-sm text-stone-400">√êang t?i...</span>
                       ) : state.assets.length === 0 ? (
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-red-600">H?t t‡i s?n kh? d?ng</span>
-                          <button type="button" className="text-sm text-stone-500 underline" onClick={() => onClosePicker(itemKey)}>–Ûng</button>
+                          <span className="text-sm font-medium text-red-600">H?t t√†i s?n kh? d?ng</span>
+                          <button type="button" className="text-sm text-stone-500 underline" onClick={() => onClosePicker(itemKey)}>√ê√≥ng</button>
                         </div>
                       ) : (
                         <div className="flex items-center gap-3">
-                          <select className="min-w-[200px] rounded-lg border border-sand bg-white px-3 py-2 text-sm outline-none focus:border-antique" value={state.selected} onChange={(e) => onSelectChange(itemKey, e.target.value)} aria-label="Ch?n t‡i s?n">
+                          <select className="min-w-[200px] rounded-lg border border-sand bg-white px-3 py-2 text-sm outline-none focus:border-antique" value={state.selected} onChange={(e) => onSelectChange(itemKey, e.target.value)} aria-label="Ch?n t√†i s?n">
                             {state.assets.map((a) => (
-                              <option key={a.id} value={a.id}>{a.assetCode} {a.conditionNote ? `ó ${a.conditionNote}` : ""}</option>
+                              <option key={a.id} value={a.id}>{a.assetCode} {a.conditionNote ? `‚Äî ${a.conditionNote}` : ""}</option>
                             ))}
                           </select>
                           <button type="button" disabled={actioningId === booking.id} className="rounded-lg bg-jade px-4 py-2 text-sm font-semibold text-white transition hover:bg-forest disabled:opacity-50" onClick={() => onAssign(booking.id, item.id, itemKey)}>
-                            {actioningId === booking.id ? "..." : "X·c nh?n g·n"}
+                            {actioningId === booking.id ? "..." : "X√°c nh?n g√°n"}
                           </button>
                           <button type="button" className="text-sm text-stone-500 underline" onClick={() => onClosePicker(itemKey)}>H?y</button>
                         </div>
@@ -826,35 +844,35 @@ function OverviewTab({
   return (
     <div className="space-y-8">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <SnapshotCard label="Doanh thu (dang ph·t sinh)" value={formatVND(totalRentalRevenue)} hint="T? don completed + dang thuÍ" icon="payments" tone="lotus" />
+        <SnapshotCard label="Doanh thu (dang ph√°t sinh)" value={formatVND(totalRentalRevenue)} hint="T? don completed + dang thu√™" icon="payments" tone="lotus" />
         <SnapshotCard label="Ti?n c?c dang gi?" value={formatVND(totalDepositHeld)} hint={`${activeBookings.length} don dang ho?t d?ng`} icon="account_balance_wallet" tone="antique" />
-        <SnapshotCard label="–on d?t ch? hi?n t?i" value={String(activeBookings.length)} hint="–ang trong lu?ng v?n h‡nh" icon="calendar_month" tone="jade" />
-        <SnapshotCard label="Hi?u su?t l?p d?y" value={garments.length === 0 ? "ó" : `${utilizationPct}%`} hint={`${rentedItemCount} dang thuÍ / ${utilizationDenominator} kh? d?ng`} icon="pie_chart" tone="bronze" progress={garments.length === 0 ? null : utilizationPct} />
+        <SnapshotCard label="√êon d?t ch? hi?n t?i" value={String(activeBookings.length)} hint="√êang trong lu?ng v?n h√†nh" icon="calendar_month" tone="jade" />
+        <SnapshotCard label="Hi?u su?t l?p d?y" value={garments.length === 0 ? "‚Äî" : `${utilizationPct}%`} hint={`${rentedItemCount} dang thu√™ / ${utilizationDenominator} kh? d?ng`} icon="pie_chart" tone="bronze" progress={garments.length === 0 ? null : utilizationPct} />
       </div>
 
       <section className="rounded-xl border border-sand bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="font-display text-2xl text-ink">Vi?c c?n x? l˝</h2>
-            <p className="text-sm text-stone-500">Uu tiÍn v?n h‡nh trong ng‡y</p>
+            <h2 className="font-display text-2xl text-ink">Vi?c c?n x? l√Ω</h2>
+            <p className="text-sm text-stone-500">Uu ti√™n v?n h√†nh trong ng√†y</p>
           </div>
           <span className="material-symbols-outlined text-lotus">task_alt</span>
         </div>
         <div className="grid gap-3 md:grid-cols-4">
-          <QuickWorkItem icon="swap_horiz" label="C?n g·n t‡i s?n" value={bookingsNeedingAssets.length} tone="amber" onClick={() => onGoToTab("assets")} />
+          <QuickWorkItem icon="swap_horiz" label="C?n g√°n t√†i s?n" value={bookingsNeedingAssets.length} tone="amber" onClick={() => onGoToTab("assets")} />
           <QuickWorkItem icon="search_check" label="Ch? ki?m tra" value={returnedWaiting} tone="orange" onClick={() => onGoToTab("inspection-log")} />
-          <QuickWorkItem icon="dry_cleaning" label="–ang gi?t s?y" value={laundryTickets.length} tone="blue" onClick={() => onGoToTab("laundry")} />
-          <QuickWorkItem icon="build" label="C?n b?o trÏ" value={maintenanceJobs.filter((j) => j.status !== "completed" && j.status !== "cannot_repair").length} tone="red" onClick={() => onGoToTab("damaged")} />
+          <QuickWorkItem icon="dry_cleaning" label="√êang gi?t s?y" value={laundryTickets.length} tone="blue" onClick={() => onGoToTab("laundry")} />
+          <QuickWorkItem icon="build" label="C?n b?o tr√¨" value={maintenanceJobs.filter((j) => j.status !== "completed" && j.status !== "cannot_repair").length} tone="red" onClick={() => onGoToTab("damaged")} />
         </div>
       </section>
 
       <section className="rounded-xl border border-sand bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="font-display text-2xl text-ink">T?ng Quan Kho T‡i S?n</h2>
-            <p className="text-sm text-stone-500">TÏnh tr?ng hi?n v?t dang v?n h‡nh trong c?a h‡ng</p>
+            <h2 className="font-display text-2xl text-ink">T?ng Quan Kho T√†i S?n</h2>
+            <p className="text-sm text-stone-500">T√¨nh tr?ng hi?n v?t dang v?n h√†nh trong c?a h√†ng</p>
           </div>
-          <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">{effectiveAssets.length} t‡i s?n</span>
+          <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">{effectiveAssets.length} t√†i s?n</span>
         </div>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
           {["available", "reserved", "rented", "laundry", "maintenance", "damaged", "inspection_pending", "retired", "lost"].map((status) => {
@@ -871,26 +889,26 @@ function OverviewTab({
 
       <div className="grid grid-cols-1 gap-gutter lg:grid-cols-3">
         <div className="rounded-xl border border-sand bg-white p-6 shadow-[0_4px_12px_rgba(74,4,4,0.03)] lg:col-span-2">
-          <h2 className="mb-6 font-display text-2xl text-ink">TÏnh Tr?ng V?n H‡nh</h2>
+          <h2 className="mb-6 font-display text-2xl text-ink">T√¨nh Tr?ng V?n H√†nh</h2>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-            <StatusCell label="Ch? x? l˝" value={countBy(["pending_confirmation", "awaiting_payment"])} tone="amber" />
-            <StatusCell label="–ang chu?n b?" value={countBy(["paid", "preparing", "ready_for_pickup", "delivering"])} tone="purple" />
-            <StatusCell label="–ang thuÍ" value={countBy(["renting"])} tone="lotus" />
+            <StatusCell label="Ch? x? l√Ω" value={countBy(["pending_confirmation", "awaiting_payment"])} tone="amber" />
+            <StatusCell label="√êang chu?n b?" value={countBy(["paid", "preparing", "ready_for_pickup", "delivering"])} tone="purple" />
+            <StatusCell label="√êang thu√™" value={countBy(["renting"])} tone="lotus" />
             <StatusCell label="Ch? ki?m tra" value={countBy(["returned", "inspection_pending"])} tone="orange" />
-            <StatusCell label="Ho‡n th‡nh" value={countBy(["completed"])} tone="jade" />
+            <StatusCell label="Ho√†n th√†nh" value={countBy(["completed"])} tone="jade" />
           </div>
           <div className="mt-6 flex items-start gap-4 rounded-r-lg border-l-4 border-lotus bg-[#fff4ef] p-4">
             <span className="material-symbols-outlined mt-0.5 text-lotus">warning</span>
             <div>
-              <h3 className="text-sm font-semibold text-ink">C?nh B·o V?n H‡nh</h3>
+              <h3 className="text-sm font-semibold text-ink">C?nh B√°o V?n H√†nh</h3>
               <p className="mt-1 text-sm text-stone-600">
                 {bookingsNeedingAssets.length > 0
-                  ? `${bookingsNeedingAssets.length} don dang ch? g·n t‡i s?n. C?n x? l˝ ngay d? khÙng tr? ti?n d? giao trang ph?c.`
-                  : "KhÙng cÛ c?nh b·o. T?t c? don dang ch? d?u d„ du?c g·n t‡i s?n."}
+                  ? `${bookingsNeedingAssets.length} don dang ch? g√°n t√†i s?n. C?n x? l√Ω ngay d? kh√¥ng tr? ti?n d? giao trang ph?c.`
+                  : "Kh√¥ng c√≥ c?nh b√°o. T?t c? don dang ch? d?u d√£ du?c g√°n t√†i s?n."}
               </p>
               {bookingsNeedingAssets.length > 0 && (
                 <button type="button" onClick={() => onGoToTab("assets")} className="mt-2 text-sm font-semibold text-lotus underline hover:text-oxblood">
-                  –i t?i kho trang ph?c ?
+                  √êi t?i kho trang ph?c ?
                 </button>
               )}
             </div>
@@ -901,8 +919,8 @@ function OverviewTab({
           <h2 className="mb-6 font-display text-2xl text-ink">Truy C?p Nhanh</h2>
           <div className="flex flex-1 flex-col gap-3">
             <ShortcutButton icon="inventory_2" label="Kho trang ph?c" badge={bookingsNeedingAssets.length} tone="bronze" onClick={() => onGoToTab("assets")} />
-            <ShortcutButton icon="fact_check" label="Nh?t k˝ ki?m tra" tone="jade" onClick={() => onGoToTab("inspection-log")} />
-            <ShortcutButton icon="bar_chart" label="B·o c·o t‡i chÌnh" tone="antique" onClick={() => onGoToTab("finance")} />
+            <ShortcutButton icon="fact_check" label="Nh?t k√Ω ki?m tra" tone="jade" onClick={() => onGoToTab("inspection-log")} />
+            <ShortcutButton icon="bar_chart" label="B√°o c√°o t√†i ch√≠nh" tone="antique" onClick={() => onGoToTab("finance")} />
           </div>
         </div>
       </div>
@@ -918,7 +936,7 @@ function InventoryTab({
   garments, categories, selectedGarmentId, onSelectGarment,
   assets, assetsLoading, selectedAssetId, onSelectAsset,
   selectedAsset, assetHistory, assetHistoryLoading,
-  onCreateGarment, onEditGarment, onCreateAsset, onAddImage, onCreateCategory, categorySubmitting, onUpdateAssetStatus,
+  onCreateGarment, onEditGarment, onCreateAsset, onUpdateAssetStatus,
   garmentModalOpen, editingGarment, onCloseGarmentModal, onSubmitGarment, submitting,
   assetModalOpen, onCloseAssetModal, onSubmitAsset,
 }: {
@@ -936,14 +954,16 @@ function InventoryTab({
   onCreateGarment: () => void;
   onEditGarment: (g: GarmentSummary) => void;
   onCreateAsset: () => void;
-  onAddImage: (garmentId: string, imageUrl: string) => Promise<void>;
-  onCreateCategory: (name: string) => Promise<GarmentCategory | null>;
-  categorySubmitting: boolean;
   onUpdateAssetStatus: (assetId: string, status: string) => Promise<void>;
   garmentModalOpen: boolean;
   editingGarment: GarmentDetail | null;
   onCloseGarmentModal: () => void;
-  onSubmitGarment: (id: string | null, payload: Parameters<typeof createGarment>[0]) => Promise<void>;
+  onSubmitGarment: (
+    id: string | null,
+    payload: Parameters<typeof createGarment>[0],
+    imagesToAdd: string[],
+    imageIdsToRemove: string[],
+  ) => Promise<void>;
   submitting: boolean;
   assetModalOpen: boolean;
   onCloseAssetModal: () => void;
@@ -969,29 +989,31 @@ function InventoryTab({
     });
   }, [assets, assetSearch, assetStatusFilter]);
 
+  const selectedGarment = garments.find((g) => g.id === selectedGarmentId) ?? null;
+
   return (
     <div className="flex h-[calc(100vh-240px)] -mx-4 sm:-mx-6 lg:-mx-8 overflow-hidden border-y border-sand bg-white">
       {/* Left Pane: Garment Catalog Grid */}
       <section className="w-1/2 flex flex-col border-r border-sand bg-warm-ivory">
         <div className="p-4 border-b border-sand bg-surface-container-low sticky top-0 z-10 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <h2 className="font-display text-xl text-ink">Danh m?c Tuy?t t·c</h2>
+            <h2 className="font-display text-xl text-ink">Danh m?c Tuy?t t√°c</h2>
             <span className="text-xs text-stone-500">{garments.length} m?u</span>
           </div>
           <button type="button" onClick={onCreateGarment} className="flex items-center gap-1 rounded-lg bg-lotus px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-oxblood">
             <span className="material-symbols-outlined text-[16px]">add</span>
-            ThÍm trang ph?c
+            Th√™m trang ph?c
           </button>
         </div>
         <div className="border-b border-sand bg-white px-4 py-3">
           <div className="relative">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-stone-400">search</span>
-            <input value={garmentSearch} onChange={(e) => setGarmentSearch(e.target.value)} className="w-full rounded-lg border border-sand bg-[#fff8f6] py-2 pl-10 pr-3 text-sm outline-none focus:border-antique" placeholder="TÏm trang ph?c, danh m?c, size..." />
+            <input value={garmentSearch} onChange={(e) => setGarmentSearch(e.target.value)} className="w-full rounded-lg border border-sand bg-[#fff8f6] py-2 pl-10 pr-3 text-sm outline-none focus:border-antique" placeholder="T√¨m trang ph?c, danh m?c, size..." />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4">
           {filteredGarments.length === 0 ? (
-            <div className="py-20 text-center text-stone-400">Chua cÛ trang ph?c.</div>
+            <div className="py-20 text-center text-stone-400">Chua c√≥ trang ph?c.</div>
           ) : (
             <div className="grid grid-cols-2 gap-4">
               {filteredGarments.map((g) => {
@@ -999,38 +1021,45 @@ function InventoryTab({
                 return (
                   <div
                     key={g.id}
-                    className={`rounded-lg border overflow-hidden text-left transition relative ${
+                    className={`group rounded-lg border overflow-hidden text-left transition relative ${
                       isSelected ? "border-lotus ring-2 ring-lotus/20" : "border-outline-variant hover:shadow-md"
                     }`}
                   >
-                  <button
-                    type="button"
-                    onClick={() => onSelectGarment(g.id)}
-                    className="w-full text-left"
-                  >
-                    <div className="aspect-[3/4] relative bg-surface-container-highest flex items-center justify-center">
-                      <span className="material-symbols-outlined text-[48px] text-antique/30">checkroom</span>
-                      <div className="absolute top-2 left-2 bg-surface/80 backdrop-blur-sm px-2 py-0.5 rounded text-[10px] font-semibold text-ink">
-                        {g.categoryName ?? "Trang ph?c"}
+                    <button
+                      type="button"
+                      onClick={() => onSelectGarment(g.id)}
+                      className="w-full text-left"
+                    >
+                      <div className="aspect-[3/4] relative overflow-hidden bg-[#f8dcd8]">
+                        {g.images && g.images.length > 0 ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={g.images[0].imageUrl} alt={g.name} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+                        ) : (
+                          <div className="flex h-full items-center justify-center bg-surface-container-highest">
+                            <span className="material-symbols-outlined text-[48px] text-antique/30">checkroom</span>
+                          </div>
+                        )}
+                        <div className="absolute top-2 left-2 rounded bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-ink backdrop-blur-sm">
+                          {g.categoryName ?? "Trang ph·ª•c"}
+                        </div>
                       </div>
-                    </div>
-                    <div className="p-3">
-                      <h3 className="font-display text-base text-ink line-clamp-1">{g.name}</h3>
-                      <div className="mt-1 text-xs text-stone-500">Size: {g.sizeLabel ?? "ó"}</div>
-                      <div className="mt-2 flex justify-between items-center border-t border-surface-variant pt-2 text-xs">
-                        <span className="font-semibold text-lotus">{formatVND(g.dailyPrice)}/ng‡y</span>
-                        <span className="text-stone-500">C?c {formatVND(g.depositAmount)}</span>
+                      <div className="p-3">
+                        <h3 className="font-display text-base text-ink line-clamp-1">{g.name}</h3>
+                        <div className="mt-1 text-xs text-stone-500">Size: {g.sizeLabel ?? "‚Äî"}</div>
+                        <div className="mt-2 flex justify-between items-center border-t border-surface-variant pt-2 text-xs">
+                          <span className="font-semibold text-lotus">{formatVND(g.dailyPrice)}/ng√†y</span>
+                          <span className="text-stone-500">C?c {formatVND(g.depositAmount)}</span>
+                        </div>
                       </div>
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onEditGarment(g)}
-                    className="absolute top-2 right-2 rounded-md bg-white/90 backdrop-blur-sm p-1.5 text-stone-500 hover:text-lotus transition"
-                    aria-label="Ch?nh s?a"
-                  >
-                    <span className="material-symbols-outlined text-[16px]">edit</span>
-                  </button>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onEditGarment(g)}
+                      className="absolute top-2 right-2 rounded-md bg-white/90 backdrop-blur-sm p-1.5 text-stone-500 hover:text-lotus transition"
+                      aria-label="Ch?nh s?a"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">edit</span>
+                    </button>
                   </div>
                 );
               })}
@@ -1043,13 +1072,13 @@ function InventoryTab({
       <section className="w-1/2 flex flex-col bg-surface">
         <div className="p-4 border-b border-sand bg-surface-container-low sticky top-0 z-10 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <h2 className="font-display text-xl text-ink">Qu?n l˝ Hi?n v?t</h2>
-            <span className="text-xs text-stone-500">{assets.length} t‡i s?n</span>
+            <h2 className="font-display text-xl text-ink">Qu?n l√Ω Hi?n v?t</h2>
+            <span className="text-xs text-stone-500">{assets.length} t√†i s?n</span>
           </div>
           {selectedGarmentId && (
             <button type="button" onClick={onCreateAsset} className="flex items-center gap-1 rounded-lg bg-lotus px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-oxblood">
               <span className="material-symbols-outlined text-[16px]">add</span>
-              ThÍm t‡i s?n
+              Th√™m t√†i s?n
             </button>
           )}
         </div>
@@ -1057,9 +1086,9 @@ function InventoryTab({
           <div className="flex gap-2">
             <div className="relative flex-1">
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-stone-400">search</span>
-              <input value={assetSearch} onChange={(e) => setAssetSearch(e.target.value)} className="w-full rounded-lg border border-sand bg-[#fff8f6] py-2 pl-10 pr-3 text-sm outline-none focus:border-antique" placeholder="TÏm m„ t‡i s?n..." />
+              <input value={assetSearch} onChange={(e) => setAssetSearch(e.target.value)} className="w-full rounded-lg border border-sand bg-[#fff8f6] py-2 pl-10 pr-3 text-sm outline-none focus:border-antique" placeholder="T√¨m m√£ t√†i s?n..." />
             </div>
-            <select value={assetStatusFilter} onChange={(e) => setAssetStatusFilter(e.target.value)} className="rounded-lg border border-sand bg-white px-3 py-2 text-sm outline-none focus:border-antique" aria-label="L?c tr?ng th·i t‡i s?n">
+            <select value={assetStatusFilter} onChange={(e) => setAssetStatusFilter(e.target.value)} className="rounded-lg border border-sand bg-white px-3 py-2 text-sm outline-none focus:border-antique" aria-label="L?c tr?ng th√°i t√†i s?n">
               <option value="all">T?t c?</option>
               {Object.entries(ASSET_STATUS_META).map(([key, meta]) => <option key={key} value={key}>{meta.label}</option>)}
             </select>
@@ -1067,10 +1096,10 @@ function InventoryTab({
         </div>
 
         {assetsLoading ? (
-          <div className="flex-1 flex items-center justify-center text-sm text-stone-400">–ang t?i...</div>
+          <div className="flex-1 flex items-center justify-center text-sm text-stone-400">√êang t?i...</div>
         ) : filteredAssets.length === 0 ? (
           <div className="flex-1 flex items-center justify-center text-sm text-stone-400">
-            {selectedGarmentId ? "Chua cÛ t‡i s?n cho m?u n‡y." : "Ch?n m?t m?u trang ph?c."}
+            {selectedGarmentId ? "Chua c√≥ t√†i s?n cho m?u n√†y." : "Ch?n m?t m?u trang ph?c."}
           </div>
         ) : (
           <div className="flex-1 flex overflow-hidden">
@@ -1079,9 +1108,9 @@ function InventoryTab({
               <table className="w-full text-left border-collapse">
                 <thead className="bg-surface-container-highest border-b border-outline-variant sticky top-0">
                   <tr>
-                    <th className="font-label-sm text-label-sm text-on-surface-variant py-3 px-4 font-semibold uppercase tracking-wider">M„ hi?n v?t</th>
-                    <th className="font-label-sm text-label-sm text-on-surface-variant py-3 px-4 font-semibold uppercase tracking-wider">Tr?ng th·i</th>
-                    <th className="font-label-sm text-label-sm text-on-surface-variant py-3 px-4 font-semibold uppercase tracking-wider">TÏnh tr?ng</th>
+                    <th className="font-label-sm text-label-sm text-on-surface-variant py-3 px-4 font-semibold uppercase tracking-wider">M√£ hi?n v?t</th>
+                    <th className="font-label-sm text-label-sm text-on-surface-variant py-3 px-4 font-semibold uppercase tracking-wider">Tr?ng th√°i</th>
+                    <th className="font-label-sm text-label-sm text-on-surface-variant py-3 px-4 font-semibold uppercase tracking-wider">T√¨nh tr?ng</th>
                   </tr>
                 </thead>
                 <tbody className="font-body-sm text-body-sm">
@@ -1105,7 +1134,7 @@ function InventoryTab({
                           </span>
                         </td>
                         <td className="py-4 px-4 text-on-surface-variant">
-                          {a.conditionNote ?? (a.status === "available" ? "T?t" : "ó")}
+                          {a.conditionNote ?? (a.status === "available" ? "T?t" : "‚Äî")}
                         </td>
                       </tr>
                     );
@@ -1124,14 +1153,26 @@ function InventoryTab({
                   </button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-5">
-                  {/* Image placeholder */}
-                  <div className="aspect-square bg-surface-container-highest rounded border border-outline-variant flex items-center justify-center">
-                    <span className="material-symbols-outlined text-[48px] text-antique/30">checkroom</span>
+                  {/* Garment preview */}
+                  <div className="overflow-hidden rounded border border-outline-variant bg-[#f8dcd8]">
+                    <div className="aspect-square">
+                      {selectedGarment?.images && selectedGarment.images.length > 0 ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={selectedGarment.images[0].imageUrl} alt={selectedGarment.name} className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full items-center justify-center bg-surface-container-highest">
+                          <span className="material-symbols-outlined text-[48px] text-antique/30">checkroom</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="border-t border-outline-variant bg-white px-3 py-2 text-xs text-stone-500">
+                      {selectedGarment?.name ?? selectedAsset.garmentName}
+                    </div>
                   </div>
 
                   {/* Status with update control */}
                   <div>
-                    <label className="font-label-sm text-label-sm text-on-surface-variant uppercase mb-1 block">C?p nh?t tr?ng th·i</label>
+                    <label className="font-label-sm text-label-sm text-on-surface-variant uppercase mb-1 block">C?p nh?t tr?ng th√°i</label>
                     <select
                       value={selectedAsset.status}
                       onChange={(e) => onUpdateAssetStatus(selectedAsset.id, e.target.value)}
@@ -1151,15 +1192,15 @@ function InventoryTab({
                     </div>
                     <div className="flex justify-between">
                       <span className="text-stone-500">Size</span>
-                      <span className="font-medium text-ink">{selectedAsset.sizeLabel ?? "ó"}</span>
+                      <span className="font-medium text-ink">{selectedAsset.sizeLabel ?? "‚Äî"}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-stone-500">Gi· thuÍ</span>
-                      <span className="font-medium text-lotus">{formatVND(selectedAsset.dailyPrice)}/ng‡y</span>
+                      <span className="text-stone-500">Gi√° thu√™</span>
+                      <span className="font-medium text-lotus">{formatVND(selectedAsset.dailyPrice)}/ng√†y</span>
                     </div>
                     {selectedAsset.conditionNote && (
                       <div className="flex justify-between">
-                        <span className="text-stone-500">Ghi ch˙</span>
+                        <span className="text-stone-500">Ghi ch√∫</span>
                         <span className="font-medium text-ink text-right max-w-[180px]">{selectedAsset.conditionNote}</span>
                       </div>
                     )}
@@ -1169,9 +1210,9 @@ function InventoryTab({
                   <div>
                     <h4 className="font-label-md text-label-md text-on-surface border-b border-outline-variant pb-2 mb-3">L?ch s? ki?m tra</h4>
                     {assetHistoryLoading ? (
-                      <p className="text-xs text-stone-400">–ang t?i...</p>
+                      <p className="text-xs text-stone-400">√êang t?i...</p>
                     ) : assetHistory.length === 0 ? (
-                      <p className="text-xs text-stone-400">Chua cÛ l?ch ki?m tra.</p>
+                      <p className="text-xs text-stone-400">Chua c√≥ l?ch ki?m tra.</p>
                     ) : (
                       <div className="relative pl-5 border-l border-outline-variant ml-2 space-y-4">
                         {assetHistory.slice(0, 5).map((h) => (
@@ -1180,12 +1221,12 @@ function InventoryTab({
                               h.status === "completed" ? "bg-antique-gold" : "bg-outline"
                             }`} />
                             <div className="font-label-sm text-label-sm text-on-surface-variant mb-1">
-                              {h.createdAt.slice(0, 10)} ó {h.status === "completed" ? "–„ ki?m tra" : h.status}
+                              {h.createdAt.slice(0, 10)} ‚Äî {h.status === "completed" ? "√ê√£ ki?m tra" : h.status}
                             </div>
                             <div className="font-body-sm text-body-sm text-on-surface bg-surface p-2 rounded border border-surface-variant">
                               {h.findings.length > 0
-                                ? (() => { const total = h.findings.reduce((sum, f) => sum + f.penaltyAmount, 0); return `${h.findings.length} ghi nh?n${total > 0 ? ` ∑ Ph?t ${formatVND(total)}` : ""}`; })()
-                                : "KhÙng cÛ ghi nh?n"}
+                                ? (() => { const total = h.findings.reduce((sum, f) => sum + f.penaltyAmount, 0); return `${h.findings.length} ghi nh?n${total > 0 ? ` ¬∑ Ph?t ${formatVND(total)}` : ""}`; })()
+                                : "Kh√¥ng c√≥ ghi nh?n"}
                               {h.inspectorName && <span className="block text-xs text-stone-400 mt-1">B?i: {h.inspectorName}</span>}
                             </div>
                           </div>
@@ -1207,14 +1248,14 @@ function InventoryTab({
           categories={categories}
           submitting={submitting}
           onClose={onCloseGarmentModal}
-          onSubmit={(payload) => onSubmitGarment(editingGarment?.id ?? null, payload)}
+          onSubmit={(payload, imagesToAdd, imageIdsToRemove) => onSubmitGarment(editingGarment?.id ?? null, payload, imagesToAdd, imageIdsToRemove)}
         />
       )}
 
       {/* Asset Create Modal */}
       {assetModalOpen && selectedGarmentId && (
         <AssetFormModal
-          garmentName={garments.find((g) => g.id === selectedGarmentId)?.name ?? "ó"}
+          garmentName={garments.find((g) => g.id === selectedGarmentId)?.name ?? "‚Äî"}
           garmentId={selectedGarmentId}
           submitting={submitting}
           onClose={onCloseAssetModal}
@@ -1236,21 +1277,26 @@ function GarmentFormModal({
   categories: GarmentCategory[];
   submitting: boolean;
   onClose: () => void;
-  onSubmit: (payload: Parameters<typeof createGarment>[0], imagesToAdd: string[]) => void;
-  onCreateCategory: (name: string) => Promise<GarmentCategory | null>;
-  categorySubmitting: boolean;
-  onAddImage: (garmentId: string, imageUrl: string) => Promise<void>;
-}) {  const [name, setName] = useState(garment?.name ?? "");
+  onSubmit: (
+    payload: Parameters<typeof createGarment>[0],
+    imagesToAdd: string[],
+    imageIdsToRemove: string[],
+  ) => void;
+  onCreateCategory?: (name: string) => Promise<GarmentCategory | null>;
+  categorySubmitting?: boolean;
+  onAddImage?: (garmentId: string, imageUrl: string) => Promise<void>;
+}) {
+  const [name, setName] = useState(garment?.name ?? "");
   const [categoryId, setCategoryId] = useState(garment?.categoryId ?? "");
   const [description, setDescription] = useState(garment?.description ?? "");
   const [sizeLabel, setSizeLabel] = useState(garment?.sizeLabel ?? "");
   const [color, setColor] = useState(garment?.color ?? "");
   const [dailyPrice, setDailyPrice] = useState(String(garment?.dailyPrice ?? ""));
   const [depositAmount, setDepositAmount] = useState(String(garment?.depositAmount ?? ""));
-  
-  // Image states
-  const [pendingImages, setPendingImages] = useState<string[]>([]);
+  const [existingImages, setExistingImages] = useState(garment?.images ?? []);
   const [imageUrl, setImageUrl] = useState("");
+  const [pendingImages, setPendingImages] = useState<string[]>([]);
+  const [removedImageIds, setRemovedImageIds] = useState<string[]>([]);
   const [uploadingImage, setUploadingImage] = useState(false);
 
   function handleSubmit(e: React.FormEvent) {
@@ -1263,26 +1309,34 @@ function GarmentFormModal({
       color: color || undefined,
       dailyPrice: Number(dailyPrice),
       depositAmount: Number(depositAmount),
-    }, pendingImages);
+    }, pendingImages, removedImageIds);
+  }
+
+  function handleRemoveExistingImage(imageId: string) {
+    setExistingImages((prev) => prev.filter((img) => img.id !== imageId));
+    setRemovedImageIds((prev) => (prev.includes(imageId) ? prev : [...prev, imageId]));
   }
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
     setUploadingImage(true);
-    const formData = new FormData();
-    formData.append("file", file);
     try {
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      const data = await res.json();
-      if (data.success && data.url) {
-        setPendingImages((prev) => [...prev, data.url]);
-      } else {
-        alert("Upload th?t b?i: " + (data.message || JSON.stringify(data)));
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch("/api/upload", { method: "POST", body: formData });
+        const data = await res.json();
+        if (data.success && data.url) {
+          setPendingImages((prev) => [...prev, data.url]);
+        } else {
+          alert("Upload th·∫•t b·∫°i: " + (data.message || JSON.stringify(data)));
+        }
       }
     } catch (err: any) {
-      alert("L?i upload: " + err.message);
+      alert("L·ªói upload: " + err.message);
     } finally {
+      e.target.value = "";
       setUploadingImage(false);
     }
   }
@@ -1297,7 +1351,7 @@ function GarmentFormModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4">
       <form onSubmit={handleSubmit} className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-sand bg-white p-6 shadow-2xl">
         <div className="mb-6 flex items-center justify-between">
-          <h3 className="font-display text-2xl text-ink">{garment ? "S?a trang ph?c" : "ThÍm trang ph?c m?i"}</h3>
+          <h3 className="font-display text-2xl text-ink">{garment ? "S?a trang ph?c" : "Th√™m trang ph?c m?i"}</h3>
           <button type="button" onClick={onClose} className="text-stone-500 hover:text-lotus">
             <span className="material-symbols-outlined">close</span>
           </button>
@@ -1305,16 +1359,16 @@ function GarmentFormModal({
 
         <div className="space-y-4">
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">TÍn trang ph?c *</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} required className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="Vd: Nh?t BÏnh Ho‡ng Ph·i" />
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">T√™n trang ph?c *</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} required className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="Vd: Nh·∫≠t B√¨nh Ho√†ng Ph√°i" />
           </div>
           <div>
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Danh m?c</label>
             <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-full rounded-lg border border-sand bg-white px-3 py-2 text-sm outline-none focus:border-antique">
-              <option value="">ó Ch?n danh m?c ó</option>
+              <option value="">‚Äî Ch?n danh m?c ‚Äî</option>
               {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            <p className="mt-1 text-xs text-stone-400">Danh m?c d˘ng d? ph‚n lo?i trang ph?c.</p>
+            <p className="mt-1 text-xs text-stone-400">Danh m?c d√πng d? ph√¢n lo?i trang ph?c.</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -1322,66 +1376,94 @@ function GarmentFormModal({
               <input value={sizeLabel} onChange={(e) => setSizeLabel(e.target.value)} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="Vd: M, L" />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">M‡u</label>
-              <input value={color} onChange={(e) => setColor(e.target.value)} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="Vd: –?" />
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">M√†u</label>
+              <input value={color} onChange={(e) => setColor(e.target.value)} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="Vd: ƒë·ªè" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Gi· thuÍ/ng‡y (VN–) *</label>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Gi√° thu√™/ng√†y (VNƒê) *</label>
               <input value={dailyPrice} onChange={(e) => setDailyPrice(e.target.value)} required type="number" min={0} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="350000" />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Ti?n c?c (VN–) *</label>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Ti·ªÅn c·ªçc (VNƒê) *</label>
               <input value={depositAmount} onChange={(e) => setDepositAmount(e.target.value)} required type="number" min={0} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="1000000" />
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">MÙ t?</label>
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="MÙ t? trang ph?c..." />
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">M√¥ t·∫£</label>
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="M√¥ t·∫£ trang ph·ª•c..." />
           </div>
         </div>
 
         <div className="mt-6 rounded-xl border border-sand bg-[#fff8f6] p-4">
           <div className="flex items-center justify-between gap-3 mb-3">
             <div>
-              <h4 className="text-sm font-semibold text-ink">?nh trang ph?c</h4>
-              <p className="text-xs text-stone-500">T?i ?nh lÍn ho?c d˘ng URL d? hi?n th?.</p>
+              <h4 className="text-sm font-semibold text-ink">·∫¢nh trang ph·ª•c</h4>
+              <p className="text-xs text-stone-500">·∫¢nh hi·ªán c√≥ v√† ·∫£nh m·ªõi s·∫Ω ƒë∆∞·ª£c qu·∫£n l√Ω ri√™ng.</p>
             </div>
-            <span className="text-xs text-stone-400">{(garment?.images?.length ?? 0) + pendingImages.length} ?nh</span>
+            <span className="text-xs text-stone-400">{existingImages.length + pendingImages.length} ·∫£nh</span>
           </div>
-          
-          {(garment?.images && garment.images.length > 0 || pendingImages.length > 0) && (
-            <div className="mt-3 mb-4 flex gap-2 overflow-x-auto pb-2">
-              {garment?.images?.map((img) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img key={img.id} src={img.imageUrl} alt={img.altText ?? "?nh trang ph?c"} className="h-20 w-16 flex-shrink-0 rounded border border-sand object-cover" />
-              ))}
-              {pendingImages.map((imgUrl, i) => (
-                <div key={i} className="relative group flex-shrink-0">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={imgUrl} alt="Pending" className="h-20 w-16 rounded border border-lotus object-cover opacity-80" />
-                  <div className="absolute inset-0 rounded bg-lotus/10 pointer-events-none" />
-                  <button type="button" onClick={() => setPendingImages(prev => prev.filter((_, idx) => idx !== i))} className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white shadow opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span className="material-symbols-outlined text-[10px]">close</span>
-                  </button>
-                </div>
-              ))}
+
+          {existingImages.length > 0 && (
+            <div className="mt-3">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">·∫¢nh hi·ªán c√≥</p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {existingImages.map((img, index) => (
+                  <div key={img.id} className="group relative overflow-hidden rounded border border-sand bg-white">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={img.imageUrl} alt={img.altText ?? "·∫¢nh trang ph·ª•c"} className="h-24 w-full object-cover" />
+                    <div className="absolute left-2 top-2 rounded bg-white/90 px-1.5 py-0.5 text-[10px] font-semibold text-ink">
+                      {index === 0 ? "·∫¢nh ch√≠nh" : `·∫¢nh ${index + 1}`}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveExistingImage(img.id)}
+                      className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80"
+                      aria-label="X√≥a ·∫£nh"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">close</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {pendingImages.length > 0 && (
+            <div className="mt-4">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">·∫¢nh m·ªõi</p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {pendingImages.map((imgUrl, i) => (
+                  <div key={`${imgUrl}-${i}`} className="group relative overflow-hidden rounded border border-lotus bg-white">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={imgUrl} alt="Pending" className="h-24 w-full object-cover opacity-90" />
+                    <button
+                      type="button"
+                      onClick={() => setPendingImages((prev) => prev.filter((_, idx) => idx !== i))}
+                      className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80"
+                      aria-label="X√≥a ·∫£nh m·ªõi"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">close</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="rounded border border-sand bg-white p-3">
-              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-stone-500">T?i ?nh lÍn (File)</label>
-              <input type="file" accept="image/*" onChange={handleFileUpload} disabled={uploadingImage} className="block w-full text-xs text-stone-500 file:mr-3 file:rounded file:border-0 file:bg-sand/30 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-ink hover:file:bg-sand/50" />
-              {uploadingImage && <p className="mt-1 text-[10px] text-stone-400">–ang t?i lÍn...</p>}
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-stone-500">T·∫£i ·∫£nh l√™n (File)</label>
+              <input type="file" accept="image/*" multiple onChange={handleFileUpload} disabled={uploadingImage} className="block w-full text-xs text-stone-500 file:mr-3 file:rounded file:border-0 file:bg-sand/30 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-ink hover:file:bg-sand/50" />
+              {uploadingImage && <p className="mt-1 text-[10px] text-stone-400">ƒêang t·∫£i l√™n...</p>}
             </div>
             <div className="rounded border border-sand bg-white p-3">
-              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-stone-500">Ho?c d˘ng URL ?nh</label>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-stone-500">Ho·∫∑c d√πng URL ·∫£nh</label>
               <div className="flex gap-2">
                 <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="min-w-0 flex-1 rounded border border-sand px-2 py-1.5 text-xs outline-none focus:border-antique" placeholder="https://..." />
                 <button type="button" disabled={!imageUrl.trim()} onClick={handleAddImageUrl} className="rounded bg-lotus px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-oxblood disabled:opacity-50">
-                  ThÍm
+                  Th√™m
                 </button>
               </div>
             </div>
@@ -1391,7 +1473,7 @@ function GarmentFormModal({
         <div className="mt-6 flex justify-end gap-3">
           <button type="button" onClick={onClose} className="rounded-lg border border-sand px-5 py-2.5 text-sm font-semibold text-stone-600 hover:bg-stone-50">H?y</button>
           <button type="submit" disabled={submitting} className="rounded-lg bg-lotus px-6 py-2.5 text-sm font-semibold text-white hover:bg-oxblood disabled:opacity-50">
-            {submitting ? "–ang luu..." : garment ? "Luu thay d?i" : "T?o trang ph?c"}
+            {submitting ? "√êang luu..." : garment ? "Luu thay d?i" : "T?o trang ph?c"}
           </button>
         </div>
       </form>
@@ -1430,7 +1512,7 @@ function AssetFormModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4">
       <form onSubmit={handleSubmit} className="w-full max-w-md rounded-2xl border border-sand bg-white p-6 shadow-2xl">
         <div className="mb-6 flex items-center justify-between">
-          <h3 className="font-display text-2xl text-ink">ThÍm t‡i s?n m?i</h3>
+          <h3 className="font-display text-2xl text-ink">Th√™m t√†i s?n m?i</h3>
           <button type="button" onClick={onClose} className="text-stone-500 hover:text-lotus">
             <span className="material-symbols-outlined">close</span>
           </button>
@@ -1439,16 +1521,16 @@ function AssetFormModal({
 
         <div className="space-y-4">
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">M„ t‡i s?n *</label>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">M√£ t√†i s?n *</label>
             <input value={assetCode} onChange={(e) => setAssetCode(e.target.value)} required className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="Vd: NB-005" />
-            <p className="mt-1 text-xs text-stone-400">M„ duy nh?t cho mÛn d? v?t l˝.</p>
+            <p className="mt-1 text-xs text-stone-400">M√£ duy nh?t cho m√≥n d? v?t l√Ω.</p>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Ghi ch˙ tÏnh tr?ng</label>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Ghi ch√∫ t√¨nh tr?ng</label>
             <input value={conditionNote} onChange={(e) => setConditionNote(e.target.value)} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="Vd: M?i 100%" />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Gi· mua (VN–)</label>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Gi√° mua (VN√ê)</label>
             <input value={purchaseCost} onChange={(e) => setPurchaseCost(e.target.value)} type="number" min={0} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="Vd: 5000000" />
           </div>
         </div>
@@ -1456,7 +1538,7 @@ function AssetFormModal({
         <div className="mt-6 flex justify-end gap-3">
           <button type="button" onClick={onClose} className="rounded-lg border border-sand px-5 py-2.5 text-sm font-semibold text-stone-600 hover:bg-stone-50">H?y</button>
           <button type="submit" disabled={submitting} className="rounded-lg bg-jade px-6 py-2.5 text-sm font-semibold text-white hover:bg-forest disabled:opacity-50">
-            {submitting ? "–ang t?o..." : "T?o t‡i s?n"}
+            {submitting ? "√êang t?o..." : "T?o t√†i s?n"}
           </button>
         </div>
       </form>
@@ -1472,21 +1554,21 @@ function InspectionLogTab({ log, loading }: { log: InspectionLogEntry[]; loading
   return (
     <div className="space-y-4">
       {loading ? (
-        <div className="py-20 text-center text-stone-400">–ang t?i...</div>
+        <div className="py-20 text-center text-stone-400">√êang t?i...</div>
       ) : log.length === 0 ? (
-        <div className="py-20 text-center text-stone-400">Chua cÛ phiÍn ki?m tra n‡o.</div>
+        <div className="py-20 text-center text-stone-400">Chua c√≥ phi√™n ki?m tra n√†o.</div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
           <table className="w-full text-left text-sm">
             <thead className="bg-[#fff8f6] text-xs uppercase tracking-[0.14em] text-stone-500">
               <tr>
-                <th className="px-6 py-3">M„ t‡i s?n</th>
+                <th className="px-6 py-3">M√£ t√†i s?n</th>
                 <th className="px-6 py-3">Trang ph?c</th>
-                <th className="px-6 py-3">Tr?ng th·i</th>
+                <th className="px-6 py-3">Tr?ng th√°i</th>
                 <th className="px-6 py-3">Ngu?i ki?m tra</th>
                 <th className="px-6 py-3">Ghi nh?n</th>
                 <th className="px-6 py-3">Ph?t</th>
-                <th className="px-6 py-3">Ng‡y t?o</th>
+                <th className="px-6 py-3">Ng√†y t?o</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-sand">
@@ -1498,12 +1580,12 @@ function InspectionLogTab({ log, loading }: { log: InspectionLogEntry[]; loading
                     <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
                       entry.status === "completed" ? "bg-jade/10 text-jade" : "bg-amber-100 text-amber-700"
                     }`}>
-                      {entry.status === "completed" ? "Ho‡n t?t" : entry.status}
+                      {entry.status === "completed" ? "Ho√†n t?t" : entry.status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-stone-600">{entry.inspectorName ?? "ó"}</td>
+                  <td className="px-6 py-4 text-stone-600">{entry.inspectorName ?? "‚Äî"}</td>
                   <td className="px-6 py-4 text-stone-600">{entry.findingsCount}</td>
-                  <td className="px-6 py-4 text-red-700">{entry.totalPenalty > 0 ? formatVND(entry.totalPenalty) : "ó"}</td>
+                  <td className="px-6 py-4 text-red-700">{entry.totalPenalty > 0 ? formatVND(entry.totalPenalty) : "‚Äî"}</td>
                   <td className="px-6 py-4 text-stone-500">{entry.createdAt.slice(0, 10)}</td>
                 </tr>
               ))}
@@ -1530,9 +1612,9 @@ function LaundryTab({
   return (
     <div className="space-y-4">
       {loading ? (
-        <div className="py-20 text-center text-stone-400">–ang t?i...</div>
+        <div className="py-20 text-center text-stone-400">√êang t?i...</div>
       ) : tickets.length === 0 ? (
-        <div className="py-20 text-center text-stone-400">KhÙng cÛ d? c?n gi?t s?y.</div>
+        <div className="py-20 text-center text-stone-400">Kh√¥ng c√≥ d? c?n gi?t s?y.</div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {tickets.map((t) => (
@@ -1543,7 +1625,7 @@ function LaundryTab({
                   <p className="text-sm text-stone-500">{t.garmentName}</p>
                 </div>
                 <span className="rounded-full bg-state-laundry/10 text-state-laundry px-2 py-0.5 text-xs font-semibold">
-                  {t.status === "open" ? "Ch? gi?t" : "–ang gi?t"}
+                  {t.status === "open" ? "Ch? gi?t" : "√êang gi?t"}
                 </span>
               </div>
               {t.note && <p className="mt-2 text-xs text-stone-500">{t.note}</p>}
@@ -1554,7 +1636,7 @@ function LaundryTab({
                   onClick={() => onComplete(t.id)}
                   className="rounded-lg bg-jade px-4 py-2 text-xs font-semibold text-white transition hover:bg-forest disabled:opacity-50"
                 >
-                  {actioningId === t.id ? "..." : "Ho‡n t?t gi?t"}
+                  {actioningId === t.id ? "..." : "Ho√†n t?t gi?t"}
                 </button>
               </div>
             </div>
@@ -1580,9 +1662,9 @@ function DamagedTab({
   return (
     <div className="space-y-4">
       {loading ? (
-        <div className="py-20 text-center text-stone-400">–ang t?i...</div>
+        <div className="py-20 text-center text-stone-400">√êang t?i...</div>
       ) : jobs.length === 0 ? (
-        <div className="py-20 text-center text-stone-400">KhÙng cÛ t‡i s?n hu h?ng ho?c b?o trÏ.</div>
+        <div className="py-20 text-center text-stone-400">Kh√¥ng c√≥ t√†i s?n hu h?ng ho?c b?o tr√¨.</div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {jobs.map((j) => (
@@ -1597,7 +1679,7 @@ function DamagedTab({
                   j.status === "in_progress" ? "bg-amber-100 text-amber-700" :
                   "bg-jade/10 text-jade"
                 }`}>
-                  {j.status === "open" ? "C?n x? l˝" : j.status === "in_progress" ? "–ang s?a" : "Ho‡n t?t"}
+                  {j.status === "open" ? "C?n x? l√Ω" : j.status === "in_progress" ? "√êang s?a" : "Ho√†n t?t"}
                 </span>
               </div>
               {j.note && <p className="mt-2 text-xs text-stone-500">{j.note}</p>}
@@ -1610,7 +1692,7 @@ function DamagedTab({
                       onClick={() => onComplete(j.id, "completed")}
                       className="rounded-lg bg-jade px-3 py-2 text-xs font-semibold text-white transition hover:bg-forest disabled:opacity-50"
                     >
-                      {actioningId === j.id ? "..." : "Ho‡n t?t"}
+                      {actioningId === j.id ? "..." : "Ho√†n t?t"}
                     </button>
                     <button
                       type="button"
@@ -1618,7 +1700,7 @@ function DamagedTab({
                       onClick={() => onComplete(j.id, "cannot_repair")}
                       className="rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-50"
                     >
-                      KhÙng s?a du?c
+                      Kh√¥ng s?a du?c
                     </button>
                   </>
                 )}
@@ -1651,11 +1733,11 @@ function RefundsTab({
   return (
     <div className="space-y-6">
       {loading ? (
-        <div className="py-20 text-center text-stone-400">–ang t?i danh s·ch ho‡n c?c...</div>
+        <div className="py-20 text-center text-stone-400">√êang t?i danh s√°ch ho√†n c?c...</div>
       ) : refunds.length === 0 ? (
         <div className="py-20 text-center text-stone-400">
           <span className="material-symbols-outlined mb-4 block text-5xl text-stone-200">check_circle</span>
-          KhÙng cÛ yÍu c?u ho‡n c?c n‡o dang ch? duy?t.
+          Kh√¥ng c√≥ y√™u c?u ho√†n c?c n√†o dang ch? duy?t.
         </div>
       ) : (
         refunds.map((refund) => (
@@ -1666,17 +1748,17 @@ function RefundsTab({
                 <span className="rounded-full bg-yellow-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-yellow-700">Ch? duy?t</span>
               </div>
               <span className="text-xs text-stone-400">
-                YÍu c?u l˙c {new Date(refund.createdAt).toLocaleString("vi-VN")}
+                Y√™u c?u l√∫c {new Date(refund.createdAt).toLocaleString("vi-VN")}
               </span>
             </div>
             <div className="grid gap-6 p-6 sm:grid-cols-2">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Kh·ch h‡ng</p>
-                <p className="mt-1 font-medium text-ink">{refund.booking.customerName ?? "ó"}</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Kh√°ch h√†ng</p>
+                <p className="mt-1 font-medium text-ink">{refund.booking.customerName ?? "‚Äî"}</p>
                 {refund.booking.customerPhone && <p className="text-sm text-stone-500">{refund.booking.customerPhone}</p>}
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">S? ti?n ho‡n</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">S? ti?n ho√†n</p>
                 <p className="mt-1 font-display text-2xl text-jade">{formatVND(refund.amount)}</p>
                 <p className="text-sm text-stone-500">
                   C?c: {formatVND(refund.booking.depositTotal)} - Ph?t: {formatVND(refund.booking.penaltyTotal)}
@@ -1684,11 +1766,11 @@ function RefundsTab({
               </div>
             </div>
             <div className="border-t border-sand bg-[#fff8f6] px-6 py-4">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">ThÙng tin chuy?n kho?n</p>
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Th√¥ng tin chuy?n kho?n</p>
               <div className="grid gap-3 text-sm sm:grid-cols-3">
-                <div><span className="text-stone-500">Ng‚n h‡ng: </span><span className="font-medium text-ink">{refund.bankName ?? "ó"}</span></div>
-                <div><span className="text-stone-500">S? TK: </span><span className="font-medium text-ink">{refund.bankAccountNumber ?? "ó"}</span></div>
-                <div><span className="text-stone-500">Ch? TK: </span><span className="font-medium text-ink">{refund.bankAccountHolder ?? "ó"}</span></div>
+                <div><span className="text-stone-500">Ng√¢n h√†ng: </span><span className="font-medium text-ink">{refund.bankName ?? "‚Äî"}</span></div>
+                <div><span className="text-stone-500">S? TK: </span><span className="font-medium text-ink">{refund.bankAccountNumber ?? "‚Äî"}</span></div>
+                <div><span className="text-stone-500">Ch? TK: </span><span className="font-medium text-ink">{refund.bankAccountHolder ?? "‚Äî"}</span></div>
               </div>
             </div>
             <div className="space-y-4 border-t border-sand px-6 py-4">
@@ -1696,16 +1778,16 @@ function RefundsTab({
                 <label className="mb-2 block text-sm font-semibold text-stone-500">?nh bill chuy?n kho?n (URL)</label>
                 <input
                   className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique"
-                  placeholder="D·n URL ?nh ch?p giao d?ch chuy?n kho?n..."
+                  placeholder="D√°n URL ?nh ch?p giao d?ch chuy?n kho?n..."
                   value={proofImageUrl}
                   onChange={(e) => onProofImageUrlChange(e.target.value)}
                 />
               </div>
               <div>
-                <label className="mb-2 block text-sm font-semibold text-stone-500">Ghi ch˙ (tu? ch?n)</label>
+                <label className="mb-2 block text-sm font-semibold text-stone-500">Ghi ch√∫ (tu? ch?n)</label>
                 <input
                   className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique"
-                  placeholder="Ghi ch˙ n?i b?..."
+                  placeholder="Ghi ch√∫ n?i b?..."
                   value={approveNote}
                   onChange={(e) => onApproveNoteChange(e.target.value)}
                 />
@@ -1717,7 +1799,7 @@ function RefundsTab({
                   onClick={() => onApprove(refund.id)}
                   className="rounded-lg bg-jade px-6 py-3 text-sm font-semibold text-white transition hover:bg-forest disabled:opacity-50"
                 >
-                  {actioningId === refund.id ? "–ang x? l˝..." : `Duy?t ho‡n c?c ${formatVND(refund.amount)}`}
+                  {actioningId === refund.id ? "√êang x? l√Ω..." : `Duy?t ho√†n c?c ${formatVND(refund.amount)}`}
                 </button>
               </div>
             </div>
@@ -1742,9 +1824,9 @@ function FinanceTab({
     <div className="space-y-6">
       <div className="grid gap-6 md:grid-cols-3">
         <div className="rounded-xl border border-sand bg-white p-6 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Doanh thu cho thuÍ</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Doanh thu cho thu√™</p>
           <p className="mt-2 font-display text-3xl text-jade">{formatVND(totalRentalRevenue)}</p>
-          <p className="mt-1 text-sm text-stone-500">T? c·c don completed + dang thuÍ</p>
+          <p className="mt-1 text-sm text-stone-500">T? c√°c don completed + dang thu√™</p>
         </div>
         <div className="rounded-xl border border-sand bg-white p-6 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Ti?n c?c dang gi?</p>
@@ -1752,32 +1834,32 @@ function FinanceTab({
           <p className="mt-1 text-sm text-stone-500">{activeBookings.length} don dang active</p>
         </div>
         <div className="rounded-xl border border-sand bg-white p-6 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Ti?n ph?t ph·t sinh</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Ti?n ph?t ph√°t sinh</p>
           <p className="mt-2 font-display text-3xl text-red-700">{formatVND(totalPenalties)}</p>
-          <p className="mt-1 text-sm text-stone-500">T? c·c l?n ki?m tra ph·t hi?n hu h?ng</p>
+          <p className="mt-1 text-sm text-stone-500">T? c√°c l?n ki?m tra ph√°t hi?n hu h?ng</p>
         </div>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
         <div className="border-b border-sand px-6 py-4">
-          <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">–?i so·t don g?n d‚y</h3>
+          <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">√ê?i so√°t don g?n d√¢y</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-[#fff8f6] text-xs uppercase tracking-[0.14em] text-stone-500">
               <tr>
-                <th className="px-6 py-3">M„ don</th>
-                <th className="px-6 py-3">Kh·ch h‡ng</th>
-                <th className="px-6 py-3">Ti?n thuÍ</th>
+                <th className="px-6 py-3">M√£ don</th>
+                <th className="px-6 py-3">Kh√°ch h√†ng</th>
+                <th className="px-6 py-3">Ti?n thu√™</th>
                 <th className="px-6 py-3">Ti?n c?c</th>
                 <th className="px-6 py-3">Ph?t</th>
-                <th className="px-6 py-3">Tr?ng th·i</th>
+                <th className="px-6 py-3">Tr?ng th√°i</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-sand">
               {bookings.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-10 text-center text-stone-400">Chua cÛ don n‡o.</td>
+                  <td colSpan={6} className="px-6 py-10 text-center text-stone-400">Chua c√≥ don n√†o.</td>
                 </tr>
               ) : (
                 bookings.slice().reverse().map((b) => {
@@ -1785,10 +1867,10 @@ function FinanceTab({
                   return (
                     <tr key={b.id} className="transition hover:bg-[#fff8f6]">
                       <td className="px-6 py-4 font-semibold text-ink">#{b.id.slice(0, 8).toUpperCase()}</td>
-                      <td className="px-6 py-4 text-stone-600">{b.customerName ?? "ó"}</td>
+                      <td className="px-6 py-4 text-stone-600">{b.customerName ?? "‚Äî"}</td>
                       <td className="px-6 py-4 text-ink">{formatVND(b.rentalTotal)}</td>
                       <td className="px-6 py-4 text-stone-600">{formatVND(b.depositTotal)}</td>
-                      <td className="px-6 py-4 text-red-700">{(b.penaltyTotal ?? 0) > 0 ? formatVND(b.penaltyTotal ?? 0) : "ó"}</td>
+                      <td className="px-6 py-4 text-red-700">{(b.penaltyTotal ?? 0) > 0 ? formatVND(b.penaltyTotal ?? 0) : "‚Äî"}</td>
                       <td className="px-6 py-4">
                         <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${s.color}`}>{s.label}</span>
                       </td>
@@ -1904,6 +1986,9 @@ function ShortcutButton({
     </button>
   );
 }
+
+
+
 
 
 
