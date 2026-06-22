@@ -13,12 +13,10 @@ type GarmentWithCategory = {
   id: string;
   name: string;
   description: string | null;
-  sizeLabel: string | null;
   color: string | null;
-  dailyPrice: unknown;
-  depositAmount: unknown;
   isActive: boolean;
   category?: { name: string } | null;
+  garment_sizes?: Array<any>;
 };
 
 type GarmentWithImages = GarmentWithCategory & {
@@ -80,15 +78,21 @@ export class GarmentsService {
         name: dto.name,
         categoryId: dto.categoryId ?? null,
         description: dto.description ?? null,
-        sizeLabel: dto.sizeLabel ?? null,
         color: dto.color ?? null,
-        dailyPrice: dto.dailyPrice,
-        depositAmount: dto.depositAmount,
+        garment_sizes: {
+          create: [{
+            size_label: dto.sizeLabel ?? null,
+            daily_price: dto.dailyPrice ?? 0,
+            deposit_amount: dto.depositAmount ?? 0,
+            is_active: true,
+          }],
+        },
         isActive: dto.isActive ?? true,
       },
       include: {
         category: true,
         images: { orderBy: { sortOrder: "asc" } },
+        garment_sizes: true,
       },
     });
 
@@ -116,15 +120,14 @@ export class GarmentsService {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
         ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
         ...(dto.description !== undefined ? { description: dto.description } : {}),
-        ...(dto.sizeLabel !== undefined ? { sizeLabel: dto.sizeLabel } : {}),
         ...(dto.color !== undefined ? { color: dto.color } : {}),
-        ...(dto.dailyPrice !== undefined ? { dailyPrice: dto.dailyPrice } : {}),
-        ...(dto.depositAmount !== undefined ? { depositAmount: dto.depositAmount } : {}),
+        /* Update garment_sizes separately if needed */
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
       },
       include: {
         category: true,
         images: { orderBy: { sortOrder: "asc" } },
+        garment_sizes: true,
       },
     });
 
@@ -296,10 +299,10 @@ export class GarmentsService {
       description: garment.description,
       categoryName: garment.category?.name ?? null,
       categoryId: (garment as any).categoryId ?? null,
-      sizeLabel: garment.sizeLabel,
+      sizeLabel: garment.garment_sizes?.[0]?.size_label ?? null,
       color: garment.color,
-      dailyPrice: Number(garment.dailyPrice),
-      depositAmount: Number(garment.depositAmount),
+      dailyPrice: Number(garment.garment_sizes?.[0]?.daily_price ?? 0),
+      depositAmount: Number(garment.garment_sizes?.[0]?.deposit_amount ?? 0),
       isActive: garment.isActive,
       images: (garment.images ?? []).map((img) => ({
         id: img.id,
