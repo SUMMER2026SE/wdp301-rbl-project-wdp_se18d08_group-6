@@ -79,6 +79,10 @@ export class GarmentsService {
       }
 
       const group = grouped.get(key)!;
+      // Nếu group chưa có ảnh mà garment này có ảnh → cập nhật ảnh cho group
+      if (!group.imageUrl && g.images[0]?.imageUrl) {
+        group.imageUrl = g.images[0].imageUrl;
+      }
       // Merge sizes, deduplicate by sizeLabel
       for (const s of g.garment_sizes) {
         const sk = (s.size_label ?? "__nosize__").trim().toLowerCase();

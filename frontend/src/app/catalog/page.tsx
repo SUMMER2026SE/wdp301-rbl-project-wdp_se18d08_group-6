@@ -155,7 +155,11 @@ export default function CatalogPage() {
           <section className="mb-20 grid items-center gap-10 lg:grid-cols-[1.25fr_0.9fr] lg:gap-20">
             <div className="relative overflow-hidden rounded-sm border border-sand/70 bg-[#f8dcd8] shadow-[0_20px_40px_rgba(77,16,15,0.08)]">
               <div className="flex aspect-[4/5] items-center justify-center">
-                <span className="material-symbols-outlined text-[80px] text-antique/30">checkroom</span>
+                {featured.imageUrl ? (
+                  <img src={featured.imageUrl} alt={featured.name} className="w-full h-full object-cover" />
+                ) : (
+                  <span className="material-symbols-outlined text-[80px] text-antique/30">checkroom</span>
+                )}
               </div>
             </div>
             <div>
@@ -221,7 +225,11 @@ export default function CatalogPage() {
                   className="group flex flex-col border border-antique/20 bg-white/80 p-4 backdrop-blur-sm transition duration-500 hover:border-antique/60 hover:shadow-[0_18px_40px_rgba(77,16,15,0.08)]"
                 >
                   <Link href={`/catalog/${selectedGarmentId}`} className="relative flex aspect-[3/4] items-center justify-center overflow-hidden bg-[#f8dcd8] cursor-pointer">
-                    <span className="material-symbols-outlined text-[60px] text-antique/40">checkroom</span>
+                    {group.imageUrl ? (
+                      <img src={group.imageUrl} alt={group.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="material-symbols-outlined text-[60px] text-antique/40">checkroom</span>
+                    )}
                     <div className="absolute left-4 top-4 rounded bg-white/95 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-ink backdrop-blur">
                       {group.categoryName ?? "Trang phục"}
                     </div>
