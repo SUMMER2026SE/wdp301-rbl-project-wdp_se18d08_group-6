@@ -173,9 +173,8 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
                       key={img.id}
                       type="button"
                       onClick={() => setActiveImageIdx(idx)}
-                      className={`relative flex-none h-20 w-16 overflow-hidden rounded border-2 transition ${
-                        idx === activeImageIdx ? "border-lotus" : "border-sand hover:border-antique"
-                      }`}
+                      className={`relative flex-none h-20 w-16 overflow-hidden rounded border-2 transition ${idx === activeImageIdx ? "border-lotus" : "border-sand hover:border-antique"
+                        }`}
                       aria-label={`Xem ảnh ${idx + 1}`}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -250,7 +249,7 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
                   </div>
                 </div>
 
-                <Link href="/try-on" className="group relative block overflow-hidden rounded-xl border border-antique/30 bg-gradient-to-r from-[#f9f5f0] to-white p-6 transition hover:border-antique/60">
+                <Link href={`/try-on?garmentSizeId=${selectedGarmentId}`} className="group relative block overflow-hidden rounded-xl border border-antique/30 bg-gradient-to-r from-[#f9f5f0] to-white p-6 transition hover:border-antique/60">
                   <div className="flex items-start gap-3">
                     <span className="material-symbols-outlined text-lotus">magic_button</span>
                     <div>
