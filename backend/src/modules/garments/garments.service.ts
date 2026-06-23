@@ -25,7 +25,7 @@ type GarmentWithImages = GarmentWithCategory & {
 
 @Injectable()
 export class GarmentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async findAll() {
     const garments = await this.prisma.garment.findMany({

@@ -187,11 +187,10 @@ export default function CatalogPage() {
                   key={cat}
                   type="button"
                   onClick={() => setActiveCategory(cat)}
-                  className={`rounded-full border px-4 py-2 text-sm transition ${
-                    activeCategory === cat
+                  className={`rounded-full border px-4 py-2 text-sm transition ${activeCategory === cat
                       ? "border-lotus bg-lotus text-white"
                       : "border-sand bg-white text-stone-600 hover:border-antique hover:text-lotus"
-                  }`}
+                    }`}
                 >
                   {cat === "all" ? "Tất cả" : cat}
                 </button>
@@ -230,11 +229,10 @@ export default function CatalogPage() {
                         key={s.garmentSizeId}
                         type="button"
                         onClick={() => handleSelectSize(featured.slug, s.garmentSizeId)}
-                        className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                          (selectedSizes[featured.slug] ?? featured.sizes[0]?.garmentSizeId) === s.garmentSizeId
+                        className={`rounded-full px-3 py-1 text-xs font-semibold transition ${(selectedSizes[featured.slug] ?? featured.sizes[0]?.garmentSizeId) === s.garmentSizeId
                             ? "bg-lotus text-white"
                             : "bg-[#fff0ee] text-stone-600 hover:bg-lotus/20"
-                        }`}
+                          }`}
                       >
                         {s.sizeLabel ?? "—"}
                       </button>
@@ -306,11 +304,10 @@ export default function CatalogPage() {
                           key={s.garmentSizeId}
                           type="button"
                           onClick={() => handleSelectSize(group.slug, s.garmentSizeId)}
-                          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase transition ${
-                            selectedGarmentId === s.garmentSizeId
+                          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase transition ${selectedGarmentId === s.garmentSizeId
                               ? "bg-lotus text-white"
                               : "bg-[#fff0ee] text-stone-500 hover:bg-lotus/20"
-                          }`}
+                            }`}
                         >
                           {s.sizeLabel ?? "—"}
                         </button>
