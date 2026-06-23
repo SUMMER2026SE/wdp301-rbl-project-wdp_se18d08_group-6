@@ -1,7 +1,10 @@
 import { IsIn, IsNotEmpty, IsOptional, IsString, IsUUID } from "class-validator";
 
-const TRYON_MODES = ["face_swap", "full_body"] as const;
+export const TRYON_MODES = ["face_swap", "full_body"] as const;
 export type TryonMode = (typeof TRYON_MODES)[number];
+
+const TRYON_SOURCES = ["upload", "camera"] as const;
+export type TryonSource = (typeof TRYON_SOURCES)[number];
 
 export class CreateTryonDto {
   @IsNotEmpty()
@@ -19,5 +22,6 @@ export class CreateTryonDto {
 
   @IsOptional()
   @IsString()
-  source?: "upload" | "camera";
+  @IsIn(TRYON_SOURCES)
+  source?: TryonSource;
 }
