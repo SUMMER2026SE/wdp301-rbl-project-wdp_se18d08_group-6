@@ -8,10 +8,7 @@ import { getGarmentsGrouped, type GarmentGrouped } from "@/lib/api";
 import { CameraCapture } from "@/components/try-on/camera-capture";
 import { ImageUpload } from "@/components/try-on/image-upload";
 import { apiRequest } from "@/lib/api";
-<<<<<<< HEAD
 import { readStoredAccessToken } from "@/lib/auth";
-=======
->>>>>>> 56bdca9 (feat: implement AI virtual try-on module with garment selection and image processing integration)
 
 type ViewState = "setup" | "processing" | "result";
 
