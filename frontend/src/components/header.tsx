@@ -7,12 +7,14 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { getRoleLabel, resolveDashboardPath } from "@/lib/auth";
 import { publicNavItems } from "@/lib/site-content";
 
-const authRoutes = new Set(["/login", "/register", "/verify-email", "/forgot-password"]);
-const hiddenPrefixes = ["/catalog", "/booking", "/try-on", "/dashboard/customer", "/dashboard/staff", "/dashboard/manager", "/dashboard/admin"];
+
+const authRoutes = new Set(["/login", "/register", "/verify-email", "/forgot-password", "/reset-password"]);
+const hiddenPrefixes = ["/catalog", "/booking", "/try-on", "/dashboard/customer", "/dashboard/staff", "/dashboard/manager", "/dashboard/admin" ,"/chat"];
 
 const appNavItems = [
   { href: "/catalog", label: "Danh mục" },
   { href: "/dashboard", label: "Bảng điều khiển" },
+  { href: "/chat", label: "CSKH" },
 ];
 
 export function Header() {

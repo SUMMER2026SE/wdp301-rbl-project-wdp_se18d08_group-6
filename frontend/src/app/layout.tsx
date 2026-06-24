@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth/auth-provider";
 import { Header } from "@/components/header";
+import { CustomerChatProvider } from "@/components/chat/customer-chat-provider";
 
 export const metadata: Metadata = {
   title: "Cổ Phục Rental ERP",
@@ -13,8 +14,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="vi">
       <body className="text-ink" suppressHydrationWarning>
         <AuthProvider>
+          <CustomerChatProvider>
           <Header />
           <main>{children}</main>
+          </CustomerChatProvider>
         </AuthProvider>
       </body>
     </html>
