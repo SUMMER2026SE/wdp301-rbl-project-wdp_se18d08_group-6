@@ -282,32 +282,76 @@ export class ChatService {
 
     return Promise.all(conversations.map(async (conversation) => {
       const lastMessage = conversation.messages[0] ?? null;
-      const lastReadAt = conversation.customer_id === user.id
-        ? conversation.customer_last_read_at
-        : conversation.staff_last_read_at;
 
-      const unreadCount = await this.prisma.messages.count({
-        where: {
-          conversation_id: conversation.id,
-          sender_id: { not: user.id },
-          created_at: {
-            gt: lastReadAt ?? new Date(0),
+      // After
+      let unreadCount: number;
+
+      if (user.role === "customer") {
+        // Customer: staff messages since customer last read
+        const lastReadAt = conversation.customer_last_read_at;
+        unreadCount = await this.prisma.messages.count({
+          where: {
+            conversation_id: conversation.id,
+            sender_id: { not: user.id },
+            created_at: { gt: lastReadAt ?? new Date(0) },
           },
-        },
-      });
+        });
+      } else {
+        // Staff: customer messages since the LATER of
+        //   (a) staff_last_read_at  — explicit read/resolve action
+        //   (b) last message sent BY staff — implicit "we replied" marker
+        const lastStaffMessage = await this.prisma.messages.findFirst({
+          where: {
+            conversation_id: conversation.id,
+            sender_id: { not: conversation.customer_id }, // sent by any staff
+          },
+          orderBy: { created_at: "desc" },
+          select: { created_at: true },
+        });
+
+        const readAt = conversation.staff_last_read_at;
+        const repliedAt = lastStaffMessage?.created_at ?? null;
+
+        // Pick the more recent of the two timestamps
+        let baseline: Date | null = null;
+        if (readAt && repliedAt) {
+          baseline = readAt > repliedAt ? readAt : repliedAt;
+        } else {
+          baseline = readAt ?? repliedAt;
+        }
+
+        unreadCount = await this.prisma.messages.count({
+          where: {
+            conversation_id: conversation.id,
+            sender_id: conversation.customer_id, // only customer messages
+            ...(baseline ? { created_at: { gt: baseline } } : {}),
+          },
+        });
+      }
 
       return {
         id: conversation.id,
         customerId: conversation.customer_id,
-        customerName: conversation.user_accounts_conversations_customer_idTouser_accounts?.profile?.fullName ?? conversation.user_accounts_conversations_customer_idTouser_accounts?.email ?? null,
+        customerName:
+          conversation.user_accounts_conversations_customer_idTouser_accounts
+            ?.profile?.fullName ??
+          conversation.user_accounts_conversations_customer_idTouser_accounts
+            ?.email ??
+          null,
         staffId: conversation.staff_id,
-        staffName: conversation.user_accounts_conversations_staff_idTouser_accounts?.profile?.fullName ?? conversation.user_accounts_conversations_staff_idTouser_accounts?.email ?? null,
+        staffName:
+          conversation.user_accounts_conversations_staff_idTouser_accounts
+            ?.profile?.fullName ??
+          conversation.user_accounts_conversations_staff_idTouser_accounts
+            ?.email ??
+          null,
         status: conversation.status,
         updatedAt: conversation.updated_at,
         lastMessage,
         unreadCount,
       };
-    }));
+    })
+    );
   }
 
   async getConversationById(conversationId: string) {
