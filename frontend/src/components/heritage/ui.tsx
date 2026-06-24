@@ -5,7 +5,7 @@ import { bookingFlowSteps } from "@/lib/heritage-mock-data";
 
 type PublicNavKey = "collection" | "heritage" | "atelier" | "erp";
 type BookingStepKey = (typeof bookingFlowSteps)[number]["key"];
-type StaffNavKey = "overview" | "inspection";
+type StaffNavKey = "overview" | "inspection"| "chat";
 type ManagerNavKey = "overview" | "inventory" | "inspection-log" | "laundry" | "damaged" | "finance" | "assets";
 type AdminNavKey = "overview" | "roles" | "config" | "notification-config" | "logs";
 
@@ -182,6 +182,7 @@ export function StaffPortalShell({
   const items = [
     { key: "overview", label: "Tổng quan", icon: "dashboard", href: "/dashboard/staff" },
     { key: "inspection", label: "Kiểm tra", icon: "search_check", href: "/dashboard/staff/inspection" },
+    { key: "chat", label: "CSKH", icon: "chat", href: "/chat" },
   ] as const;
 
   return (

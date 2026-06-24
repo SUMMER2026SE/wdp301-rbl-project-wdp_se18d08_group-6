@@ -1,0 +1,281 @@
+"use client";
+
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { usePathname } from "next/navigation";
+import { useAuth } from "@/components/auth/auth-provider";
+import { createChatSocket } from "@/lib/socket";
+import {
+  getConversationMessages,
+  getMyChatConversation,
+  type ChatConversation,
+  type ChatMessage,
+} from "@/lib/chat";
+import { CustomerChatBubble } from "@/app/chat/customer-chat-bubble";
+
+interface CustomerChatProviderProps {
+  children?: ReactNode;
+}
+
+export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
+  const { session } = useAuth();
+  const pathname = usePathname();
+
+  const isCustomer = session?.user.role === "customer";
+
+  // =============================
+  // ROUTE-BASED ENABLE RULE
+  // =============================
+  const enabled = useMemo(() => {
+    if (!isCustomer) return false;
+
+    return (
+      pathname.startsWith("/catalog") ||
+      pathname.startsWith("/garment") ||
+      pathname.startsWith("/booking")
+    );
+  }, [pathname, isCustomer]);
+
+  const [conversation, setConversation] =
+    useState<ChatConversation | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messageText, setMessageText] = useState("");
+  const [typingUsers, setTypingUsers] = useState<Record<string, boolean>>({});
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
+
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const selectedConversationRef = useRef<ChatConversation | null>(null);
+
+  const socketRef =
+    useRef<ReturnType<typeof createChatSocket> | null>(null);
+
+  // =============================
+  // SOCKET INIT
+  // =============================
+  useEffect(() => {
+    if (!session?.accessToken || !isCustomer || !enabled) return;
+
+    if (!socketRef.current) {
+      socketRef.current = createChatSocket(session.accessToken);
+    }
+
+    const socket = socketRef.current;
+
+    const onConnect = () => {
+      const conv = selectedConversationRef.current;
+      if (!conv) return;
+
+      socket.emit("join_room", { conversationId: conv.id });
+      socket.emit("open_conversation", { conversationId: conv.id });
+    };
+
+    const onMessageReceived = (payload: {
+      conversationId: string;
+      message: ChatMessage;
+    }) => {
+      if (payload.conversationId === selectedConversationRef.current?.id) {
+        setMessages((prev) => [...prev, payload.message]);
+      }
+    };
+
+    const onMessageDeleted = (payload: {
+      conversationId: string;
+      messageId: string;
+    }) => {
+      if (payload.conversationId === selectedConversationRef.current?.id) {
+        setMessages((prev) =>
+          prev.filter((m) => m.id !== payload.messageId)
+        );
+      }
+    };
+
+    const onTyping = (payload: {
+      conversationId: string;
+      isTyping: boolean;
+      userId: string;
+    }) => {
+      if (payload.conversationId !== selectedConversationRef.current?.id)
+        return;
+
+      setTypingUsers((prev) => ({
+        ...prev,
+        [payload.userId]: payload.isTyping,
+      }));
+    };
+
+    socket.on("connect", onConnect);
+    socket.on("message_received", onMessageReceived);
+    socket.on("new_message", onMessageReceived);
+    socket.on("message_deleted", onMessageDeleted);
+    socket.on("typing", onTyping);
+    socket.on("user_typing", onTyping);
+
+    if (socket.connected) onConnect();
+
+    return () => {
+      socket.off("connect", onConnect);
+      socket.off("message_received", onMessageReceived);
+      socket.off("new_message", onMessageReceived);
+      socket.off("message_deleted", onMessageDeleted);
+      socket.off("typing", onTyping);
+      socket.off("user_typing", onTyping);
+    };
+  }, [session?.accessToken, isCustomer, enabled]);
+
+  // =============================
+  // CLEANUP SOCKET
+  // =============================
+  useEffect(() => {
+    return () => {
+      socketRef.current?.disconnect();
+      socketRef.current = null;
+    };
+  }, []);
+
+  // =============================
+  // LOAD CONVERSATION
+  // =============================
+  useEffect(() => {
+    if (!session || !isCustomer || !enabled) return;
+    void loadConversation();
+  }, [session, isCustomer, enabled]);
+
+  async function loadConversation() {
+    const result = await getMyChatConversation();
+
+    if (result.success && result.data) {
+      const conv = result.data;
+
+      setConversation(conv);
+      selectedConversationRef.current = conv;
+
+      const socket = socketRef.current;
+
+      if (socket?.connected) {
+        socket.emit("join_room", { conversationId: conv.id });
+        socket.emit("open_conversation", { conversationId: conv.id });
+      }
+
+      void loadMessages(conv.id);
+    }
+  }
+
+  async function loadMessages(conversationId: string) {
+    setLoadingMessages(true);
+    setHasMoreMessages(false);
+
+    const result = await getConversationMessages(conversationId);
+
+    if (result.success && result.data) {
+      setMessages(result.data ?? []);
+      setHasMoreMessages((result.data ?? []).length >= 15);
+    }
+
+    setLoadingMessages(false);
+  }
+
+  async function loadOlderMessages() {
+    if (
+      !conversation ||
+      messages.length === 0 ||
+      loadingOlderMessages
+    )
+      return;
+
+    const oldestMessage = messages[0];
+    setLoadingOlderMessages(true);
+
+    const container = messagesContainerRef.current;
+    const prevScrollHeight = container?.scrollHeight ?? 0;
+
+    const result = await getConversationMessages(
+      conversation.id,
+      oldestMessage.id
+    );
+
+    if (result.success && result.data) {
+      if (result.data.length < 15) setHasMoreMessages(false);
+
+      setMessages((prev) => [...(result.data ?? []), ...prev]);
+
+      requestAnimationFrame(() => {
+        if (container) {
+          container.scrollTop =
+            container.scrollHeight - prevScrollHeight;
+        }
+      });
+    }
+
+    setLoadingOlderMessages(false);
+  }
+
+  // =============================
+  // ACTIONS
+  // =============================
+  function sendMessage() {
+    if (!socketRef.current || !conversation || !messageText.trim())
+      return;
+
+    socketRef.current.emit("send_message", {
+      conversationId: conversation.id,
+      content: messageText.trim(),
+    });
+
+    setMessageText("");
+  }
+
+  function deleteMessage(messageId: string) {
+    if (!socketRef.current || !conversation) return;
+
+    socketRef.current.emit("delete_message", {
+      conversationId: conversation.id,
+      messageId,
+    });
+  }
+
+  function setTyping(isTyping: boolean) {
+    if (!socketRef.current || !conversation) return;
+
+    socketRef.current.emit("typing", {
+      conversationId: conversation.id,
+      isTyping,
+    });
+  }
+
+  // =============================
+  // FINAL GUARD (IMPORTANT)
+  // =============================
+  if (!enabled) {
+    return <>{children}</>;
+  }
+
+  return (
+    <>
+      {children}
+
+      <CustomerChatBubble
+        conversation={conversation}
+        messages={messages}
+        messageText={messageText}
+        setMessageText={setMessageText}
+        typingUsers={typingUsers}
+        loadingMessages={loadingMessages}
+        session={session}
+        onSendMessage={sendMessage}
+        onTyping={setTyping}
+        hasMoreMessages={hasMoreMessages}
+        loadingOlderMessages={loadingOlderMessages}
+        onLoadOlderMessages={loadOlderMessages}
+        messagesContainerRef={messagesContainerRef}
+        onDeleteMessage={deleteMessage}
+      />
+    </>
+  );
+}

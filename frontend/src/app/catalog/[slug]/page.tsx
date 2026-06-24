@@ -7,6 +7,7 @@ import { PublicAtelierNav } from "@/components/heritage/ui";
 import { getGarmentsGrouped, type GarmentGrouped } from "@/lib/api";
 import { addToCart, cartCount } from "@/lib/cart";
 import { garmentSpecs, pairingItems } from "@/lib/heritage-mock-data";
+import { getMyChatConversation, sendProductCardMessage } from "@/lib/chat";
 
 function formatVND(amount: number) {
   return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
@@ -32,6 +33,7 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
   const [selectedGarmentId, setSelectedGarmentId] = useState<string | null>(null);
   const [addedMsg, setAddedMsg] = useState<string | null>(null);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
+  const [consultMsg, setConsultMsg] = useState<string | null>(null);
 
   const today = todayIso();
   const [startDate, setStartDate] = useState(today);
@@ -61,6 +63,34 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
   if (notFoundFlag) notFound();
 
   const selectedSize = group?.sizes.find((s) => s.garmentSizeId === selectedGarmentId) ?? group?.sizes[0];
+
+  async function handleConsult() {
+    if (!group || !selectedSize) return;
+
+    // Get the conversation via API
+    const result = await getMyChatConversation();
+    if (!result.success || !result.data) {
+      setConsultMsg("Vui lòng đăng nhập để sử dụng tính năng tư vấn.");
+      setTimeout(() => setConsultMsg(null), 3000);
+      return;
+    }
+
+    const conversation = result.data;
+    const detailUrl = `/catalog/${selectedSize.garmentSizeId}`;
+
+    sendProductCardMessage({
+      conversationId: conversation.id,
+      productId: group.garmentId,
+      productName: group.name,
+      productImage: group.imageUrl,
+      sizeLabel: selectedSize.sizeLabel,
+      price: selectedSize.dailyPrice,
+      detailUrl,
+    });
+
+    setConsultMsg("Đã gửi thông tin sản phẩm đến tư vấn viên!");
+    setTimeout(() => setConsultMsg(null), 3000);
+  }
 
   function handleAddToCart() {
     if (!group || !selectedSize) return;
@@ -278,7 +308,16 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
                   Thêm vào giỏ
                   <span className="material-symbols-outlined text-[18px]">shopping_bag</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={handleConsult}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-600 px-6 py-4 text-sm font-semibold uppercase tracking-[0.18em] text-emerald-600 transition hover:bg-emerald-50"
+                >
+                  Tư vấn
+                  <span className="material-symbols-outlined text-[18px]">support_agent</span>
+                </button>
                 {addedMsg && <p className="text-center text-sm font-medium text-jade">{addedMsg}</p>}
+                {consultMsg && <p className="text-center text-sm font-medium text-emerald-600">{consultMsg}</p>}
                 <p className="text-center text-sm text-stone-500">Đã bao gồm công là ủi, làm sạch và hỗ trợ chỉnh sửa cơ bản.</p>
               </div>
 
