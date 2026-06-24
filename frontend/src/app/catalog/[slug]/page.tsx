@@ -113,7 +113,11 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
             {/* Image placeholder */}
             <div className="space-y-4 lg:sticky lg:top-28 lg:self-start">
               <div className="flex aspect-[3/4] items-center justify-center overflow-hidden rounded-lg border border-sand bg-[#ffe9e6]">
-                <span className="material-symbols-outlined text-[80px] text-antique/30">checkroom</span>
+                {group.imageUrl ? (
+                  <img src={group.imageUrl} alt={group.name} className="w-full h-full object-cover" />
+                ) : (
+                  <span className="material-symbols-outlined text-[80px] text-antique/30">checkroom</span>
+                )}
               </div>
             </div>
 
@@ -181,7 +185,7 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
                   </div>
                 </div>
 
-                <Link href="/try-on" className="group relative block overflow-hidden rounded-xl border border-antique/30 bg-gradient-to-r from-[#f9f5f0] to-white p-6 transition hover:border-antique/60">
+                <Link href={`/try-on?garmentSizeId=${selectedGarmentId}`} className="group relative block overflow-hidden rounded-xl border border-antique/30 bg-gradient-to-r from-[#f9f5f0] to-white p-6 transition hover:border-antique/60">
                   <div className="flex items-start gap-3">
                     <span className="material-symbols-outlined text-lotus">magic_button</span>
                     <div>
