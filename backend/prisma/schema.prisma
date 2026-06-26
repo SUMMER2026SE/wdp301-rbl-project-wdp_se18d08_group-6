@@ -469,6 +469,12 @@ model conversations {
   updated_at                                             DateTime     @default(now()) @db.Timestamptz(6)
   customer_last_read_at                                  DateTime?    @db.Timestamptz(6)
   staff_last_read_at                                     DateTime?    @db.Timestamptz(6)
+  topic                                                  String       @default("general")
+  booking_id                                             String?      @db.Uuid
+  garment_id                                             String?      @db.Uuid
+  locked_by                                              String?      @db.Uuid
+  locked_at                                              DateTime?    @db.Timestamptz(6)
+  lock_expires_at                                        DateTime?    @db.Timestamptz(6)
   user_accounts_conversations_customer_idTouser_accounts UserAccount  @relation("conversations_customer_idTouser_accounts", fields: [customer_id], references: [id], onDelete: Cascade)
   user_accounts_conversations_staff_idTouser_accounts    UserAccount? @relation("conversations_staff_idTouser_accounts", fields: [staff_id], references: [id])
   messages                                               messages[]
@@ -481,6 +487,11 @@ model messages {
   sender_id       String        @db.Uuid
   content         String
   created_at      DateTime      @default(now()) @db.Timestamptz(6)
+  deleted_at      DateTime?     @db.Timestamptz(6)
+  deleted_by      String?       @db.Uuid
+  message_type    String        @default("text")
+  metadata        Json?
+  sender_type     String        @default("user")
   conversations   conversations @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
   user_accounts   UserAccount   @relation(fields: [sender_id], references: [id], onDelete: Cascade)
 }
