@@ -20,9 +20,21 @@ export default function CatalogPage() {
   const [showCart, setShowCart] = useState(false);
 
   useEffect(() => {
-    getGarmentsGrouped().then((res) => {
-      if (res.success && res.data) setGroups(res.data);
-    }).finally(() => setLoading(false));
+    function fetchGroups() {
+      getGarmentsGrouped().then((res) => {
+        if (res.success && res.data) setGroups(res.data);
+      }).finally(() => setLoading(false));
+    }
+
+    fetchGroups();
+
+    // Re-fetch when the tab becomes visible so manager image updates
+    // are reflected without a full page reload.
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") fetchGroups();
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
   // Sync cart count
@@ -175,11 +187,11 @@ export default function CatalogPage() {
                   key={cat}
                   type="button"
                   onClick={() => setActiveCategory(cat)}
-                  className={\`rounded-full border px-4 py-2 text-sm transition \${
+                  className={`rounded-full border px-4 py-2 text-sm transition ${
                     activeCategory === cat
                       ? "border-lotus bg-lotus text-white"
                       : "border-sand bg-white text-stone-600 hover:border-antique hover:text-lotus"
-                  }\`}
+                  }`}
                 >
                   {cat === "all" ? "Tất cả" : cat}
                 </button>
@@ -218,11 +230,11 @@ export default function CatalogPage() {
                         key={s.garmentSizeId}
                         type="button"
                         onClick={() => handleSelectSize(featured.slug, s.garmentSizeId)}
-                        className={\`rounded-full px-3 py-1 text-xs font-semibold transition \${
+                        className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
                           (selectedSizes[featured.slug] ?? featured.sizes[0]?.garmentSizeId) === s.garmentSizeId
                             ? "bg-lotus text-white"
                             : "bg-[#fff0ee] text-stone-600 hover:bg-lotus/20"
-                        }\`}
+                        }`}
                       >
                         {s.sizeLabel ?? "—"}
                       </button>
@@ -270,7 +282,7 @@ export default function CatalogPage() {
                   key={group.slug}
                   className="group flex flex-col border border-antique/20 bg-white/80 p-4 backdrop-blur-sm transition duration-500 hover:border-antique/60 hover:shadow-[0_18px_40px_rgba(77,16,15,0.08)]"
                 >
-                  <Link href={\`/catalog/\${selectedGarmentId}\`} className="relative flex aspect-[3/4] items-center justify-center overflow-hidden bg-[#f8dcd8] cursor-pointer">
+                  <Link href={`/catalog/${selectedGarmentId}`} className="relative flex aspect-[3/4] items-center justify-center overflow-hidden bg-[#f8dcd8] cursor-pointer">
                     {group.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={group.imageUrl} alt={group.name} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
@@ -283,7 +295,7 @@ export default function CatalogPage() {
                   </Link>
 
                   <div className="flex flex-1 flex-col px-2 pb-4 pt-6">
-                    <Link href={\`/catalog/\${selectedGarmentId}\`} className="hover:underline">
+                    <Link href={`/catalog/${selectedGarmentId}`} className="hover:underline">
                       <h3 className="font-display text-2xl text-oxblood">{group.name}</h3>
                     </Link>
 
@@ -294,11 +306,11 @@ export default function CatalogPage() {
                           key={s.garmentSizeId}
                           type="button"
                           onClick={() => handleSelectSize(group.slug, s.garmentSizeId)}
-                          className={\`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase transition \${
+                          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase transition ${
                             selectedGarmentId === s.garmentSizeId
                               ? "bg-lotus text-white"
                               : "bg-[#fff0ee] text-stone-500 hover:bg-lotus/20"
-                          }\`}
+                          }`}
                         >
                           {s.sizeLabel ?? "—"}
                         </button>
