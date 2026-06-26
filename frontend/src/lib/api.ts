@@ -84,7 +84,7 @@ export async function getGarments() {
 }
 
 export async function getGarmentById(id: string) {
-  return apiRequest<GarmentSummary>(`/garments/${id}`);
+  return apiRequest<GarmentDetail>(`/garments/${id}`);
 }
 
 // ---------- Booking types ----------
