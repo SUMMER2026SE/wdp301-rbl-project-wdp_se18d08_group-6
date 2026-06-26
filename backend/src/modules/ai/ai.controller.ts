@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import type { AuthenticatedUser } from "../auth/auth-user";
@@ -22,5 +22,14 @@ export class AiController {
   @UseGuards(JwtAuthGuard)
   getMyHistory(@CurrentUser() user: AuthenticatedUser) {
     return this.aiService.getMyHistory(user.id);
+  }
+
+  @Patch("tryon/results/:id/hide")
+  @UseGuards(JwtAuthGuard)
+  hideResult(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+  ) {
+    return this.aiService.hideResult(id, user.id);
   }
 }

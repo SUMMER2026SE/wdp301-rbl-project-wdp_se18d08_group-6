@@ -8,11 +8,21 @@ import { getGarmentsGrouped, type GarmentGrouped } from "@/lib/api";
 import { CameraCapture } from "@/components/try-on/camera-capture";
 import { ImageUpload } from "@/components/try-on/image-upload";
 import { apiRequest } from "@/lib/api";
+import { readStoredAccessToken } from "@/lib/auth";
 
 type ViewState = "setup" | "processing" | "result";
 
 type TryonMode = "face_swap" | "full_body";
 type ImageSource = "camera" | "upload";
+
+type TryonHistoryItem = {
+  id: string;
+  requestId: string;
+  status: string;
+  garmentName: string;
+  resultImageUrl: string | null;
+  createdAt: string;
+};
 
 function TryOnInner() {
   const searchParams = useSearchParams();
@@ -35,6 +45,23 @@ function TryOnInner() {
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [consent, setConsent] = useState(true);
+  const [hasAccessToken, setHasAccessToken] = useState(false);
+  const [historyItems, setHistoryItems] = useState<TryonHistoryItem[]>([]);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+
+  async function loadHistory() {
+    if (!readStoredAccessToken()) {
+      setHistoryItems([]);
+      return;
+    }
+
+    setIsHistoryLoading(true);
+    const res = await apiRequest<TryonHistoryItem[]>("/ai/tryon/history");
+    if (res.success && res.data) {
+      setHistoryItems(res.data);
+    }
+    setIsHistoryLoading(false);
+  }
 
   // Load garments + pre-select from URL
   useEffect(() => {
@@ -63,6 +90,12 @@ function TryOnInner() {
     });
   }, [preselectedGarmentSizeId]);
 
+  useEffect(() => {
+    const token = readStoredAccessToken();
+    setHasAccessToken(Boolean(token));
+    if (token) void loadHistory();
+  }, []);
+
   const selectedGroup = groups[selectedGroupIdx] ?? null;
   const selectedSize = selectedGroup?.sizes.find((s) => s.garmentSizeId === selectedSizeId) ?? selectedGroup?.sizes[0];
 
@@ -76,6 +109,11 @@ function TryOnInner() {
 
   async function handleTryOn() {
     if (!canSubmit) return;
+    if (!readStoredAccessToken()) {
+      setErrorMsg("Vui lòng đăng nhập để sử dụng tính năng thử đồ AI và lưu lịch sử.");
+      return;
+    }
+
     setViewState("processing");
     setErrorMsg(null);
 
@@ -99,9 +137,22 @@ function TryOnInner() {
     if (res.success && res.data) {
       setResultImage(res.data.resultImageUrl);
       setViewState("result");
+      void loadHistory();
     } else {
       setErrorMsg(res.message ?? "Không thể tạo ảnh AI. Vui lòng thử lại.");
       setViewState("setup");
+    }
+  }
+
+  async function handleHideHistoryItem(id: string) {
+    const res = await apiRequest<{ id: string; hidden: boolean }>(`/ai/tryon/results/${id}/hide`, {
+      method: "PATCH",
+    });
+
+    if (res.success) {
+      setHistoryItems((items) => items.filter((item) => item.id !== id));
+    } else {
+      setErrorMsg(res.message ?? "Không thể ẩn ảnh này khỏi lịch sử.");
     }
   }
 
@@ -314,8 +365,16 @@ function TryOnInner() {
                   src={resultImage}
                 />
                 <div className="mt-6 flex flex-wrap justify-center gap-3 rounded-full border border-sand bg-white/90 px-5 py-3 text-sm shadow">
+                  <button
+                    type="button"
+                    onClick={handleTryOn}
+                    disabled={!canSubmit}
+                    className="inline-flex items-center gap-2 font-semibold text-lotus transition hover:text-oxblood disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">auto_awesome</span>Tạo lại
+                  </button>
                   <button type="button" onClick={handleReset} className="inline-flex items-center gap-2 text-stone-700 transition hover:text-lotus">
-                    <span className="material-symbols-outlined text-[18px]">replay</span>Thử lại
+                    <span className="material-symbols-outlined text-[18px]">replay</span>Thử ảnh khác
                   </button>
                   <a
                     href={resultImage}
@@ -323,7 +382,7 @@ function TryOnInner() {
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 text-stone-700 transition hover:text-lotus"
                   >
-                    <span className="material-symbols-outlined text-[18px]">download</span>Lưu
+                    <span className="material-symbols-outlined text-[18px]">download</span>Tải ảnh
                   </a>
                   <Link
                     href="/booking/date-selection"
@@ -336,6 +395,73 @@ function TryOnInner() {
             )}
           </section>
         </div>
+
+        <section className="rounded-xl border border-sand bg-white p-6 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-display text-2xl text-ink">Lịch sử thử đồ gần đây</h2>
+              <p className="mt-1 text-sm text-stone-500">Các ảnh AI đã tạo sẽ tự động lưu ở đây để bạn xem lại hoặc tải về.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void loadHistory()}
+              disabled={!hasAccessToken || isHistoryLoading}
+              className="inline-flex items-center gap-2 rounded-lg border border-sand px-4 py-2.5 text-sm font-semibold text-stone-600 transition hover:border-antique disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <span className="material-symbols-outlined text-[18px]">refresh</span>
+              {isHistoryLoading ? "Đang tải..." : "Làm mới"}
+            </button>
+          </div>
+
+          {isHistoryLoading && historyItems.length === 0 ? (
+            <p className="mt-5 text-sm text-stone-400">Đang tải lịch sử thử đồ...</p>
+          ) : historyItems.length > 0 ? (
+            <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {historyItems.map((item) => (
+                <article key={item.id} className="overflow-hidden rounded-xl border border-sand bg-[#fff8f6]">
+                  <div className="aspect-[3/4] bg-[#ffe9e6]">
+                    {item.resultImageUrl ? (
+                      <img src={item.resultImageUrl} alt={item.garmentName} className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full items-center justify-center p-4 text-center text-sm text-stone-400">
+                        Chưa có ảnh kết quả
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-2 p-3">
+                    <h3 className="line-clamp-1 text-sm font-semibold text-ink">{item.garmentName}</h3>
+                    <p className="text-xs text-stone-500">
+                      {new Date(item.createdAt).toLocaleString("vi-VN")}
+                    </p>
+                    {item.resultImageUrl && (
+                      <div className="flex flex-wrap items-center gap-3">
+                        <a
+                          href={item.resultImageUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-lotus transition hover:text-oxblood"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">download</span>Tải ảnh
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => void handleHideHistoryItem(item.id)}
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-stone-500 transition hover:text-red-500"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">visibility_off</span>Ẩn
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : !hasAccessToken ? (
+            <p className="mt-5 text-sm text-stone-400">Vui lòng đăng nhập để xem lịch sử thử đồ của bạn.</p>
+          ) : (
+            <p className="mt-5 text-sm text-stone-400">Bạn chưa có ảnh thử đồ nào.</p>
+          )}
+        </section>
       </main>
     </div>
   );
