@@ -31,6 +31,7 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
   const [notFoundFlag, setNotFoundFlag] = useState(false);
   const [selectedGarmentId, setSelectedGarmentId] = useState<string | null>(null);
   const [addedMsg, setAddedMsg] = useState<string | null>(null);
+  const [activeImageIdx, setActiveImageIdx] = useState(0);
 
   const today = todayIso();
   const [startDate, setStartDate] = useState(today);
@@ -110,16 +111,79 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
           <div className="flex h-64 items-center justify-center text-stone-400">Đang tải...</div>
         ) : group ? (
           <div className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-20">
-            {/* Image */}
+            {/* Gallery */}
             <div className="space-y-4 lg:sticky lg:top-28 lg:self-start">
-              <div className="flex aspect-[3/4] items-center justify-center overflow-hidden rounded-lg border border-sand bg-[#ffe9e6]">
-                {group.imageUrl ? (
+              {/* Main viewer */}
+              <div className="relative flex aspect-[3/4] items-center justify-center overflow-hidden rounded-lg border border-sand bg-[#ffe9e6]">
+                {group.images && group.images.length > 0 ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={group.images[activeImageIdx]?.imageUrl ?? group.imageUrl ?? ""}
+                      alt={group.name}
+                      className="h-full w-full object-cover transition-opacity duration-300"
+                    />
+                    {/* Prev / Next arrows — only if more than 1 image */}
+                    {group.images.length > 1 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setActiveImageIdx((i) => (i - 1 + group.images.length) % group.images.length)}
+                          className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-white/80 p-1.5 text-ink shadow backdrop-blur-sm transition hover:bg-white"
+                          aria-label="Ảnh trước"
+                        >
+                          <span className="material-symbols-outlined text-[20px]">chevron_left</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveImageIdx((i) => (i + 1) % group.images.length)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-white/80 p-1.5 text-ink shadow backdrop-blur-sm transition hover:bg-white"
+                          aria-label="Ảnh tiếp"
+                        >
+                          <span className="material-symbols-outlined text-[20px]">chevron_right</span>
+                        </button>
+                        {/* Dot indicators */}
+                        <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1.5">
+                          {group.images.map((_, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setActiveImageIdx(idx)}
+                              className={`h-1.5 rounded-full transition-all ${idx === activeImageIdx ? "w-5 bg-white" : "w-1.5 bg-white/50"}`}
+                              aria-label={`Ảnh ${idx + 1}`}
+                            />
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </>
+                ) : group.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={group.imageUrl} alt={group.name} className="h-full w-full object-cover" />
                 ) : (
                   <span className="material-symbols-outlined text-[80px] text-antique/30">checkroom</span>
                 )}
               </div>
+
+              {/* Thumbnail strip — only if more than 1 image */}
+              {group.images && group.images.length > 1 && (
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {group.images.map((img, idx) => (
+                    <button
+                      key={img.id}
+                      type="button"
+                      onClick={() => setActiveImageIdx(idx)}
+                      className={`relative flex-none h-20 w-16 overflow-hidden rounded border-2 transition ${
+                        idx === activeImageIdx ? "border-lotus" : "border-sand hover:border-antique"
+                      }`}
+                      aria-label={`Xem ảnh ${idx + 1}`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={img.imageUrl} alt={img.altText ?? group.name} className="h-full w-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="pt-2 lg:pt-6">

@@ -28,6 +28,42 @@ export class InspectionsController {
     return this.inspectionsService.findByBooking(bookingId);
   }
 
+  @Get("assets/needing-processing")
+  findAssetsNeedingProcessing() {
+    return this.inspectionsService.findAssetsNeedingProcessing();
+  }
+
+  @Get("log")
+  findAllLog() {
+    return this.inspectionsService.findAllLog();
+  }
+
+  @Get("laundry")
+  findAllLaundry() {
+    return this.inspectionsService.findAllLaundry();
+  }
+
+  @Patch("laundry/:ticketId/complete")
+  completeLaundry(
+    @Param("ticketId") ticketId: string,
+    @Body() body: CompleteLaundryDto,
+  ) {
+    return this.inspectionsService.completeLaundry(ticketId, body);
+  }
+
+  @Get("maintenance")
+  findAllMaintenance() {
+    return this.inspectionsService.findAllMaintenance();
+  }
+
+  @Patch("maintenance/:jobId/complete")
+  completeMaintenance(
+    @Param("jobId") jobId: string,
+    @Body() body: CompleteMaintenanceDto,
+  ) {
+    return this.inspectionsService.completeMaintenance(jobId, body);
+  }
+
   @Get(":id")
   findOne(@Param("id") id: string) {
     return this.inspectionsService.findOne(id);
