@@ -8,26 +8,29 @@ datasource db {
 }
 
 model UserAccount {
-  id                 String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email              String                  @unique
-  passwordHash       String                  @map("password_hash")
-  role               AppRole                 @default(customer)
-  isActive           Boolean                 @default(true) @map("is_active")
-  createdAt          DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt          DateTime                @default(now()) @map("updated_at") @db.Timestamptz(6)
-  isEmailVerified    Boolean                 @default(false) @map("is_email_verified")
-  addresses          Address[]
-  auditLogs          AuditLog[]
-  statusHistories    BookingStatusHistory[]  @relation("StatusChangedBy")
-  bookings           Booking[]               @relation("BookingCustomer")
-  measurements       CustomerMeasurement[]
-  emailVerifications EmailVerificationCode[]
-  inspections        InspectionSession[]     @relation("InspectedBy")
-  notifications      Notification[]
-  penaltiesCreated   Penalty[]
-  profile            Profile?
-  refunds            Refund[]
-  tryonRequests      TryonRequest[]
+  id                                                     String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                                                  String                  @unique
+  passwordHash                                           String                  @map("password_hash")
+  role                                                   AppRole                 @default(customer)
+  isActive                                               Boolean                 @default(true) @map("is_active")
+  createdAt                                              DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                                              DateTime                @default(now()) @map("updated_at") @db.Timestamptz(6)
+  isEmailVerified                                        Boolean                 @default(false) @map("is_email_verified")
+  addresses                                              Address[]
+  auditLogs                                              AuditLog[]
+  statusHistories                                        BookingStatusHistory[]  @relation("StatusChangedBy")
+  bookings                                               Booking[]               @relation("BookingCustomer")
+  conversations_conversations_customer_idTouser_accounts conversations[]         @relation("conversations_customer_idTouser_accounts")
+  conversations_conversations_staff_idTouser_accounts    conversations[]         @relation("conversations_staff_idTouser_accounts")
+  measurements                                           CustomerMeasurement[]
+  emailVerifications                                     EmailVerificationCode[]
+  inspections                                            InspectionSession[]     @relation("InspectedBy")
+  messages                                               messages[]
+  notifications                                          Notification[]
+  penaltiesCreated                                       Penalty[]
+  profile                                                Profile?
+  refunds                                                Refund[]
+  tryonRequests                                          TryonRequest[]
 
   @@map("user_accounts")
 }
@@ -89,31 +92,33 @@ model Address {
 }
 
 model GarmentCategory {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name        String    @unique
-  description String?
-  isActive    Boolean   @default(true) @map("is_active")
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  garments    Garment[]
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String         @unique
+  description   String?
+  isActive      Boolean        @default(true) @map("is_active")
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  tryonCategory TryonCategory? @map("tryon_category")
+  garments      Garment[]
 
   @@map("garment_categories")
 }
 
 model Garment {
-  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  categoryId    String?          @map("category_id") @db.Uuid
-  name          String
-  description   String?
-  color         String?
-  isActive      Boolean          @default(true) @map("is_active")
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  categoryId        String?          @map("category_id") @db.Uuid
+  name              String
+  description       String?
+  color             String?
+  isActive          Boolean          @default(true) @map("is_active")
   deletedAt     DateTime?        @map("deleted_at") @db.Timestamptz(6)
-  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  bookingItems  BookingItem[]
-  assets        GarmentAsset[]
-  images        GarmentImage[]
-  garment_sizes garment_sizes[]
-  category      GarmentCategory? @relation(fields: [categoryId], references: [id])
-  tryonRequests TryonRequest[]
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  tryonReferenceUrl String?          @map("tryon_reference_url")
+  bookingItems      BookingItem[]
+  assets            GarmentAsset[]
+  images            GarmentImage[]
+  garment_sizes     garment_sizes[]
+  category          GarmentCategory? @relation(fields: [categoryId], references: [id])
+  tryonRequests     TryonRequest[]
 
   @@map("garments")
 }
@@ -370,17 +375,20 @@ model MaintenanceJob {
 }
 
 model TryonRequest {
-  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  customerId      String?       @map("customer_id") @db.Uuid
-  garmentId       String        @map("garment_id") @db.Uuid
-  status          TryonStatus   @default(pending)
-  sourceImageUrl  String?       @map("source_image_url")
-  consentAccepted Boolean       @default(false) @map("consent_accepted")
-  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  completedAt     DateTime?     @map("completed_at") @db.Timestamptz(6)
-  customer        UserAccount?  @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  garment         Garment       @relation(fields: [garmentId], references: [id])
-  results         TryonResult[]
+  id                    String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId            String        @map("customer_id") @db.Uuid
+  garmentId             String        @map("garment_id") @db.Uuid
+  status                TryonStatus   @default(pending)
+  sourceImageUrl        String?       @map("source_image_url")
+  consentAccepted       Boolean       @default(false) @map("consent_accepted")
+  createdAt             DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt           DateTime?     @map("completed_at") @db.Timestamptz(6)
+  mode                  String?
+  replicatePredictionId String?       @unique @map("replicate_prediction_id")
+  errorMessage          String?       @map("error_message")
+  customer              UserAccount   @relation(fields: [customerId], references: [id])
+  garment               Garment       @relation(fields: [garmentId], references: [id])
+  results               TryonResult[]
 
   @@map("tryon_requests")
 }
@@ -391,6 +399,8 @@ model TryonResult {
   resultImageUrl String?      @map("result_image_url")
   aiMetadata     Json?        @map("ai_metadata")
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  storedImageUrl String?      @map("stored_image_url")
+  hiddenAt       DateTime?    @map("hidden_at") @db.Timestamptz(6)
   tryonRequest   TryonRequest @relation(fields: [tryonRequestId], references: [id], onDelete: Cascade)
 
   @@map("tryon_results")
@@ -443,6 +453,33 @@ model garment_sizes {
   garments       Garment        @relation(fields: [garment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([garment_id, size_label])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model conversations {
+  id                                                     String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customer_id                                            String       @db.Uuid
+  staff_id                                               String?      @db.Uuid
+  status                                                 String       @default("open")
+  created_at                                             DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at                                             DateTime     @default(now()) @db.Timestamptz(6)
+  customer_last_read_at                                  DateTime?    @db.Timestamptz(6)
+  staff_last_read_at                                     DateTime?    @db.Timestamptz(6)
+  user_accounts_conversations_customer_idTouser_accounts UserAccount  @relation("conversations_customer_idTouser_accounts", fields: [customer_id], references: [id], onDelete: Cascade)
+  user_accounts_conversations_staff_idTouser_accounts    UserAccount? @relation("conversations_staff_idTouser_accounts", fields: [staff_id], references: [id])
+  messages                                               messages[]
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model messages {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversation_id String        @db.Uuid
+  sender_id       String        @db.Uuid
+  content         String
+  created_at      DateTime      @default(now()) @db.Timestamptz(6)
+  conversations   conversations @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  user_accounts   UserAccount   @relation(fields: [sender_id], references: [id], onDelete: Cascade)
 }
 
 enum AppRole {
@@ -525,4 +562,12 @@ enum TryonStatus {
   failed
 
   @@map("tryon_status")
+}
+
+enum TryonCategory {
+  upper_body
+  lower_body
+  dresses
+
+  @@map("tryon_category")
 }

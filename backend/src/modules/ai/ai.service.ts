@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { TryonStatus } from "@prisma/client";
+import { TryonStatus, type TryonCategory } from "@prisma/client";
 import { ok } from "../../common/api-response";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { CreateTryonDto, TryonMode } from "./dto/create-tryon.dto";
@@ -37,7 +37,7 @@ type ReplicateResult = {
 
 @Injectable()
 export class AiService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async createTryon(dto: CreateTryonDto, customerId: string) {
     const size = await this.prisma.garment_sizes.findFirst({
@@ -46,6 +46,7 @@ export class AiService {
         garments: {
           include: {
             images: { orderBy: { sortOrder: "asc" }, take: 1 },
+            category: true,
           },
         },
       },
@@ -54,7 +55,10 @@ export class AiService {
 
     const image = this.normalizeImageBase64(dto.imageBase64, dto.mode);
 
-    const garmentImageUrl = size.garments.images[0]?.imageUrl ?? "";
+    const garmentImageUrl =
+      size.garments.tryonReferenceUrl ?? size.garments.images[0]?.imageUrl ?? "";
+    const tryonCategory: TryonCategory =
+      size.garments.category?.tryonCategory ?? "dresses";
     if (!garmentImageUrl) {
       throw new BadRequestException(
         "Trang phục này chưa có ảnh mẫu. Vui lòng chọn trang phục khác.",
@@ -68,18 +72,19 @@ export class AiService {
         status: TryonStatus.processing,
         sourceImageUrl: `base64:${image.mimeType};${image.sizeBytes}bytes`,
         consentAccepted: true,
+        mode: dto.mode,
       },
     });
 
     let result: ReplicateResult;
     try {
-      result = await this.callReplicate(dto.mode, image.dataUri, garmentImageUrl, size.garments.name);
+      result = await this.callReplicate(dto.mode, image.dataUri, garmentImageUrl, size.garments.name, tryonCategory);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown AI error";
       console.error("[AI] Replicate error:", message);
       await this.prisma.tryonRequest.update({
         where: { id: request.id },
-        data: { status: TryonStatus.failed },
+        data: { status: TryonStatus.failed, errorMessage: message },
       });
       throw new BadRequestException(
         `AI xử lý thất bại: ${message}. ${this.getModeGuidance(dto.mode)}`,
@@ -88,13 +93,20 @@ export class AiService {
 
     await this.prisma.tryonRequest.update({
       where: { id: request.id },
-      data: { status: TryonStatus.completed, completedAt: new Date() },
+      data: {
+        status: TryonStatus.completed,
+        completedAt: new Date(),
+        replicatePredictionId: result.predictionId,
+      },
     });
+
+    const storedImageUrl = await this.persistResultImage(result.url, request.id);
 
     await this.prisma.tryonResult.create({
       data: {
         tryonRequestId: request.id,
         resultImageUrl: result.url,
+        storedImageUrl,
         aiMetadata: {
           mode: dto.mode,
           source: dto.source ?? "upload",
@@ -109,7 +121,7 @@ export class AiService {
     return ok({
       id: request.id,
       status: "completed",
-      resultImageUrl: result.url,
+      resultImageUrl: storedImageUrl ?? result.url,
       mode: dto.mode,
       garmentName: size.garments.name,
       sizeLabel: size.size_label,
@@ -121,12 +133,13 @@ export class AiService {
     userImageDataUri: string,
     garmentImageUrl: string,
     garmentName: string,
+    category: TryonCategory,
   ): Promise<ReplicateResult> {
     const apiToken = process.env.REPLICATE_API_TOKEN;
     if (!apiToken) throw new Error("REPLICATE_API_TOKEN not configured");
 
     const model = this.getModelPath(mode);
-    const { input, inputSchema } = this.buildReplicateInput(mode, userImageDataUri, garmentImageUrl, garmentName);
+    const { input, inputSchema } = this.buildReplicateInput(mode, userImageDataUri, garmentImageUrl, garmentName, category);
 
     console.log(`[AI] Fetching version for ${model}...`);
     const version = await this.fetchLatestModelVersion(model, apiToken);
@@ -156,6 +169,7 @@ export class AiService {
     userImageDataUri: string,
     garmentImageUrl: string,
     garmentName: string,
+    category: TryonCategory,
   ): { input: Record<string, unknown>; inputSchema: string } {
     if (mode === "face_swap") {
       return {
@@ -175,8 +189,9 @@ export class AiService {
         human_img: userImageDataUri,
         garm_img: garmentImageUrl,
         garment_des: garmentPrompt,
-        prompt: garmentPrompt,
-        negative_prompt: "different outfit, redesigned garment, changed color, changed pattern, missing embroidery, altered collar, altered sleeves, short dress, western dress, fantasy costume, inaccurate ao dai, extra decorations, logo changes, blurry garment details",
+        category,
+        crop: true,
+        steps: 30,
       },
     };
   }
@@ -184,10 +199,12 @@ export class AiService {
   private buildGarmentPreservationPrompt(garmentName: string): string {
     return [
       `Exact virtual try-on of the reference garment: ${garmentName}.`,
-      "Dress the person in the exact same traditional Vietnamese áo dài shown in the garment reference image.",
-      "Preserve the original garment faithfully: same color, same fabric texture, same embroidery, same floral or decorative patterns, same collar, same sleeve length, same long front and back panels, same silhouette, and same matching pants if visible.",
-      "Do not redesign the outfit. Do not change the color, pattern, shape, decorations, fabric identity, or Vietnamese cultural style.",
-      "Keep the garment identity identical to the reference image; only adapt it naturally to the person's body pose and lighting.",
+      "Dress the person in the exact same traditional Vietnamese garment shown in the reference image.",
+      "Preserve the garment identity faithfully: same main color, same secondary colors, same fabric texture, same fabric sheen, same embroidery, same floral or decorative patterns, same pattern placement, same trim, same seams, and same edge lines.",
+      "Pay special attention to the collar and neckline: preserve the exact collar height, collar shape, collar opening, button or placket line, shoulder seams, sleeve cuffs, and sleeve length.",
+      "For áo dài, áo tấc, ngũ thân, nhật bình, and other Vietnamese traditional garments, preserve the long front and back panels, side slits, layered structure, traditional silhouette, and matching pants if visible.",
+      "Do not redesign the outfit. Do not change the collar, neckline, sleeve shape, color, pattern, fabric identity, decorations, cultural style, or garment category.",
+      "Only adapt the garment naturally to the person's body pose and lighting while keeping the reference garment visually identical.",
     ].join(" ");
   }
 
@@ -293,6 +310,54 @@ export class AiService {
     return null;
   }
 
+  private async persistResultImage(replicateUrl: string, requestId: string): Promise<string | null> {
+    const baseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const bucket = process.env.SUPABASE_TRYON_BUCKET?.trim() || "tryon-results";
+
+    if (!baseUrl || !serviceRoleKey) {
+      console.warn("[AI] Supabase storage chưa cấu hình, giữ URL Replicate tạm thời.");
+      return null;
+    }
+
+    try {
+      const imageRes = await fetch(replicateUrl);
+      if (!imageRes.ok) {
+        throw new Error(`download ${imageRes.status}: ${(await imageRes.text()).substring(0, 150)}`);
+      }
+
+      const contentType = imageRes.headers.get("content-type") || "image/png";
+      const extension = contentType.includes("jpeg")
+        ? "jpg"
+        : contentType.includes("webp")
+          ? "webp"
+          : "png";
+      const buffer = Buffer.from(await imageRes.arrayBuffer());
+      const objectPath = `${requestId}.${extension}`;
+      const uploadUrl = `${baseUrl}/storage/v1/object/${bucket}/${objectPath}`;
+
+      const uploadRes = await fetch(uploadUrl, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${serviceRoleKey}`,
+          "Content-Type": contentType,
+          "x-upsert": "true",
+        },
+        body: buffer,
+      });
+
+      if (!uploadRes.ok) {
+        throw new Error(`upload ${uploadRes.status}: ${(await uploadRes.text()).substring(0, 150)}`);
+      }
+
+      return `${baseUrl}/storage/v1/object/public/${bucket}/${objectPath}`;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "unknown storage error";
+      console.error("[AI] Lưu ảnh kết quả về Supabase Storage thất bại:", message);
+      return null;
+    }
+  }
+
   private normalizeImageBase64(raw: string, mode: TryonMode): NormalizedImage {
     if (!raw?.trim()) {
       throw new BadRequestException(`Ảnh không hợp lệ. ${this.getModeGuidance(mode)}`);
@@ -364,20 +429,45 @@ export class AiService {
 
   async getMyHistory(customerId: string) {
     const requests = await this.prisma.tryonRequest.findMany({
-      where: { customerId },
+      where: { customerId, status: TryonStatus.completed },
       orderBy: { createdAt: "desc" },
       take: 10,
-      include: { results: { take: 1, orderBy: { createdAt: "desc" } }, garment: true },
+      include: {
+        results: { where: { hiddenAt: null }, take: 1, orderBy: { createdAt: "desc" } },
+        garment: true,
+      },
     });
 
     return ok(
-      requests.map((r) => ({
-        id: r.id,
-        status: r.status,
-        garmentName: r.garment.name,
-        resultImageUrl: r.results[0]?.resultImageUrl ?? null,
-        createdAt: r.createdAt.toISOString(),
-      })),
+      requests
+        .filter((r) => r.results[0]?.storedImageUrl || r.results[0]?.resultImageUrl)
+        .map((r) => ({
+          id: r.results[0].id,
+          requestId: r.id,
+          status: r.status,
+          garmentName: r.garment.name,
+          resultImageUrl: r.results[0]?.storedImageUrl ?? r.results[0]?.resultImageUrl ?? null,
+          createdAt: r.createdAt.toISOString(),
+        })),
     );
+  }
+
+  async hideResult(resultId: string, customerId: string) {
+    const result = await this.prisma.tryonResult.findFirst({
+      where: {
+        id: resultId,
+        tryonRequest: { customerId },
+      },
+      select: { id: true },
+    });
+
+    if (!result) throw new NotFoundException("Try-on result not found.");
+
+    await this.prisma.tryonResult.update({
+      where: { id: result.id },
+      data: { hiddenAt: new Date() },
+    });
+
+    return ok({ id: result.id, hidden: true });
   }
 }

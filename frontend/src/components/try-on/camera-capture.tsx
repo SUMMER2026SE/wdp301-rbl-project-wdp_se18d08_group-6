@@ -44,6 +44,64 @@ function getCameraErrorMessage(error: unknown) {
   }
 }
 
+function waitForEvent(target: EventTarget, eventName: string, timeoutMs = 3000) {
+  return new Promise<void>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      target.removeEventListener(eventName, onEvent);
+      reject(new Error(`Timeout waiting for ${eventName}`));
+    }, timeoutMs);
+
+    function onEvent() {
+      window.clearTimeout(timeout);
+      resolve();
+    }
+
+    target.addEventListener(eventName, onEvent, { once: true });
+  });
+}
+
+function waitForAnimationFrame() {
+  return new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+}
+
+async function waitForUsableVideoFrame(video: HTMLVideoElement, timeoutMs = 5000) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    if (video.paused) {
+      await video.play().catch(() => undefined);
+    }
+
+    if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0 && video.videoHeight > 0) {
+      await waitForAnimationFrame();
+      await waitForAnimationFrame();
+      return;
+    }
+
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 100));
+  }
+
+  throw new Error("Camera stream did not produce a usable frame");
+}
+
+function isCanvasNearlyBlack(canvas: HTMLCanvasElement) {
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return false;
+
+  const sampleWidth = Math.min(64, canvas.width);
+  const sampleHeight = Math.min(64, canvas.height);
+  const x = Math.max(0, Math.floor((canvas.width - sampleWidth) / 2));
+  const y = Math.max(0, Math.floor((canvas.height - sampleHeight) / 2));
+  const pixels = context.getImageData(x, y, sampleWidth, sampleHeight).data;
+
+  let brightness = 0;
+  for (let i = 0; i < pixels.length; i += 4) {
+    brightness += pixels[i] + pixels[i + 1] + pixels[i + 2];
+  }
+
+  return brightness / (pixels.length / 4) < 12;
+}
+
 export function CameraCapture({ onCapture }: CameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -94,6 +152,7 @@ export function CameraCapture({ onCapture }: CameraCaptureProps) {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
+        await waitForUsableVideoFrame(videoRef.current);
       }
       setIsCameraReady(true);
     } catch (error) {
@@ -105,20 +164,40 @@ export function CameraCapture({ onCapture }: CameraCaptureProps) {
     clearCountdown();
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
     setIsCameraReady(false);
   }
 
-  function capturePhoto() {
+  async function capturePhoto() {
     const video = videoRef.current;
-    if (!video || !video.videoWidth || !video.videoHeight) return;
+    if (!video) return;
+
+    setErrorMsg(null);
+
+    try {
+      await waitForUsableVideoFrame(video);
+    } catch {
+      setErrorMsg("Camera chưa sẵn sàng. Vui lòng đợi một chút rồi chụp lại.");
+      return;
+    }
+
+    if (!video.videoWidth || !video.videoHeight) {
+      setErrorMsg("Camera chưa trả về kích thước ảnh. Vui lòng thử lại hoặc upload ảnh.");
+      return;
+    }
 
     const canvas = document.createElement("canvas");
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    const context = canvas.getContext("2d");
+    const context = canvas.getContext("2d", { willReadFrequently: true });
     if (!context) return;
 
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    if (isCanvasNearlyBlack(canvas)) {
+      setErrorMsg("Ảnh chụp bị tối/đen. Vui lòng đứng nơi đủ sáng và chụp lại, hoặc dùng Upload ảnh.");
+      return;
+    }
+
     const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
     setPreviewUrl(dataUrl);
     onCapture(stripDataUriPrefix(dataUrl));
@@ -135,7 +214,7 @@ export function CameraCapture({ onCapture }: CameraCaptureProps) {
         if (current === null) return null;
         if (current <= 1) {
           clearCountdown();
-          window.setTimeout(capturePhoto, 0);
+          window.setTimeout(() => void capturePhoto(), 0);
           return null;
         }
         return current - 1;
