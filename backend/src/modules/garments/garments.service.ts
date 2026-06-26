@@ -42,6 +42,12 @@ export class GarmentsService {
       sizeLabel: g.garment_sizes[0]?.size_label ?? null,
       dailyPrice: Number(g.garment_sizes[0]?.daily_price ?? 0),
       depositAmount: Number(g.garment_sizes[0]?.deposit_amount ?? 0),
+      images: g.images.map((img) => ({
+        id: img.id,
+        imageUrl: img.imageUrl,
+        altText: img.altText,
+        sortOrder: img.sortOrder,
+      })),
     })));
   }
 
@@ -55,12 +61,7 @@ export class GarmentsService {
       },
     });
     if (!garment) throw new NotFoundException("Garment not found.");
-    return ok({
-      id: garment.id, name: garment.name, categoryName: garment.category?.name ?? null,
-      sizeLabel: garment.garment_sizes[0]?.size_label ?? null,
-      dailyPrice: Number(garment.garment_sizes[0]?.daily_price ?? 0),
-      depositAmount: Number(garment.garment_sizes[0]?.deposit_amount ?? 0),
-    });
+    return ok(this.serialize(garment));
   }
 
   // ── Manager / Owner: Create ────────────────────────────────────────────────
@@ -198,7 +199,7 @@ export class GarmentsService {
       where: { isActive: true },
       include: {
         category: true,
-        images: { orderBy: { sortOrder: "asc" }, take: 1 },
+        images: { orderBy: { sortOrder: "asc" } },
         garment_sizes: { where: { is_active: true }, orderBy: { size_label: "asc" } },
       },
       orderBy: { name: "asc" },
@@ -210,6 +211,8 @@ export class GarmentsService {
       categoryName: string | null;
       description: string | null;
       imageUrl: string | null;
+      images: Array<{ id: string; imageUrl: string; altText: string | null; sortOrder: number }>;
+      imageIdsSeen: Set<string>;
       sizeMap: Map<string, { garmentSizeId: string; sizeLabel: string | null; dailyPrice: number; depositAmount: number }>;
     }>();
 
@@ -223,11 +226,27 @@ export class GarmentsService {
           categoryName: g.category?.name ?? null,
           description: g.description,
           imageUrl: g.images[0]?.imageUrl ?? null,
+          images: [],
+          imageIdsSeen: new Set(),
           sizeMap: new Map(),
         });
       }
 
       const group = grouped.get(key)!;
+
+      // Merge images, deduplicate by id
+      for (const img of g.images) {
+        if (!group.imageIdsSeen.has(img.id)) {
+          group.imageIdsSeen.add(img.id);
+          group.images.push({
+            id: img.id,
+            imageUrl: img.imageUrl,
+            altText: img.altText,
+            sortOrder: img.sortOrder,
+          });
+        }
+      }
+
       // Merge sizes, deduplicate by sizeLabel
       for (const s of g.garment_sizes) {
         const sk = (s.size_label ?? "__nosize__").trim().toLowerCase();
@@ -250,6 +269,7 @@ export class GarmentsService {
         categoryName: group.categoryName,
         description: group.description,
         imageUrl: group.imageUrl,
+        images: group.images.sort((a, b) => a.sortOrder - b.sortOrder),
         sizes: Array.from(group.sizeMap.values()).sort((a, b) => (a.sizeLabel ?? "").localeCompare(b.sizeLabel ?? "")),
       })),
     );

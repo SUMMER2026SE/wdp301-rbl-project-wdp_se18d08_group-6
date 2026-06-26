@@ -113,63 +113,44 @@ export class AdminService {
   async getOverview() {
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    const [
-      totalUsers,
-      activeUsers,
-      adminUsers,
-      totalGarments,
-      totalAssets,
-      pendingBookings,
-      awaitingPaymentBookings,
-      activeInspections,
-      laundryQueue,
-      maintenanceQueue,
-      recentLogs,
-      assetBreakdown,
-      bookingBreakdown,
-      revenueTotals,
-      auditLogs24h,
-      storedSettings,
-    ] = await Promise.all([
-      this.prisma.userAccount.count(),
-      this.prisma.userAccount.count({ where: { isActive: true } }),
-      this.prisma.userAccount.count({ where: { role: AppRole.admin, isActive: true } }),
-      this.prisma.garment.count(),
-      this.prisma.garmentAsset.count(),
-      this.prisma.booking.count({ where: { status: "pending_confirmation" } }),
-      this.prisma.booking.count({ where: { status: "awaiting_payment" } }),
-      this.prisma.inspectionSession.count({ where: { status: { in: ["pending", "in_progress"] } } }),
-      this.prisma.laundryTicket.count({ where: { status: { in: ["open", "in_progress"] } } }),
-      this.prisma.maintenanceJob.count({ where: { status: { in: ["open", "in_progress"] } } }),
-      this.prisma.auditLog.findMany({
-        take: 8,
-        orderBy: { createdAt: "desc" },
-        include: {
-          actor: {
-            include: {
-              profile: true,
-            },
+    const totalUsers = await this.prisma.userAccount.count();
+    const activeUsers = await this.prisma.userAccount.count({ where: { isActive: true } });
+    const adminUsers = await this.prisma.userAccount.count({ where: { role: AppRole.admin, isActive: true } });
+    const totalGarments = await this.prisma.garment.count();
+    const totalAssets = await this.prisma.garmentAsset.count();
+    const pendingBookings = await this.prisma.booking.count({ where: { status: "pending_confirmation" } });
+    const awaitingPaymentBookings = await this.prisma.booking.count({ where: { status: "awaiting_payment" } });
+    const activeInspections = await this.prisma.inspectionSession.count({ where: { status: { in: ["pending", "in_progress"] } } });
+    const laundryQueue = await this.prisma.laundryTicket.count({ where: { status: { in: ["open", "in_progress"] } } });
+    const maintenanceQueue = await this.prisma.maintenanceJob.count({ where: { status: { in: ["open", "in_progress"] } } });
+    const recentLogs = await this.prisma.auditLog.findMany({
+      take: 8,
+      orderBy: { createdAt: "desc" },
+      include: {
+        actor: {
+          include: {
+            profile: true,
           },
         },
-      }),
-      this.prisma.garmentAsset.groupBy({
-        by: ["status"],
-        _count: { _all: true },
-      }),
-      this.prisma.booking.groupBy({
-        by: ["status"],
-        _count: { _all: true },
-      }),
-      this.prisma.booking.aggregate({
-        _sum: {
-          rentalTotal: true,
-          depositTotal: true,
-          penaltyTotal: true,
-        },
-      }),
-      this.prisma.auditLog.count({ where: { createdAt: { gte: twentyFourHoursAgo } } }),
-      this.prisma.systemSetting.findMany(),
-    ]);
+      },
+    });
+    const assetBreakdown = await this.prisma.garmentAsset.groupBy({
+      by: ["status"],
+      _count: { _all: true },
+    });
+    const bookingBreakdown = await this.prisma.booking.groupBy({
+      by: ["status"],
+      _count: { _all: true },
+    });
+    const revenueTotals = await this.prisma.booking.aggregate({
+      _sum: {
+        rentalTotal: true,
+        depositTotal: true,
+        penaltyTotal: true,
+      },
+    });
+    const auditLogs24h = await this.prisma.auditLog.count({ where: { createdAt: { gte: twentyFourHoursAgo } } });
+    const storedSettings = await this.prisma.systemSetting.findMany();
 
     return ok({
       summary: [

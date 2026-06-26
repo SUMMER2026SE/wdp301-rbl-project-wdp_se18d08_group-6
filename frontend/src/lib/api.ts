@@ -66,6 +66,7 @@ export type GarmentGrouped = {
   categoryName: string | null;
   description: string | null;
   imageUrl: string | null;
+  images: GarmentImage[];
   sizes: Array<{
     garmentSizeId: string;
     garmentId?: string;
