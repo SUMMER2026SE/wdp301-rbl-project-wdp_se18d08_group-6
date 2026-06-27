@@ -13,6 +13,7 @@ import { LocationsModule } from "./modules/locations/locations.module";
 import { RefundsModule } from "./modules/refunds/refunds.module";
 import { UsersModule } from "./modules/users/users.module";
 import { PrismaModule } from "./prisma/prisma.module";
+import { ChatModule } from "./modules/chat/chat.module";
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { PrismaModule } from "./prisma/prisma.module";
     InspectionsModule,
     RefundsModule,
     AiModule,
+    ChatModule,
   ],
 })
 export class AppModule {}
