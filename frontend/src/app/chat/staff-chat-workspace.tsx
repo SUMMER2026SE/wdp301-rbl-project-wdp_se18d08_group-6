@@ -279,7 +279,9 @@ export function StaffChatWorkspace({
                             <span>{isMine ? "Bạn" : message.user_accounts?.profile?.fullName ?? message.user_accounts?.email ?? message.sender_id}</span>
                             <span>{new Date(message.created_at).toLocaleTimeString("vi-VN")}</span>
                           </div>
-                          {isProductCardContent(message.content) ? (
+                          {message.deleted_at ? (
+                            <p className="text-sm italic text-stone-400">Tin nhắn đã bị xóa</p>
+                          ) : isProductCardContent(message.content) ? (
                             (() => {
                               const product = parseProductCard(message.content);
                               return product ? (
@@ -292,8 +294,8 @@ export function StaffChatWorkspace({
                             <p className="text-sm leading-6">{message.content}</p>
                           )}
                         </div>
-                        {/* Delete button - only show for own messages on hover */}
-                        {isMine && hoveredMessageId === message.id && (
+                        {/* Delete button - only show for own messages on hover, not for already-deleted */}
+                        {isMine && !message.deleted_at && hoveredMessageId === message.id && (
                           <button
                             type="button"
                             onClick={() => onDeleteMessage(message.id)}

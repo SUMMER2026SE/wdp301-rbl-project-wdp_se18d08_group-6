@@ -248,11 +248,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     try {
-      await this.chatService.deleteMessage(user.userId, user.role, body.messageId);
+      const result = await this.chatService.deleteMessage(user.userId, user.role, body.messageId);
       this.server.to(body.conversationId).emit("message_deleted", {
         conversationId: body.conversationId,
         messageId: body.messageId,
         deletedBy: user.userId,
+        deletedAt: result.deleted_at,
       });
     } catch {
       client.emit("delete_error", { conversationId: body.conversationId, messageId: body.messageId, reason: "cannot_delete" });

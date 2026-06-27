@@ -245,11 +245,13 @@ export class ChatService {
       throw new ForbiddenException("You can only delete your own messages.");
     }
 
-    await this.prisma.messages.delete({
+    const now = new Date();
+    await this.prisma.messages.update({
       where: { id: messageId },
+      data: { deleted_at: now, deleted_by: userId },
     });
 
-    return { id: messageId, conversation_id: message.conversation_id };
+    return { id: messageId, conversation_id: message.conversation_id, deleted_at: now, deleted_by: userId };
   }
 
   async assignStaffToConversationIfEmpty(conversationId: string, staffId: string) {

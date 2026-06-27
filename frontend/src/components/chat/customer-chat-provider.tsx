@@ -13,6 +13,7 @@ import { createChatSocket } from "@/lib/socket";
 import {
   getConversationMessages,
   getMyChatConversation,
+  markConversationRead,
   type ChatConversation,
   type ChatMessage,
 } from "@/lib/chat";
@@ -82,16 +83,26 @@ export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
     }) => {
       if (payload.conversationId === selectedConversationRef.current?.id) {
         setMessages((prev) => [...prev, payload.message]);
+        // Mark read via REST when receiving message from staff
+        if (payload.message.sender_id !== selectedConversationRef.current?.customerId) {
+          void markConversationRead(payload.conversationId);
+        }
       }
     };
 
     const onMessageDeleted = (payload: {
       conversationId: string;
       messageId: string;
+      deletedBy: string;
+      deletedAt: string;
     }) => {
       if (payload.conversationId === selectedConversationRef.current?.id) {
         setMessages((prev) =>
-          prev.filter((m) => m.id !== payload.messageId)
+          prev.map((m) =>
+            m.id === payload.messageId
+              ? { ...m, deleted_at: payload.deletedAt, deleted_by: payload.deletedBy, content: "" }
+              : m,
+          ),
         );
       }
     };
@@ -176,6 +187,9 @@ export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
       }
 
       void loadMessages(conv.id);
+
+      // Mark read via REST when customer opens chat bubble
+      void markConversationRead(conv.id);
     }
   }
 

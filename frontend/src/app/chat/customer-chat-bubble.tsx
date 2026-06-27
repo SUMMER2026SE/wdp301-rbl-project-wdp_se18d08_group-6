@@ -134,7 +134,9 @@ export function CustomerChatBubble({
                       onMouseLeave={() => setHoveredMessageId(null)}
                     >
                       <div className={`${isMine ? "" : ""} max-w-[90%]`}>
-                        {isProductCardContent(message.content) ? (
+                        {message.deleted_at ? (
+                          <div className="italic text-stone-400 text-xs px-3 py-2">Tin nhắn đã bị xóa</div>
+                        ) : isProductCardContent(message.content) ? (
                           (() => {
                             const product = parseProductCard(message.content);
                             return product ? (
@@ -156,8 +158,8 @@ export function CustomerChatBubble({
                           </div>
                         )}
                       </div>
-                      {/* Delete button - only show for own messages on hover */}
-                      {isMine && hoveredMessageId === message.id && (
+                      {/* Delete button - only show for own messages on hover, not for already-deleted */}
+                      {isMine && !message.deleted_at && hoveredMessageId === message.id && (
                         <button
                           type="button"
                           onClick={() => onDeleteMessage(message.id)}

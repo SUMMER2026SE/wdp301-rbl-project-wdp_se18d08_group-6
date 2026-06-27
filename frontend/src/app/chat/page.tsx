@@ -8,6 +8,7 @@ import {
   getConversationLockStatus,
   getConversationMessages,
   getMyChatConversation,
+  markConversationRead,
   type ChatConversation,
   type ChatMessage,
   type ConversationLockStatus,
@@ -91,6 +92,14 @@ export default function ChatPage() {
       // Always update messages if this conversation is selected
       if (payload.conversationId === selectedConversation?.id) {
         setMessages((prev) => [...prev, payload.message]);
+        // Mark read via REST when receiving message in active conversation
+        if (payload.message.sender_id !== session?.user.id) {
+          void markConversationRead(payload.conversationId);
+        }
+      }
+      // Refresh lock status when staff sends a message (timeout is renewed by backend)
+      if (payload.message.sender_id === session?.user.id) {
+        void refreshLockStatus(payload.conversationId);
       }
       // Always update the sidebar conversation's lastMessage
       setConversations((prev) =>
@@ -100,16 +109,22 @@ export default function ChatPage() {
                 ...c,
                 lastMessage: payload.message,
                 updatedAt: payload.message.created_at,
-                unreadCount: c.unreadCount + 1,
+                unreadCount: payload.message.sender_id !== session?.user.id ? c.unreadCount + 1 : 0,
                 ...(payload.message.sender_id === c.customerId ? { status: "open" } : {}),
               }
             : c,
         ),
       );
     };
-    const onMessageDeleted = (payload: { conversationId: string; messageId: string }) => {
+    const onMessageDeleted = (payload: { conversationId: string; messageId: string; deletedBy: string; deletedAt: string }) => {
       if (payload.conversationId === selectedConversation?.id) {
-        setMessages((prev) => prev.filter((m) => m.id !== payload.messageId));
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === payload.messageId
+              ? { ...m, deleted_at: payload.deletedAt, deleted_by: payload.deletedBy, content: "" }
+              : m,
+          ),
+        );
       }
     };
     const onConversationRead = (payload: { conversationId: string; readerId: string }) => {
@@ -402,6 +417,9 @@ export default function ChatPage() {
     setStaffCanReply(false);
     setStaffLockError(null);
     await loadMessages(conversationId);
+
+    // Mark read via REST when staff opens a conversation
+    void markConversationRead(conversationId);
 
     if (conv && conv.staffId === session?.user.id) {
       socket.emit("open_conversation", { conversationId });

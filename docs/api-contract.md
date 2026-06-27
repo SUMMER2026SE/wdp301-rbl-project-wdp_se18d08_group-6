@@ -368,6 +368,14 @@ PATCH /api/bookings/:id/mark-returned
 
 Booking creation, availability check, listing, detail, and customer cancel are implemented (see Existing Endpoints above). Booking creation runs on the backend and prevents double-booking of the same garment over overlapping dates.
 
+### Chat
+
+```http
+PATCH /api/chat/conversations/:id/read
+```
+
+Marks a conversation as read for the authenticated user. Updates `customer_last_read_at` or `staff_last_read_at` depending on role. Called when user opens a conversation or receives a new message in an active conversation.
+
 ### Payment and Financial Management
 
 ```http

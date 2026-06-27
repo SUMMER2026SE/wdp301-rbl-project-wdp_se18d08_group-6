@@ -1,4 +1,4 @@
-import { Body, Controller, DefaultValuePipe, ForbiddenException, Get, ParseIntPipe, ParseUUIDPipe, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, DefaultValuePipe, ForbiddenException, Get, ParseIntPipe, ParseUUIDPipe, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/auth-user";
@@ -51,6 +51,14 @@ export class ChatController {
     }
 
     return ok(this.chatGateway.getLockStatus(conversationId));
+  }
+
+  @Patch("conversations/:id/read")
+  async markRead(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id", ParseUUIDPipe) conversationId: string,
+  ) {
+    return ok(await this.chatService.markConversationRead(user.id, user.role, conversationId));
   }
 
   @Post("conversations/:id/product-card")
