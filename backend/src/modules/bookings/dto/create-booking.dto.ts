@@ -17,6 +17,10 @@ export class CreateBookingDto {
   pickupMethod?: string;
 
   @IsOptional()
+  @IsUUID("4")
+  deliveryAddressId?: string;
+
+  @IsOptional()
   @IsString()
   @MaxLength(500)
   note?: string;

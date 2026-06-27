@@ -89,6 +89,24 @@ export async function getGarmentById(id: string) {
   return apiRequest<GarmentDetail>(`/garments/${id}`);
 }
 
+// ---------- Customer address types ----------
+
+export type CustomerAddress = {
+  id: string;
+  receiverName: string;
+  phone: string;
+  line1: string;
+  ward: string | null;
+  district: string | null;
+  city: string | null;
+  isDefault: boolean;
+  createdAt: string;
+};
+
+export async function getMyAddresses() {
+  return apiRequest<CustomerAddress[]>("/users/me/addresses");
+}
+
 // ---------- Booking types ----------
 
 export type BookingItem = {
@@ -116,6 +134,8 @@ export type BookingResponse = {
   depositTotal: number;
   penaltyTotal?: number;
   note: string | null;
+  deliveryAddressId?: string | null;
+  deliveryAddress?: Omit<CustomerAddress, "isDefault" | "createdAt"> | null;
   createdAt: string;
   items: BookingItem[];
 };
@@ -141,6 +161,7 @@ export async function createBooking(payload: {
   startDate: string;
   endDate: string;
   pickupMethod?: string;
+  deliveryAddressId?: string;
   note?: string;
 }) {
   return apiRequest<BookingResponse>("/bookings", {

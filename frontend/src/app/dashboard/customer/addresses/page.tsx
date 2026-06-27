@@ -1,9 +1,18 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { AddressAutocomplete, type ResolvedAddress } from "@/components/location/address-autocomplete";
 import { useAuth } from "@/components/auth/auth-provider";
 import { apiRequest } from "@/lib/api";
 import { normalizeNullableText } from "@/lib/auth";
+
+/** (new) typed helpers for local use, but backend now returns via apiRequest */
+declare global {
+  interface Window {
+    /** small inline confirm helper */
+    confirmDeletingAddress?: unknown;
+  }
+}
 
 type CustomerAddress = {
   id: string;
@@ -77,6 +86,8 @@ export default function CustomerAddressesPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadAddresses = useCallback(async () => {
     setLoading(true);
@@ -95,6 +106,96 @@ export default function CustomerAddressesPage() {
     if (status !== "authenticated") return;
     void loadAddresses();
   }, [loadAddresses, status]);
+
+  function handleResolvedAddress(address: ResolvedAddress | null) {
+    if (!address) {
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      line1: address.fullAddress || current.line1,
+      district: address.district ?? current.district,
+      city: address.province ?? current.city,
+    }));
+  }
+
+  function startEdit(address: CustomerAddress) {
+    setForm({
+      receiverName: address.receiverName,
+      phone: address.phone,
+      line1: address.line1,
+      ward: address.ward ?? "",
+      district: address.district ?? "",
+      city: address.city ?? "",
+      isDefault: address.isDefault,
+    });
+    setEditingId(address.id);
+    setMessage(null);
+    setError(null);
+  }
+
+  function cancelEdit() {
+    setForm(createEmptyForm());
+    setEditingId(null);
+    setMessage(null);
+    setError(null);
+  }
+
+  async function handleUpdateAddress() {
+    if (!editingId) return;
+    setError(null);
+    setMessage(null);
+    setSaving(true);
+
+    try {
+      const result = await apiRequest<CustomerAddress>(`/users/me/addresses/${editingId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          receiverName: form.receiverName.trim(),
+          phone: form.phone.trim(),
+          line1: form.line1.trim(),
+          ward: normalizeNullableText(form.ward),
+          district: normalizeNullableText(form.district),
+          city: normalizeNullableText(form.city),
+          isDefault: form.isDefault,
+        }),
+      });
+
+      if (!result.success || !result.data) {
+        setError(result.message ?? "Không thể cập nhật địa chỉ.");
+        return;
+      }
+
+      setForm(createEmptyForm());
+      setEditingId(null);
+      setMessage("Cập nhật địa chỉ thành công.");
+      await loadAddresses();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteAddress(id: string) {
+    setError(null);
+    setDeletingId(id);
+
+    try {
+      const result = await apiRequest<{ deleted: boolean }>(`/users/me/addresses/${id}`, {
+        method: "DELETE",
+      });
+
+      if (!result.success) {
+        setError(result.message ?? "Không thể xóa địa chỉ.");
+        return;
+      }
+
+      setMessage("Xóa địa chỉ thành công.");
+      await loadAddresses();
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -196,17 +297,26 @@ export default function CustomerAddressesPage() {
 
                 {/* Hover actions */}
                 <div className="mt-4 flex gap-4 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                  <button className="text-[11px] font-bold uppercase tracking-wider transition-colors"
+                  <button
+                    type="button"
+                    className="text-[11px] font-bold uppercase tracking-wider transition-colors"
                     style={{ color: "#7b5800" }}
                     onMouseEnter={(e) => { e.currentTarget.style.color = "#8B0000"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = "#7b5800"; }}>
+                    onMouseLeave={(e) => { e.currentTarget.style.color = "#7b5800"; }}
+                    onClick={() => startEdit(address)}
+                  >
                     Chỉnh sửa
                   </button>
-                  <button className="text-[11px] font-bold uppercase tracking-wider transition-colors"
+                  <button
+                    type="button"
+                    className="text-[11px] font-bold uppercase tracking-wider transition-colors"
                     style={{ color: "#5a403c" }}
                     onMouseEnter={(e) => { e.currentTarget.style.color = "#ba1a1a"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = "#5a403c"; }}>
-                    Xoá
+                    onMouseLeave={(e) => { e.currentTarget.style.color = "#5a403c"; }}
+                    disabled={deletingId === address.id}
+                    onClick={() => handleDeleteAddress(address.id)}
+                  >
+                    {deletingId === address.id ? "Đang xoá..." : "Xoá"}
                   </button>
                 </div>
               </div>
@@ -219,10 +329,10 @@ export default function CustomerAddressesPage() {
           <div className="rounded-xl border p-6 md:p-8"
             style={{ backgroundColor: "#ffffff", borderColor: "#e3beb8", boxShadow: "0 2px 12px rgba(74,4,4,0.04)" }}>
             <h2 className="mb-6 text-2xl font-semibold" style={{ color: "#261816", fontFamily: "EB Garamond, serif" }}>
-              Thêm Địa Chỉ Mới
+              {editingId ? "Chỉnh Sửa Địa Chỉ" : "Thêm Địa Chỉ Mới"}
             </h2>
 
-            <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+            <form onSubmit={(e) => { e.preventDefault(); if (editingId) { void handleUpdateAddress(); } else { void handleSubmit(e); } }} className="flex flex-col gap-6">
               {/* Row 1: Receiver + Phone */}
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <AtelierField id="receiverName" label="Tên người nhận" required
@@ -231,6 +341,11 @@ export default function CustomerAddressesPage() {
                 <AtelierField id="phone" label="SĐT người nhận" type="tel" required
                   value={form.phone} placeholder="Nhập số điện thoại"
                   onChange={(v) => setForm((c) => ({ ...c, phone: v }))} />
+              </div>
+
+              <div className="rounded-xl border border-dashed p-4" style={{ borderColor: "#e3beb8", backgroundColor: "#fff8f6" }}>
+
+                <AddressAutocomplete value={null} onChange={handleResolvedAddress} disabled={saving} />
               </div>
 
               {/* Row 2: Address Line */}
@@ -278,14 +393,24 @@ export default function CustomerAddressesPage() {
               )}
 
               {/* Submit */}
-              <div className="flex justify-end pt-2">
+              <div className="flex justify-end gap-3 pt-2">
+                {editingId ? (
+                  <button
+                    type="button"
+                    onClick={cancelEdit}
+                    className="rounded-xl border px-6 py-3 text-[13px] font-semibold uppercase tracking-wider transition-all duration-200"
+                    style={{ borderColor: "#e3beb8", color: "#5a403c" }}
+                  >
+                    Huỷ
+                  </button>
+                ) : null}
                 <button
                   type="submit"
                   disabled={saving}
                   className="rounded-xl px-8 py-3 text-[13px] font-semibold uppercase tracking-wider text-white transition-all duration-200 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                   style={{ backgroundColor: "#8B0000" }}
                 >
-                  {saving ? "Đang lưu..." : "Lưu địa chỉ mới"}
+                  {saving ? "Đang lưu..." : editingId ? "Cập nhật địa chỉ" : "Lưu địa chỉ mới"}
                 </button>
               </div>
             </form>

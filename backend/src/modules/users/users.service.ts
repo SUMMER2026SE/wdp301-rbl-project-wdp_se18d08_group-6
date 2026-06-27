@@ -54,6 +54,7 @@ type UsersTransactionClient = {
   address: {
     updateMany(args: unknown): Promise<unknown>;
     create(args: unknown): Promise<AddressRecord>;
+    update(args: unknown): Promise<AddressRecord>;
   };
 };
 
@@ -68,6 +69,9 @@ type UsersPrismaBridge = {
   address: {
     count(args: unknown): Promise<number>;
     findMany(args: unknown): Promise<AddressRecord[]>;
+    findFirst(args: unknown): Promise<AddressRecord | null>;
+    update(args: unknown): Promise<AddressRecord>;
+    delete(args: unknown): Promise<void>;
   };
   $transaction<T>(callback: (tx: UsersTransactionClient) => Promise<T>): Promise<T>;
 };
@@ -190,6 +194,78 @@ export class UsersService {
     });
 
     return ok(addresses.map((address) => this.serializeAddress(address)));
+  }
+
+  async updateAddress(userId: string, addressId: string, input: Partial<CreateAddressInput>) {
+    const prisma = this.prisma as unknown as UsersPrismaBridge;
+
+    const existing = await prisma.address.findFirst({
+      where: { id: addressId, customerId: userId },
+    });
+    if (!existing) {
+      throw new BadRequestException("Địa chỉ không tồn tại.");
+    }
+
+    const updateData: Record<string, unknown> = {};
+    for (const key of ["receiverName", "phone", "line1", "ward", "district", "city"] as const) {
+      if (input[key] !== undefined) {
+        updateData[key] = input[key] ?? null;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(input, "isDefault") && input.isDefault === true) {
+      updateData.isDefault = true;
+    }
+
+    const address = await (prisma as unknown as UsersPrismaBridge).$transaction(async (tx) => {
+      if (updateData.isDefault === true) {
+        await tx.address.updateMany({
+          where: { customerId: userId, isDefault: true, id: { not: addressId } },
+          data: { isDefault: false },
+        });
+      }
+
+      return tx.address.update({
+        where: { id: addressId },
+        data: updateData,
+      });
+    });
+
+    return ok(this.serializeAddress(address));
+  }
+
+  async deleteAddress(userId: string, addressId: string) {
+    const prisma = this.prisma as unknown as UsersPrismaBridge;
+    const existing = await prisma.address.findFirst({
+      where: { id: addressId, customerId: userId },
+    });
+    if (!existing) {
+      throw new BadRequestException("Địa chỉ không tồn tại.");
+    }
+
+    const count = await prisma.address.count({ where: { customerId: userId } });
+    if (count <= 1) {
+      throw new BadRequestException("Không thể xóa địa chỉ cuối cùng. Bạn cần ít nhất một địa chỉ.");
+    }
+
+    await (prisma as unknown as { address: { delete(args: unknown): Promise<void> } }).address.delete({
+      where: { id: addressId },
+    });
+
+    if (existing.isDefault) {
+      const firstOther = await prisma.address.findFirst({
+        where: { customerId: userId },
+        orderBy: { createdAt: "asc" },
+      });
+      if (firstOther) {
+        await (prisma as unknown as { address: { update(args: unknown): Promise<void> } }).address.update({
+          where: { id: firstOther.id },
+          data: { isDefault: true },
+        });
+      }
+    }
+
+    return ok({ deleted: true });
   }
 
   private pickDefined<T extends Record<string, unknown>>(input: T) {

@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { BookingFlowShell } from "@/components/heritage/ui";
-import { createBooking } from "@/lib/api";
-import { getCart, getCartSummary, clearCart } from "@/lib/cart";
+import { createBooking, getMyAddresses, type CustomerAddress } from "@/lib/api";
+import { getCart, clearCart } from "@/lib/cart";
 
 function formatVND(amount: number) {
   return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
@@ -18,6 +18,10 @@ function formatDate(iso: string) {
 
 function daysBetween(start: string, end: string) {
   return Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86400000) + 1;
+}
+
+function formatAddress(address: CustomerAddress) {
+  return [address.line1, address.ward, address.district, address.city].filter(Boolean).join(", ");
 }
 
 const pickupLabels: Record<string, string> = {
@@ -33,10 +37,13 @@ function BookingReviewInner() {
   const startDate = searchParams.get("startDate") ?? "";
   const endDate = searchParams.get("endDate") ?? "";
   const pickupMethod = searchParams.get("pickupMethod") ?? "store_pickup";
+  const deliveryAddressId = searchParams.get("deliveryAddressId") ?? "";
 
   const [agreed, setAgreed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [deliveryAddress, setDeliveryAddress] = useState<CustomerAddress | null>(null);
+  const [addressLoading, setAddressLoading] = useState(false);
 
   const cartItems = getCart();
   const days = startDate && endDate ? daysBetween(startDate, endDate) : 0;
@@ -44,15 +51,38 @@ function BookingReviewInner() {
   const depositTotal = cartItems.reduce((sum, item) => sum + item.depositAmount, 0);
   const grandTotal = rentalTotal + depositTotal;
 
+  useEffect(() => {
+    if (pickupMethod !== "delivery" || !deliveryAddressId) {
+      setDeliveryAddress(null);
+      return;
+    }
+
+    setAddressLoading(true);
+    getMyAddresses()
+      .then((result) => {
+        if (result.success && result.data) {
+          setDeliveryAddress(result.data.find((address) => address.id === deliveryAddressId) ?? null);
+        }
+      })
+      .finally(() => setAddressLoading(false));
+  }, [deliveryAddressId, pickupMethod]);
+
   async function handleConfirm() {
     if (cartItems.length === 0 || !startDate || !endDate) return;
+    if (pickupMethod === "delivery" && !deliveryAddressId) {
+      setErrorMsg("Vui lòng chọn địa chỉ giao nhận.");
+      return;
+    }
+
     setSubmitting(true);
     setErrorMsg(null);
+
     const res = await createBooking({
       garmentSizeIds: cartItems.map((i) => i.garmentSizeId),
       startDate,
       endDate,
       pickupMethod,
+      deliveryAddressId: pickupMethod === "delivery" ? deliveryAddressId : undefined,
     });
     setSubmitting(false);
     if (res.success && res.data) {
@@ -64,6 +94,7 @@ function BookingReviewInner() {
   }
 
   const backParams = new URLSearchParams({ startDate, endDate, pickupMethod });
+  if (deliveryAddressId) backParams.set("deliveryAddressId", deliveryAddressId);
 
   if (cartItems.length === 0) {
     return (
@@ -140,7 +171,24 @@ function BookingReviewInner() {
               </div>
               <div className="space-y-4 text-sm">
                 <div><span className="block text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Phương thức</span><span className="font-medium text-ink">{pickupLabels[pickupMethod] ?? pickupMethod}</span></div>
-                <div><span className="block text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Địa điểm</span><span className="leading-7 text-stone-600">123 Silk Road, Quận 1<br />TP. Hồ Chí Minh</span></div>
+                <div>
+                  <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Địa điểm</span>
+                  {pickupMethod === "delivery" ? (
+                    addressLoading ? (
+                      <span className="leading-7 text-stone-500">Đang tải địa chỉ...</span>
+                    ) : deliveryAddress ? (
+                      <span className="leading-7 text-stone-600">
+                        {deliveryAddress.receiverName} · {deliveryAddress.phone}
+                        <br />
+                        {formatAddress(deliveryAddress)}
+                      </span>
+                    ) : (
+                      <span className="leading-7 text-red-500">Không tìm thấy địa chỉ đã chọn.</span>
+                    )
+                  ) : (
+                    <span className="leading-7 text-stone-600">123 Silk Road, Quận 1<br />TP. Hồ Chí Minh</span>
+                  )}
+                </div>
               </div>
             </section>
           </div>
@@ -196,7 +244,7 @@ function BookingReviewInner() {
               </Link>
               <button
                 type="button"
-                disabled={!agreed || submitting || cartItems.length === 0}
+                disabled={!agreed || submitting || cartItems.length === 0 || (pickupMethod === "delivery" && !deliveryAddressId)}
                 onClick={handleConfirm}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-lotus px-6 py-4 text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-oxblood disabled:opacity-40 disabled:cursor-not-allowed"
               >
