@@ -1404,12 +1404,18 @@ function GarmentFormModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Size *</label>
-              <input value={sizeLabel} onChange={(e) => setSizeLabel(e.target.value)} className={`w-full rounded-lg border ${errors.sizeLabel ? 'border-red-500' : 'border-sand'} px-3 py-2 text-sm outline-none focus:border-antique`} placeholder="Vd: M, L" />
+              <select value={sizeLabel} onChange={(e) => setSizeLabel(e.target.value)} className={`w-full rounded-lg border ${errors.sizeLabel ? 'border-red-500' : 'border-sand'} bg-white px-3 py-2 text-sm outline-none focus:border-antique`}>
+                <option value="">— Chọn Size —</option>
+                {["S", "M", "L", "XL", "XXL", "Free Size"].map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
               {errors.sizeLabel && <p className="mt-1 text-xs text-red-500">{errors.sizeLabel}</p>}
             </div>
             <div>
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Màu *</label>
-              <input value={color} onChange={(e) => setColor(e.target.value)} className={`w-full rounded-lg border ${errors.color ? 'border-red-500' : 'border-sand'} px-3 py-2 text-sm outline-none focus:border-antique`} placeholder="Vd: Đỏ" />
+              <select value={color} onChange={(e) => setColor(e.target.value)} className={`w-full rounded-lg border ${errors.color ? 'border-red-500' : 'border-sand'} bg-white px-3 py-2 text-sm outline-none focus:border-antique`}>
+                <option value="">— Chọn màu —</option>
+                {["Đỏ", "Trắng", "Đen", "Vàng", "Xanh dương", "Xanh ngọc", "Xanh lá", "Hồng", "Tím", "Cam", "Nâu", "Xám", "Nhiều màu", "Họa tiết"].map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
               {errors.color && <p className="mt-1 text-xs text-red-500">{errors.color}</p>}
             </div>
           </div>
