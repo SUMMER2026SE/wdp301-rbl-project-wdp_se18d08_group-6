@@ -302,6 +302,22 @@ export class GarmentsService {
 
   // ── Category CRUD ──────────────────────────────────────────────────────────
 
+  async findAllSizes() {
+    const sizes = await this.prisma.garment_sizes.findMany({
+      select: { size_label: true },
+      distinct: ["size_label"],
+      where: { size_label: { not: null, notIn: [""] } },
+      orderBy: { size_label: "asc" },
+    });
+    return ok(sizes.map((s) => s.size_label).filter(Boolean));
+  }
+
+  async createSize(sizeLabel: string) {
+    const label = sizeLabel?.trim();
+    if (!label) throw new BadRequestException("sizeLabel is required.");
+    return ok({ sizeLabel: label });
+  }
+
   async findAllCategories() {
     const categories = await this.prisma.garmentCategory.findMany({
       where: { isActive: true },
