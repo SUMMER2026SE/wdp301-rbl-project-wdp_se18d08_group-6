@@ -145,6 +145,27 @@ export class BookingsService {
       }
     }
 
+    let deliveryAddressSnapshot: string | null = null;
+    if (dto.pickupMethod === "delivery") {
+      if (!dto.deliveryAddressId) {
+        throw new BadRequestException("Vui lòng chọn địa chỉ giao nhận.");
+      }
+
+      const address = await this.prisma.address.findFirst({
+        where: { id: dto.deliveryAddressId, customerId },
+      });
+      if (!address) {
+        throw new BadRequestException("Địa chỉ giao nhận không hợp lệ.");
+      }
+
+      deliveryAddressSnapshot = [
+        `${address.receiverName} - ${address.phone}`,
+        [address.line1, address.ward, address.district, address.city].filter(Boolean).join(", "),
+      ]
+        .filter(Boolean)
+        .join("\n");
+    }
+
     const sizeMap = new Map(sizes.map((s) => [s.id, s]));
     let rentalTotal = 0;
     let depositTotal = 0;
@@ -164,9 +185,10 @@ export class BookingsService {
         rentalStartDate: startDay,
         rentalEndDate: endDay,
         pickupMethod: dto.pickupMethod ?? "store_pickup",
+        deliveryAddressId: dto.pickupMethod === "delivery" ? dto.deliveryAddressId : null,
         rentalTotal,
         depositTotal,
-        note: dto.note ?? null,
+        note: [dto.note, deliveryAddressSnapshot ? `Địa chỉ giao/nhận:\n${deliveryAddressSnapshot}` : null].filter(Boolean).join("\n\n") || null,
         items: { create: itemsData },
       },
       include: {
@@ -176,6 +198,7 @@ export class BookingsService {
             garmentAsset: true,
           },
         },
+        deliveryAddress: true,
       },
     });
     await this.notificationsService.sendBookingNotification({
@@ -633,6 +656,16 @@ export class BookingsService {
       depositTotal: Number(booking.depositTotal),
       penaltyTotal: Number(booking.penaltyTotal ?? 0),
       note: booking.note,
+      deliveryAddressId: booking.deliveryAddressId ?? null,
+      deliveryAddress: booking.deliveryAddress ? {
+        id: booking.deliveryAddress.id,
+        receiverName: booking.deliveryAddress.receiverName,
+        phone: booking.deliveryAddress.phone,
+        line1: booking.deliveryAddress.line1,
+        ward: booking.deliveryAddress.ward,
+        district: booking.deliveryAddress.district,
+        city: booking.deliveryAddress.city,
+      } : null,
       createdAt: booking.createdAt.toISOString(),
       items: (booking.items ?? []).map((item: any) => ({
         id: item.id,

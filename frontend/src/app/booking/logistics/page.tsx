@@ -2,16 +2,31 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { BookingFlowShell } from "@/components/heritage/ui";
+import { apiRequest } from "@/lib/api";
 import { logisticsMethods } from "@/lib/heritage-mock-data";
+
+export type CustomerAddress = {
+  id: string;
+  receiverName: string;
+  phone: string;
+  line1: string;
+  ward: string | null;
+  district: string | null;
+  city: string | null;
+  isDefault: boolean;
+  createdAt: string;
+};
 
 function formatDate(iso: string) {
   const [y, m, d] = iso.split("-");
   return `${d}/${m}/${y}`;
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function formatAddress(address: CustomerAddress) {
+  return [address.line1, address.ward, address.district, address.city].filter(Boolean).join(", ");
+}
 
 function BookingLogisticsInner() {
   const router = useRouter();
@@ -22,10 +37,47 @@ function BookingLogisticsInner() {
 
   const isInvalid = !startDate || !endDate || endDate < startDate;
 
-  const [pickupMethod, setPickupMethod] = useState<string>(logisticsMethods[0].key);
+  const [pickupMethod, setPickupMethod] = useState<string>(searchParams.get("pickupMethod") ?? logisticsMethods[0].key);
+
+  const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
+  const [addressLoading, setAddressLoading] = useState(false);
+  const [selectedAddressId, setSelectedAddressId] = useState<string>(searchParams.get("deliveryAddressId") ?? "");
+
+  const loadAddresses = useCallback(async () => {
+    setAddressLoading(true);
+    const result = await apiRequest<CustomerAddress[]>("/users/me/addresses");
+    const list = result.success && result.data ? result.data : [];
+    setAddresses(list);
+    setAddressLoading(false);
+
+    // Auto-select default address
+    setSelectedAddressId((current) => {
+      if (current) {
+        const exists = list.some((a) => a.id === current);
+        if (exists) return current;
+      }
+
+      const defaultAddress = list.find((a) => a.isDefault) ?? list[0];
+      return defaultAddress?.id ?? "";
+    });
+  }, []);
+
+  useEffect(() => {
+    if (pickupMethod === "delivery") {
+      void loadAddresses();
+    }
+  }, [loadAddresses, pickupMethod]);
 
   function handleContinue() {
+    if (pickupMethod === "delivery" && !selectedAddressId) {
+      return;
+    }
+
+    const selectedAddress = addresses.find((a) => a.id === selectedAddressId);
     const params = new URLSearchParams({ startDate, endDate, pickupMethod });
+    if (pickupMethod === "delivery" && selectedAddress) {
+      params.set("deliveryAddressId", selectedAddress.id);
+    }
     router.push(`/booking/review?${params.toString()}`);
   }
 
@@ -91,6 +143,76 @@ function BookingLogisticsInner() {
             </div>
           </section>
 
+          {pickupMethod === "delivery" ? (
+            <section className="rounded-xl border border-sand bg-white p-6 shadow-[0_10px_40px_rgba(77,16,15,0.05)]">
+              <h2 className="mb-4 font-display text-3xl text-lotus">Địa chỉ giao nhận</h2>
+
+              {addressLoading ? (
+                <p className="text-sm text-stone-500">Đang tải địa chỉ...</p>
+              ) : addresses.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-sand p-8 text-center">
+                  <span className="material-symbols-outlined text-4xl text-stone-300">location_off</span>
+                  <p className="mt-3 text-sm text-stone-500">Bạn chưa có địa chỉ nhận đồ nào.</p>
+                  <Link
+                    href="/dashboard/customer/addresses"
+                    className="mt-4 inline-flex items-center gap-2 rounded-lg bg-lotus px-5 py-3 text-sm font-semibold text-white transition hover:bg-oxblood"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">add_location</span>
+                    Thêm địa chỉ nhận đồ
+                  </Link>
+                </div>
+              ) : (
+                <>
+                  <p className="mb-4 text-sm leading-7 text-stone-600">Chọn một địa chỉ đã lưu trong hồ sơ của bạn để giao nhận trang phục.</p>
+                  <div className="space-y-3">
+                    {addresses.map((address) => (
+                      <label
+                        key={address.id}
+                        className={`cursor-pointer block rounded-xl border p-4 transition ${
+                          selectedAddressId === address.id
+                            ? "border-antique bg-[#fff0ee]"
+                            : "border-sand bg-white hover:border-antique/60"
+                        }`}
+                      >
+                        <input
+                          className="sr-only"
+                          type="radio"
+                          name="deliveryAddress"
+                          checked={selectedAddressId === address.id}
+                          onChange={() => setSelectedAddressId(address.id)}
+                        />
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-semibold text-ink">{address.receiverName}</span>
+                              {address.isDefault ? (
+                                <span className="rounded-full bg-[#ffe9e6] px-2 py-0.5 text-[10px] font-bold uppercase text-oxblood">
+                                  Mặc định
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="mt-1 text-sm text-stone-600">{address.phone}</p>
+                            <p className="mt-1 text-sm leading-relaxed text-stone-600">{formatAddress(address)}</p>
+                          </div>
+                          <span className={`material-symbols-outlined mt-1 ${selectedAddressId === address.id ? "text-antique" : "text-stone-300"}`}>
+                            {selectedAddressId === address.id ? "radio_button_checked" : "radio_button_unchecked"}
+                          </span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                  <Link
+                    href="/dashboard/customer/addresses"
+                    className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-lotus transition hover:underline"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">add</span>
+                    Thêm địa chỉ khác
+                  </Link>
+                </>
+              )}
+            </section>
+          ) : null}
+
           <section className="rounded-xl border border-sand bg-[#fff4ef] p-6">
             <h2 className="font-display text-3xl text-ink">Địa điểm nhận tại atelier</h2>
             <p className="mt-1 text-sm text-stone-600">Vui lòng đến trong khung giờ làm việc để thử và nhận bộ đồ.</p>
@@ -118,7 +240,8 @@ function BookingLogisticsInner() {
             <button
               type="button"
               onClick={handleContinue}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-lotus px-6 py-4 text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-oxblood"
+              disabled={pickupMethod === "delivery" && !selectedAddressId}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-lotus px-6 py-4 text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-oxblood disabled:cursor-not-allowed disabled:opacity-40"
             >
               Sang bước kiểm tra đơn
               <span className="material-symbols-outlined text-[18px]">arrow_forward</span>

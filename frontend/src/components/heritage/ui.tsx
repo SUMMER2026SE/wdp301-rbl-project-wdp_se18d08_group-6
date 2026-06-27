@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { LogoutButton } from "@/components/auth/logout-button";
 import { bookingFlowSteps } from "@/lib/heritage-mock-data";
 
 type PublicNavKey = "collection" | "heritage" | "atelier" | "erp";
@@ -215,6 +216,10 @@ export function StaffPortalShell({
             );
           })}
         </nav>
+        <LogoutButton className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl border border-oxblood/30 bg-white px-4 py-3 text-sm font-semibold text-oxblood transition hover:bg-oxblood hover:text-white">
+          <span className="material-symbols-outlined text-[18px]">logout</span>
+          Đăng xuất
+        </LogoutButton>
       </aside>
 
       <div className="min-w-0 flex-1">
@@ -223,18 +228,24 @@ export function StaffPortalShell({
             <h2 className="font-display text-3xl text-lotus">Cổ Phục Rental</h2>
             <p className="text-xs uppercase tracking-[0.18em] text-stone-500">{subtitle}</p>
           </div>
-          <div className="hidden items-center gap-3 md:flex">
-            <div className="relative">
-              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-stone-400">search</span>
-              <input
-                className="w-72 rounded-full border border-sand bg-white py-2 pl-10 pr-4 text-sm text-ink outline-none transition focus:border-antique"
-                placeholder="Tìm mã đơn, khách hàng..."
-                type="text"
-              />
+          <div className="flex items-center gap-2">
+            <div className="hidden items-center gap-3 md:flex">
+              <div className="relative">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-stone-400">search</span>
+                <input
+                  className="w-72 rounded-full border border-sand bg-white py-2 pl-10 pr-4 text-sm text-ink outline-none transition focus:border-antique"
+                  placeholder="Tìm mã đơn, khách hàng..."
+                  type="text"
+                />
+              </div>
+              <button type="button" className="rounded-full p-2 text-lotus transition hover:bg-lotus/10">
+                <span className="material-symbols-outlined text-[22px]">notifications</span>
+              </button>
             </div>
-            <button type="button" className="rounded-full p-2 text-lotus transition hover:bg-lotus/10">
-              <span className="material-symbols-outlined text-[22px]">notifications</span>
-            </button>
+            <LogoutButton className="inline-flex items-center gap-2 rounded-full border border-oxblood/30 bg-white px-3 py-2 text-sm font-semibold text-oxblood transition hover:bg-oxblood hover:text-white">
+              <span className="material-symbols-outlined text-[18px]">logout</span>
+              <span className="hidden sm:inline">Đăng xuất</span>
+            </LogoutButton>
           </div>
         </header>
 
