@@ -29,7 +29,7 @@ export class GarmentsService {
 
   async findAll() {
     const garments = await this.prisma.garment.findMany({
-      where: { isActive: true },
+      where: { isActive: true, deletedAt: null },
       include: {
         category: true,
         garment_sizes: { where: { is_active: true } },
@@ -40,6 +40,7 @@ export class GarmentsService {
     return ok(garments.map((g) => ({
       id: g.id, name: g.name, categoryName: g.category?.name ?? null,
       sizeLabel: g.garment_sizes[0]?.size_label ?? null,
+      color: g.color ?? null,
       dailyPrice: Number(g.garment_sizes[0]?.daily_price ?? 0),
       depositAmount: Number(g.garment_sizes[0]?.deposit_amount ?? 0),
       images: g.images.map((img) => ({
@@ -53,7 +54,7 @@ export class GarmentsService {
 
   async findOne(id: string) {
     const garment = await this.prisma.garment.findFirst({
-      where: { id, isActive: true },
+      where: { id, isActive: true, deletedAt: null },
       include: {
         category: true,
         garment_sizes: { where: { is_active: true } },
@@ -122,7 +123,16 @@ export class GarmentsService {
         ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
         ...(dto.description !== undefined ? { description: dto.description } : {}),
         ...(dto.color !== undefined ? { color: dto.color } : {}),
-        /* Update garment_sizes separately if needed */
+        garment_sizes: {
+          updateMany: {
+            where: { is_active: true },
+            data: {
+              ...(dto.sizeLabel !== undefined ? { size_label: dto.sizeLabel || null } : {}),
+              ...(dto.dailyPrice !== undefined ? { daily_price: dto.dailyPrice } : {}),
+              ...(dto.depositAmount !== undefined ? { deposit_amount: dto.depositAmount } : {}),
+            },
+          },
+        },
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
       },
       include: {
@@ -133,6 +143,21 @@ export class GarmentsService {
     });
 
     return ok(this.serialize(updated));
+  }
+
+  // ── Manager / Owner: Delete ────────────────────────────────────────────────
+
+  async remove(id: string) {
+    const garment = await this.prisma.garment.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!garment) throw new NotFoundException("Garment not found.");
+
+    await this.prisma.garment.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+    return ok({ id, deleted: true });
   }
 
   // ── Manager / Owner: Add image ─────────────────────────────────────────────
@@ -183,7 +208,7 @@ export class GarmentsService {
 
   async findAvailableAssets(garmentId: string) {
     const garment = await this.prisma.garment.findFirst({
-      where: { id: garmentId, isActive: true },
+      where: { id: garmentId, isActive: true, deletedAt: null },
     });
     if (!garment) throw new NotFoundException("Garment not found.");
 
@@ -196,7 +221,7 @@ export class GarmentsService {
 
   async findAllGrouped() {
     const garments = await this.prisma.garment.findMany({
-      where: { isActive: true },
+      where: { isActive: true, deletedAt: null },
       include: {
         category: true,
         images: { orderBy: { sortOrder: "asc" } },

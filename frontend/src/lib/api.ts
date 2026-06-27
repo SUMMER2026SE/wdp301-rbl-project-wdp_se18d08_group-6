@@ -54,6 +54,7 @@ export type GarmentSummary = {
   name: string;
   categoryName: string | null;
   sizeLabel: string | null;
+  color: string | null;
   dailyPrice: number;
   depositAmount: number;
   images?: GarmentImage[];
@@ -671,6 +672,12 @@ export async function updateGarment(id: string, payload: {
   return apiRequest<GarmentDetail>(`/garments/${id}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteGarment(id: string) {
+  return apiRequest<{ id: string; deleted: boolean }>(`/garments/${id}`, {
+    method: "DELETE",
   });
 }
 

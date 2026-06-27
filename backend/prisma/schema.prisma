@@ -106,6 +106,7 @@ model Garment {
   description   String?
   color         String?
   isActive      Boolean          @default(true) @map("is_active")
+  deletedAt     DateTime?        @map("deleted_at") @db.Timestamptz(6)
   createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   bookingItems  BookingItem[]
   assets        GarmentAsset[]
