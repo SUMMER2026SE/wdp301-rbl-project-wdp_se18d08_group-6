@@ -7,6 +7,8 @@ export type ChatMessage = {
   sender_id: string;
   content: string;
   created_at: string;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
   user_accounts?: {
     id: string;
     email: string;
@@ -125,6 +127,12 @@ export async function getConversationMessages(conversationId: string, before?: s
   if (limit) searchParams.set("limit", String(limit));
 
   return apiRequest<ChatMessage[]>(`/chat/conversations/${conversationId}/messages?${searchParams.toString()}`);
+}
+
+export async function markConversationRead(conversationId: string) {
+  return apiRequest<{ id: string }>(`/chat/conversations/${conversationId}/read`, {
+    method: "PATCH",
+  });
 }
 
 export async function getConversationLockStatus(conversationId: string) {
