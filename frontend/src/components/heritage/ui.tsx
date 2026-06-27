@@ -200,20 +200,16 @@ export function StaffPortalShell({
           {items.map((item) => {
             const isActive = item.key === active;
             return (
-              <a
+              <Link
                 key={item.key}
                 href={item.href}
-                onClick={(e) => {
-                  e.preventDefault();
-                  onTabChange?.(item.key);
-                }}
                 className={isActive
                   ? "flex items-center gap-3 rounded-xl bg-[#ffe9e6] px-4 py-3 text-sm font-semibold text-lotus"
                   : "flex items-center gap-3 rounded-xl px-4 py-3 text-sm text-stone-600 transition hover:bg-white hover:text-lotus"}
               >
                 <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
                 <span>{item.label}</span>
-              </a>
+              </Link>
             );
           })}
         </nav>
