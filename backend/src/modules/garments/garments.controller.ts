@@ -26,6 +26,11 @@ export class GarmentsController {
   @Get()
   findAll() { return this.garmentsService.findAll(); }
 
+  @Get("sizes")
+  findAllSizes() {
+    return this.garmentsService.findAllSizes();
+  }
+
   @Get("grouped")
   findAllGrouped() { return this.garmentsService.findAllGrouped(); }
 
@@ -86,6 +91,13 @@ export class GarmentsController {
     @Param("imageId", ParseUUIDPipe) imageId: string,
   ) {
     return this.garmentsService.removeImage(garmentId, imageId);
+  }
+
+  @Post("sizes")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("manager_owner", "admin")
+  createSize(@Body("sizeLabel") sizeLabel: string) {
+    return this.garmentsService.createSize(sizeLabel);
   }
 
   @Post("categories")

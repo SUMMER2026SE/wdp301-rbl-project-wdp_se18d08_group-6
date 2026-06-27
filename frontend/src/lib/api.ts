@@ -664,6 +664,17 @@ export async function getGarmentCategories() {
   return apiRequest<GarmentCategory[]>("/garments/categories");
 }
 
+export async function getGarmentSizes() {
+  return apiRequest<string[]>("/garments/sizes");
+}
+
+export async function createGarmentSize(sizeLabel: string) {
+  return apiRequest<{ sizeLabel: string }>("/garments/sizes", {
+    method: "POST",
+    body: JSON.stringify({ sizeLabel }),
+  });
+}
+
 export async function createGarment(payload: {
   name: string;
   categoryId?: string;

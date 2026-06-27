@@ -27,6 +27,9 @@ getGarments,
   addGarmentImage,
   removeGarmentImage,
   getGarmentCategories,
+  getGarmentSizes,
+  createGarmentCategory,
+  createGarmentSize,
   createAsset,
   getAllAssets,
   updateAssetStatus,
@@ -158,6 +161,7 @@ export default function ManagerDashboardPage() {
 
   // Garment management state
   const [categories, setCategories] = useState<GarmentCategory[]>([]);
+  const [sizes, setSizes] = useState<string[]>([]);
   const [garmentModalOpen, setGarmentModalOpen] = useState(false);
   const [editingGarment, setEditingGarment] = useState<GarmentDetail | null>(null);
   const [garmentToDeleteId, setGarmentToDeleteId] = useState<string | null>(null);
@@ -200,7 +204,8 @@ export default function ManagerDashboardPage() {
       getStaffAllBookings().then(res => { if (res.success && res.data) setBookings(res.data); }),
       getGarments().then(res => { if (res.success && res.data) setGarments(res.data); }),
       getAllAssets().then(res => { if (res.success && res.data) setAllAssets(res.data); }),
-      getGarmentCategories().then(res => { if (res.success && res.data) setCategories(res.data); })
+      getGarmentCategories().then(res => { if (res.success && res.data) setCategories(res.data); }),
+      getGarmentSizes().then(res => { if (res.success && res.data) setSizes(res.data); })
     ]).catch(() => {
       setErrorMsg("Có lỗi xảy ra khi tải dữ liệu.");
     }).finally(() => setLoading(false));
@@ -227,6 +232,12 @@ export default function ManagerDashboardPage() {
   function refreshCategories() {
     return getGarmentCategories().then((res) => {
       if (res.success && res.data) setCategories(res.data);
+    });
+  }
+
+  function refreshSizes() {
+    return getGarmentSizes().then((res) => {
+      if (res.success && res.data) setSizes(res.data);
     });
   }
 
@@ -596,6 +607,7 @@ export default function ManagerDashboardPage() {
         <InventoryTab
           garments={garments}
           categories={categories}
+          sizes={sizes}
           selectedGarmentId={selectedGarmentId}
           onSelectGarment={setSelectedGarmentId}
           assets={assets}
@@ -620,6 +632,8 @@ export default function ManagerDashboardPage() {
           onCloseAssetModal={() => setAssetModalOpen(false)}
           onSubmitAsset={handleCreateAsset}
           onDeleteGarment={setGarmentToDeleteId}
+          onCategoryCreated={(cat) => setCategories((prev) => [...prev, cat])}
+          onSizeCreated={(label) => setSizes((prev) => [...prev.filter((s) => s !== label), label].sort())}
         />
       ) : tab === "inspection-log" ? (
         <InspectionLogTab
@@ -677,12 +691,15 @@ export default function ManagerDashboardPage() {
         <GarmentFormModal
           garment={editingGarment}
           categories={categories}
+          sizes={sizes}
           submitting={submitting}
           onClose={() => { setGarmentModalOpen(false); setEditingGarment(null); }}
           onSubmit={(payload, images, removedImageIds) => {
             if (editingGarment) handleUpdateGarment(editingGarment.id, payload, images, removedImageIds);
             else handleCreateGarment(payload, images);
           }}
+          onCategoryCreated={(cat) => setCategories((prev) => [...prev, cat])}
+          onSizeCreated={(label) => setSizes((prev) => [...prev.filter((s) => s !== label), label].sort())}
         />
       )}
 
@@ -933,15 +950,17 @@ function OverviewTab({
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function InventoryTab({
-  garments, categories, selectedGarmentId, onSelectGarment,
+  garments, categories, sizes, selectedGarmentId, onSelectGarment,
   assets, assetsLoading, selectedAssetId, onSelectAsset,
   selectedAsset, assetHistory, assetHistoryLoading,
   onCreateGarment, onEditGarment, onCreateAsset, onUpdateAssetStatus,
   garmentModalOpen, editingGarment, onCloseGarmentModal, onSubmitGarment, submitting,
   assetModalOpen, onCloseAssetModal, onSubmitAsset, onDeleteGarment,
+  onCategoryCreated, onSizeCreated,
 }: {
   garments: GarmentSummary[];
   categories: GarmentCategory[];
+  sizes: string[];
   selectedGarmentId: string | null;
   onSelectGarment: (id: string) => void;
   assets: AssetDetail[];
@@ -969,6 +988,8 @@ function InventoryTab({
   onCloseAssetModal: () => void;
   onSubmitAsset: (payload: Parameters<typeof createAsset>[0]) => Promise<void>;
   onDeleteGarment: (id: string) => void;
+  onCategoryCreated: (cat: GarmentCategory) => void;
+  onSizeCreated: (label: string) => void;
 }) {
   const [garmentSearch, setGarmentSearch] = useState("");
   const [assetSearch, setAssetSearch] = useState("");
@@ -1257,9 +1278,12 @@ function InventoryTab({
         <GarmentFormModal
           garment={editingGarment}
           categories={categories}
+          sizes={sizes}
           submitting={submitting}
           onClose={onCloseGarmentModal}
           onSubmit={(payload, imagesToAdd, imageIdsToRemove) => onSubmitGarment(editingGarment?.id ?? null, payload, imagesToAdd, imageIdsToRemove)}
+          onCategoryCreated={onCategoryCreated}
+          onSizeCreated={onSizeCreated}
         />
       )}
 
@@ -1282,10 +1306,11 @@ function InventoryTab({
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function GarmentFormModal({
-  garment, categories, submitting, onClose, onSubmit,
+  garment, categories, sizes, submitting, onClose, onSubmit, onCategoryCreated, onSizeCreated,
 }: {
   garment: GarmentDetail | null;
   categories: GarmentCategory[];
+  sizes: string[];
   submitting: boolean;
   onClose: () => void;
   onSubmit: (
@@ -1293,6 +1318,8 @@ function GarmentFormModal({
     imagesToAdd: string[],
     imageIdsToRemove: string[],
   ) => void;
+  onCategoryCreated: (cat: GarmentCategory) => void;
+  onSizeCreated: (label: string) => void;
 }) {  const [name, setName] = useState(garment?.name ?? "");
   const [categoryId, setCategoryId] = useState(garment?.categoryId ?? "");
   const [description, setDescription] = useState(garment?.description ?? "");
@@ -1300,7 +1327,46 @@ function GarmentFormModal({
   const [color, setColor] = useState(garment?.color ?? "");
   const [dailyPrice, setDailyPrice] = useState(garment?.dailyPrice ? garment.dailyPrice.toLocaleString("vi-VN") : "");
   const [depositAmount, setDepositAmount] = useState(garment?.depositAmount ? garment.depositAmount.toLocaleString("vi-VN") : "");
-  
+
+  // Inline add state
+  const [addingCategory, setAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [savingCategory, setSavingCategory] = useState(false);
+  const [addingSize, setAddingSize] = useState(false);
+  const [newSizeLabel, setNewSizeLabel] = useState("");
+  const [savingSize, setSavingSize] = useState(false);
+
+  async function handleAddCategory() {
+    const name = newCategoryName.trim();
+    if (!name) return;
+    setSavingCategory(true);
+    const res = await createGarmentCategory(name);
+    setSavingCategory(false);
+    if (res.success && res.data) {
+      onCategoryCreated(res.data);
+      setCategoryId(res.data.id);
+      setNewCategoryName("");
+      setAddingCategory(false);
+    } else {
+      alert(res.message ?? "Không thể tạo danh mục.");
+    }
+  }
+
+  async function handleAddSize() {
+    const label = newSizeLabel.trim();
+    if (!label) return;
+    setSavingSize(true);
+    const res = await createGarmentSize(label);
+    setSavingSize(false);
+    if (res.success && res.data) {
+      onSizeCreated(res.data.sizeLabel);
+      setSizeLabel(res.data.sizeLabel);
+      setNewSizeLabel("");
+      setAddingSize(false);
+    } else {
+      alert(res.message ?? "Không thể thêm size.");
+    }
+  }
   const [existingImages, setExistingImages] = useState(garment?.images ?? []);
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [removedImageIds, setRemovedImageIds] = useState<string[]>([]);
@@ -1394,20 +1460,64 @@ function GarmentFormModal({
             {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
           </div>
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Danh mục *</label>
-            <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className={`w-full rounded-lg border ${errors.categoryId ? 'border-red-500' : 'border-sand'} bg-white px-3 py-2 text-sm outline-none focus:border-antique`}>
-              <option value="">— Chọn danh mục —</option>
-              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            <div className="mb-1 flex items-center justify-between">
+              <label className="text-xs font-semibold uppercase tracking-wider text-stone-500">Danh mục *</label>
+              {!addingCategory && (
+                <button type="button" onClick={() => setAddingCategory(true)} className="flex items-center gap-0.5 text-xs font-semibold text-lotus hover:text-oxblood">
+                  <span className="material-symbols-outlined text-[14px]">add</span> Thêm mới
+                </button>
+              )}
+            </div>
+            {addingCategory ? (
+              <div className="flex gap-2">
+                <input
+                  autoFocus
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddCategory(); } if (e.key === "Escape") { setAddingCategory(false); setNewCategoryName(""); } }}
+                  className="flex-1 rounded-lg border border-antique px-3 py-2 text-sm outline-none focus:border-lotus"
+                  placeholder="Tên danh mục mới"
+                />
+                <button type="button" onClick={handleAddCategory} disabled={savingCategory || !newCategoryName.trim()} className="rounded-lg bg-lotus px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 hover:bg-oxblood">{savingCategory ? "..." : "Lưu"}</button>
+                <button type="button" onClick={() => { setAddingCategory(false); setNewCategoryName(""); }} className="rounded-lg border border-sand px-3 py-2 text-xs text-stone-500 hover:bg-stone-50">Huỷ</button>
+              </div>
+            ) : (
+              <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className={`w-full rounded-lg border ${errors.categoryId ? 'border-red-500' : 'border-sand'} bg-white px-3 py-2 text-sm outline-none focus:border-antique`}>
+                <option value="">— Chọn danh mục —</option>
+                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            )}
             {errors.categoryId ? <p className="mt-1 text-xs text-red-500">{errors.categoryId}</p> : <p className="mt-1 text-xs text-stone-400">Danh mục dùng để phân loại trang phục.</p>}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Size *</label>
-              <select value={sizeLabel} onChange={(e) => setSizeLabel(e.target.value)} className={`w-full rounded-lg border ${errors.sizeLabel ? 'border-red-500' : 'border-sand'} bg-white px-3 py-2 text-sm outline-none focus:border-antique`}>
-                <option value="">— Chọn Size —</option>
-                {["S", "M", "L", "XL", "XXL", "Free Size"].map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <div className="mb-1 flex items-center justify-between">
+                <label className="text-xs font-semibold uppercase tracking-wider text-stone-500">Size *</label>
+                {!addingSize && (
+                  <button type="button" onClick={() => setAddingSize(true)} className="flex items-center gap-0.5 text-xs font-semibold text-lotus hover:text-oxblood">
+                    <span className="material-symbols-outlined text-[14px]">add</span> Thêm mới
+                  </button>
+                )}
+              </div>
+              {addingSize ? (
+                <div className="flex gap-2">
+                  <input
+                    autoFocus
+                    value={newSizeLabel}
+                    onChange={(e) => setNewSizeLabel(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddSize(); } if (e.key === "Escape") { setAddingSize(false); setNewSizeLabel(""); } }}
+                    className="flex-1 rounded-lg border border-antique px-3 py-2 text-sm outline-none focus:border-lotus"
+                    placeholder="VD: XS, 3XL, 90cm"
+                  />
+                  <button type="button" onClick={handleAddSize} disabled={savingSize || !newSizeLabel.trim()} className="rounded-lg bg-lotus px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 hover:bg-oxblood">{savingSize ? "..." : "Lưu"}</button>
+                  <button type="button" onClick={() => { setAddingSize(false); setNewSizeLabel(""); }} className="rounded-lg border border-sand px-3 py-2 text-xs text-stone-500 hover:bg-stone-50">Huỷ</button>
+                </div>
+              ) : (
+                <select value={sizeLabel} onChange={(e) => setSizeLabel(e.target.value)} className={`w-full rounded-lg border ${errors.sizeLabel ? 'border-red-500' : 'border-sand'} bg-white px-3 py-2 text-sm outline-none focus:border-antique`}>
+                  <option value="">— Chọn Size —</option>
+                  {[...new Set([...sizes, garment?.sizeLabel].filter(Boolean))].map((s) => <option key={s as string} value={s as string}>{s as string}</option>)}
+                </select>
+              )}
               {errors.sizeLabel && <p className="mt-1 text-xs text-red-500">{errors.sizeLabel}</p>}
             </div>
             <div>
