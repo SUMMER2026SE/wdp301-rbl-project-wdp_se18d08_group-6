@@ -61,6 +61,13 @@ export class GarmentsController {
     return this.garmentsService.update(id, dto);
   }
 
+  @Delete(":id")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("manager_owner", "admin")
+  remove(@Param("id", ParseUUIDPipe) id: string) {
+    return this.garmentsService.remove(id);
+  }
+
   @Post(":id/images")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("manager_owner", "admin")

@@ -23,6 +23,7 @@ getGarments,
   completeMaintenanceJob,
   createGarment,
   updateGarment,
+  deleteGarment,
   addGarmentImage,
   removeGarmentImage,
   getGarmentCategories,
@@ -159,6 +160,7 @@ export default function ManagerDashboardPage() {
   const [categories, setCategories] = useState<GarmentCategory[]>([]);
   const [garmentModalOpen, setGarmentModalOpen] = useState(false);
   const [editingGarment, setEditingGarment] = useState<GarmentDetail | null>(null);
+  const [garmentToDeleteId, setGarmentToDeleteId] = useState<string | null>(null);
   const [assetModalOpen, setAssetModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -290,6 +292,19 @@ export default function ManagerDashboardPage() {
       setEditingGarment(null);
     } else {
       setErrorMsg(res.message ?? "Kh\u00f4ng th\u1ec3 c\u1eadp nh\u1eadt trang ph\u1ee5c.");
+    }
+    setSubmitting(false);
+  }
+
+  async function handleDeleteGarment(id: string) {
+    setSubmitting(true);
+    const res = await deleteGarment(id);
+    if (res.success) {
+      await refreshGarments();
+      if (selectedGarmentId === id) setSelectedGarmentId(null);
+      setGarmentToDeleteId(null);
+    } else {
+      setErrorMsg(res.message ?? "Không thể xoá trang phục.");
     }
     setSubmitting(false);
   }
@@ -604,6 +619,7 @@ export default function ManagerDashboardPage() {
           assetModalOpen={assetModalOpen}
           onCloseAssetModal={() => setAssetModalOpen(false)}
           onSubmitAsset={handleCreateAsset}
+          onDeleteGarment={setGarmentToDeleteId}
         />
       ) : tab === "inspection-log" ? (
         <InspectionLogTab
@@ -667,6 +683,15 @@ export default function ManagerDashboardPage() {
             if (editingGarment) handleUpdateGarment(editingGarment.id, payload, images, removedImageIds);
             else handleCreateGarment(payload, images);
           }}
+        />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {garmentToDeleteId && (
+        <DeleteGarmentConfirmModal
+          submitting={submitting}
+          onCancel={() => setGarmentToDeleteId(null)}
+          onConfirm={() => handleDeleteGarment(garmentToDeleteId)}
         />
       )}
     </ManagerPortalShell>
@@ -913,7 +938,7 @@ function InventoryTab({
   selectedAsset, assetHistory, assetHistoryLoading,
   onCreateGarment, onEditGarment, onCreateAsset, onUpdateAssetStatus,
   garmentModalOpen, editingGarment, onCloseGarmentModal, onSubmitGarment, submitting,
-  assetModalOpen, onCloseAssetModal, onSubmitAsset,
+  assetModalOpen, onCloseAssetModal, onSubmitAsset, onDeleteGarment,
 }: {
   garments: GarmentSummary[];
   categories: GarmentCategory[];
@@ -943,6 +968,7 @@ function InventoryTab({
   assetModalOpen: boolean;
   onCloseAssetModal: () => void;
   onSubmitAsset: (payload: Parameters<typeof createAsset>[0]) => Promise<void>;
+  onDeleteGarment: (id: string) => void;
 }) {
   const [garmentSearch, setGarmentSearch] = useState("");
   const [assetSearch, setAssetSearch] = useState("");
@@ -1020,21 +1046,31 @@ function InventoryTab({
                     </div>
                     <div className="p-3">
                       <h3 className="font-display text-base text-ink line-clamp-1">{g.name}</h3>
-                      <div className="mt-1 text-xs text-stone-500">Size: {g.sizeLabel ?? "—"}</div>
+                      <div className="mt-1 text-xs text-stone-500">Size: {g.sizeLabel ?? "—"} • Màu: {g.color ?? "—"}</div>
                       <div className="mt-2 flex justify-between items-center border-t border-surface-variant pt-2 text-xs">
                         <span className="font-semibold text-lotus">{formatVND(g.dailyPrice)}/ngày</span>
                         <span className="text-stone-500">Cọc {formatVND(g.depositAmount)}</span>
                       </div>
                     </div>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => onEditGarment(g)}
-                    className="absolute top-2 right-2 rounded-md bg-white/90 backdrop-blur-sm p-1.5 text-stone-500 hover:text-lotus transition"
-                    aria-label="Chỉnh sửa"
-                  >
-                    <span className="material-symbols-outlined text-[16px]">edit</span>
-                  </button>
+                  <div className="absolute top-2 right-2 flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onEditGarment(g)}
+                      className="rounded-md bg-white/90 backdrop-blur-sm p-1.5 text-stone-500 hover:text-lotus transition"
+                      aria-label="Chỉnh sửa"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">edit</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDeleteGarment(g.id)}
+                      className="rounded-md bg-white/90 backdrop-blur-sm p-1.5 text-stone-500 hover:text-red-500 transition"
+                      aria-label="Xoá"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">delete</span>
+                    </button>
+                  </div>
                   </div>
                 );
               })}
@@ -1262,24 +1298,53 @@ function GarmentFormModal({
   const [description, setDescription] = useState(garment?.description ?? "");
   const [sizeLabel, setSizeLabel] = useState(garment?.sizeLabel ?? "");
   const [color, setColor] = useState(garment?.color ?? "");
-  const [dailyPrice, setDailyPrice] = useState(String(garment?.dailyPrice ?? ""));
-  const [depositAmount, setDepositAmount] = useState(String(garment?.depositAmount ?? ""));
+  const [dailyPrice, setDailyPrice] = useState(garment?.dailyPrice ? garment.dailyPrice.toLocaleString("vi-VN") : "");
+  const [depositAmount, setDepositAmount] = useState(garment?.depositAmount ? garment.depositAmount.toLocaleString("vi-VN") : "");
   
   const [existingImages, setExistingImages] = useState(garment?.images ?? []);
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [removedImageIds, setRemovedImageIds] = useState<string[]>([]);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  function handleCurrencyChange(e: React.ChangeEvent<HTMLInputElement>, setter: (v: string) => void) {
+    const numeric = e.target.value.replace(/\D/g, "");
+    if (!numeric) return setter("");
+    setter(Number(numeric).toLocaleString("vi-VN"));
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    
+    const parsedDailyPrice = Number(dailyPrice.replace(/\D/g, ""));
+    const parsedDeposit = Number(depositAmount.replace(/\D/g, ""));
+
+    const newErrors: Record<string, string> = {};
+    if (!name.trim()) newErrors.name = "Vui lòng nhập tên trang phục.";
+    if (!categoryId) newErrors.categoryId = "Vui lòng chọn danh mục.";
+    if (!sizeLabel.trim()) newErrors.sizeLabel = "Vui lòng nhập size.";
+    if (!color.trim()) newErrors.color = "Vui lòng nhập màu sắc.";
+    if (!parsedDailyPrice || parsedDailyPrice <= 0) newErrors.dailyPrice = "Giá thuê phải lớn hơn 0.";
+    if (!parsedDeposit || parsedDeposit <= 0) newErrors.depositAmount = "Tiền cọc phải lớn hơn 0.";
+    if (!description.trim()) newErrors.description = "Vui lòng nhập mô tả.";
+    if (existingImages.length + pendingImages.length === 0) {
+      newErrors.images = "Vui lòng thêm ít nhất 1 ảnh.";
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+    
+    setErrors({});
     onSubmit({
       name,
       categoryId: categoryId || undefined,
       description: description || undefined,
       sizeLabel: sizeLabel || undefined,
       color: color || undefined,
-      dailyPrice: Number(dailyPrice),
-      depositAmount: Number(depositAmount),
+      dailyPrice: parsedDailyPrice,
+      depositAmount: parsedDeposit,
     }, pendingImages, removedImageIds);
   }
 
@@ -1325,50 +1390,57 @@ function GarmentFormModal({
         <div className="space-y-4">
           <div>
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Tên trang phục *</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} required className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="Vd: Nhật Bình Hoàng Phái" />
+            <input value={name} onChange={(e) => setName(e.target.value)} className={`w-full rounded-lg border ${errors.name ? 'border-red-500' : 'border-sand'} px-3 py-2 text-sm outline-none focus:border-antique`} placeholder="Vd: Nhật Bình Hoàng Phái" />
+            {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
           </div>
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Danh mục</label>
-            <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-full rounded-lg border border-sand bg-white px-3 py-2 text-sm outline-none focus:border-antique">
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Danh mục *</label>
+            <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className={`w-full rounded-lg border ${errors.categoryId ? 'border-red-500' : 'border-sand'} bg-white px-3 py-2 text-sm outline-none focus:border-antique`}>
               <option value="">— Chọn danh mục —</option>
               {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            <p className="mt-1 text-xs text-stone-400">Danh mục dùng để phân loại trang phục.</p>
+            {errors.categoryId ? <p className="mt-1 text-xs text-red-500">{errors.categoryId}</p> : <p className="mt-1 text-xs text-stone-400">Danh mục dùng để phân loại trang phục.</p>}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Size</label>
-              <input value={sizeLabel} onChange={(e) => setSizeLabel(e.target.value)} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="Vd: M, L" />
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Size *</label>
+              <input value={sizeLabel} onChange={(e) => setSizeLabel(e.target.value)} className={`w-full rounded-lg border ${errors.sizeLabel ? 'border-red-500' : 'border-sand'} px-3 py-2 text-sm outline-none focus:border-antique`} placeholder="Vd: M, L" />
+              {errors.sizeLabel && <p className="mt-1 text-xs text-red-500">{errors.sizeLabel}</p>}
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Màu</label>
-              <input value={color} onChange={(e) => setColor(e.target.value)} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="Vd: Đỏ" />
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Màu *</label>
+              <input value={color} onChange={(e) => setColor(e.target.value)} className={`w-full rounded-lg border ${errors.color ? 'border-red-500' : 'border-sand'} px-3 py-2 text-sm outline-none focus:border-antique`} placeholder="Vd: Đỏ" />
+              {errors.color && <p className="mt-1 text-xs text-red-500">{errors.color}</p>}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Giá thuê/ngày (VNĐ) *</label>
-              <input value={dailyPrice} onChange={(e) => setDailyPrice(e.target.value)} required type="number" min={0} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="350000" />
+              <input value={dailyPrice} onChange={(e) => handleCurrencyChange(e, setDailyPrice)} type="text" className={`w-full rounded-lg border ${errors.dailyPrice ? 'border-red-500' : 'border-sand'} px-3 py-2 text-sm outline-none focus:border-antique`} placeholder="350.000" />
+              {errors.dailyPrice && <p className="mt-1 text-xs text-red-500">{errors.dailyPrice}</p>}
             </div>
             <div>
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Tiền cọc (VNĐ) *</label>
-              <input value={depositAmount} onChange={(e) => setDepositAmount(e.target.value)} required type="number" min={0} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="1000000" />
+              <input value={depositAmount} onChange={(e) => handleCurrencyChange(e, setDepositAmount)} type="text" className={`w-full rounded-lg border ${errors.depositAmount ? 'border-red-500' : 'border-sand'} px-3 py-2 text-sm outline-none focus:border-antique`} placeholder="1.000.000" />
+              {errors.depositAmount && <p className="mt-1 text-xs text-red-500">{errors.depositAmount}</p>}
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Mô tả</label>
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="Mô tả trang phục..." />
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-stone-500">Mô tả *</label>
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className={`w-full rounded-lg border ${errors.description ? 'border-red-500' : 'border-sand'} px-3 py-2 text-sm outline-none focus:border-antique`} placeholder="Mô tả trang phục..." />
+            {errors.description && <p className="mt-1 text-xs text-red-500">{errors.description}</p>}
           </div>
         </div>
 
-        <div className="mt-6 rounded-xl border border-sand bg-[#fff8f6] p-4">
+        <div className={`mt-6 rounded-xl border ${errors.images ? 'border-red-500 bg-red-50' : 'border-sand bg-[#fff8f6]'} p-4`}>
           <div className="flex items-center justify-between gap-3 mb-3">
             <div>
-              <h4 className="text-sm font-semibold text-ink">Ảnh trang phục</h4>
+              <h4 className="text-sm font-semibold text-ink">Ảnh trang phục *</h4>
               <p className="text-xs text-stone-500">Ảnh hiện có và ảnh mới sẽ được quản lý riêng.</p>
             </div>
             <span className="text-xs text-stone-400">{existingImages.length + pendingImages.length} ảnh</span>
           </div>
+          {errors.images && <p className="mb-3 text-xs text-red-500 font-semibold">{errors.images}</p>}
 
           {existingImages.length > 0 && (
             <div className="mt-3">
@@ -1433,6 +1505,41 @@ function GarmentFormModal({
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Modal: Delete Garment Confirm
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function DeleteGarmentConfirmModal({
+  submitting,
+  onCancel,
+  onConfirm,
+}: {
+  submitting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-2xl border border-sand bg-white p-6 shadow-2xl">
+        <div className="mb-4">
+          <h3 className="font-display text-xl text-ink">Xóa trang phục</h3>
+          <p className="mt-2 text-sm text-stone-500">
+            Bạn có chắc chắn muốn xóa trang phục này không? Trang phục sẽ được xóa mềm và có thể khôi phục sau.
+          </p>
+        </div>
+        <div className="flex justify-end gap-3 mt-6">
+          <button type="button" onClick={onCancel} disabled={submitting} className="rounded-lg border border-sand px-4 py-2 text-sm font-semibold text-stone-600 hover:bg-stone-50 disabled:opacity-50">
+            Hủy
+          </button>
+          <button type="button" onClick={onConfirm} disabled={submitting} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50">
+            {submitting ? "Đang xóa..." : "Xóa"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
