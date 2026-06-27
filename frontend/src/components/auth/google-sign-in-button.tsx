@@ -23,7 +23,7 @@ type GoogleAccountsId = {
     options: {
       theme?: "outline" | "filled_blue" | "filled_black";
       size?: "large" | "medium" | "small";
-      width?: string;
+      width?: string | number;
       text?: "signin_with" | "signup_with" | "continue_with";
       shape?: "rectangular" | "pill" | "circle" | "square";
       logo_alignment?: "left" | "center";
@@ -54,6 +54,7 @@ function loadGoogleScript() {
   if (!googleScriptPromise) {
     googleScriptPromise = new Promise<void>((resolve, reject) => {
       const existingScript = document.querySelector<HTMLScriptElement>('script[src="https://accounts.google.com/gsi/client"]');
+
       if (existingScript) {
         existingScript.addEventListener("load", () => resolve(), { once: true });
         existingScript.addEventListener("error", () => reject(new Error("Failed to load Google script")), { once: true });
@@ -87,6 +88,7 @@ export function GoogleSignInButton({ clientId, disabled = false, onCredential, c
       try {
         await loadGoogleScript();
         const googleAccounts = (window as GoogleWindow).google?.accounts?.id;
+
         if (!isActive || !googleAccounts || !containerRef.current) {
           return;
         }
@@ -125,9 +127,8 @@ export function GoogleSignInButton({ clientId, disabled = false, onCredential, c
   }, [clientId, onCredential]);
 
   return (
-    <div className={disabled ? `pointer-events-none opacity-60 ${className ?? ""}` : className}>
+    <div className={`${disabled ? "pointer-events-none opacity-60" : ""} ${className ?? ""}`.trim()}>
       <div ref={containerRef} className="min-h-[44px] w-full" aria-busy={disabled ? "true" : "false"} />
     </div>
   );
-} 
-
+}
