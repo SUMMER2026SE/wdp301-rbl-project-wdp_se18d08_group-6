@@ -267,6 +267,7 @@ export class GarmentsService {
 
     // Gom nhóm theo tên (không phân biệt hoa/thường, trim)
     const grouped = new Map<string, {
+      garmentId: string;
       name: string;
       categoryName: string | null;
       description: string | null;
@@ -282,6 +283,7 @@ export class GarmentsService {
 
       if (!grouped.has(key)) {
         grouped.set(key, {
+          garmentId: g.id,
           name: g.name.trim(),
           categoryName: g.category?.name ?? null,
           description: g.description,
@@ -325,7 +327,7 @@ export class GarmentsService {
       Array.from(grouped.values()).map((group, idx) => ({
         name: group.name,
         slug: `group-${idx}-${group.name.toLowerCase().replace(/\s+/g, "-")}`,
-        garmentId: "",
+        garmentId: group.garmentId,
         categoryName: group.categoryName,
         description: group.description,
         imageUrl: group.imageUrl,

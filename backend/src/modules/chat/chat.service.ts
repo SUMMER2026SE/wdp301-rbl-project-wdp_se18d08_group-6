@@ -7,6 +7,118 @@ import type { AuthenticatedUser } from "../auth/auth-user";
 export class ChatService {
   constructor(private readonly prisma: PrismaService) { }
 
+  async sendProductCardMessage(
+    userId: string,
+    role: AppRole,
+    conversationId: string,
+    garmentId: string,
+  ) {
+    // Validate user is a participant - use the same approach as sendMessage
+    let conversation;
+    if (role === "customer") {
+      conversation = await this.prisma.conversations.findFirst({
+        where: {
+          id: conversationId,
+          customer_id: userId, // ← kết hợp cả 2 điều kiện vào query
+        },
+      });
+
+      if (!conversation) {
+        throw new ForbiddenException("You are not part of this conversation.");
+      }
+    } else {
+      // Staff: chỉ cần conversation tồn tại, không bắt buộc phải là assigned staff
+      // vì product card gửi từ catalog là hành động tư vấn, không phải reply trong chat
+      conversation = await this.prisma.conversations.findUnique({
+        where: { id: conversationId },
+      });
+
+      if (!conversation) {
+        throw new NotFoundException("Conversation not found.");
+      }
+    }
+
+    // Query garment from DB with images and sizes
+    const garment = await this.prisma.garment.findUnique({
+      where: { id: garmentId },
+      include: {
+        images: { orderBy: { sortOrder: "asc" as const }, take: 1 },
+        garment_sizes: { take: 1 },
+      },
+    });
+
+    if (!garment) {
+      throw new NotFoundException("Garment not found.");
+    }
+
+    const DEFAULT_IMAGE = "https://dep.com.vn/wp-content/uploads/2020/11/ao-dai-9.jpg";
+    const imageUrl = garment.images[0]?.imageUrl || DEFAULT_IMAGE;
+    const sizeLabel = garment.garment_sizes[0]?.size_label ?? null;
+    const dailyPrice = garment.garment_sizes[0]?.daily_price ?? 0;
+    const detailUrl = `/catalog/${garment.garment_sizes[0]?.id ?? garment.id}`;
+
+    const productCard = {
+      type: "product_card",
+      product: {
+        id: garment.id,
+        name: garment.name,
+        image: imageUrl,
+        size: sizeLabel,
+        price: Number(dailyPrice),
+        detailUrl,
+      },
+    };
+
+    const content = JSON.stringify(productCard);
+
+    // Validate length and product card rules (already checked, but keep defense-in-depth)
+    const trimmed = content?.trim() ?? "";
+    if (trimmed.length > 2000) {
+      throw new ForbiddenException("Message content exceeds maximum length of 2000 characters.");
+    }
+
+    const now = new Date();
+    const message = await this.prisma.messages.create({
+      data: {
+        conversation_id: conversationId,
+        sender_id: userId,
+        content,
+      },
+    });
+
+    // Update conversation timestamps
+    const updateData = role === "customer"
+      ? {
+          customer_last_read_at: now,
+          ...(conversation.status === "resolved" ? { status: "open" } : {}),
+        }
+      : { staff_last_read_at: now };
+
+    await this.prisma.conversations.update({
+      where: { id: conversationId },
+      data: { ...updateData, updated_at: now },
+    });
+
+    // Return with user_accounts for real-time display
+    if (typeof this.prisma.messages.findUnique === "function") {
+      return this.prisma.messages.findUnique({
+        where: { id: message.id },
+        include: {
+          user_accounts: {
+            select: {
+              id: true,
+              email: true,
+              role: true,
+              profile: { select: { fullName: true } },
+            },
+          },
+        },
+      });
+    }
+
+    return message;
+  }
+
   async getOrCreateConversationForCustomer(customerId: string) {
     const existingConversation = await this.prisma.conversations.findFirst({
       where: { customer_id: customerId },
@@ -34,6 +146,19 @@ export class ChatService {
   }
 
   async sendMessage(userId: string, role: AppRole, conversationId: string, content: string) {
+    const trimmed = content?.trim() ?? "";
+    if (trimmed.length === 0) {
+      throw new ForbiddenException("Message content cannot be empty.");
+    }
+
+    if (trimmed.length > 2000) {
+      throw new ForbiddenException("Message content exceeds maximum length of 2000 characters.");
+    }
+
+    if (this.isProductCardPayload(trimmed)) {
+      throw new ForbiddenException("Product cards must be created by server.");
+    }
+
     let conversation;
 
     if (role === "customer") {
@@ -392,5 +517,14 @@ export class ChatService {
         ],
       },
     });
+  }
+
+  private isProductCardPayload(content: string): boolean {
+    try {
+      const parsed = JSON.parse(content);
+      return parsed?.type === "product_card";
+    } catch {
+      return false;
+    }
   }
 }

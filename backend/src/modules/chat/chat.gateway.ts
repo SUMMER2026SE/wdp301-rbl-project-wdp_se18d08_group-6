@@ -44,6 +44,43 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly activeReplier = new Map<string, ActiveReplier>();
   private readonly lockTimeouts = new Map<string, NodeJS.Timeout>();
   private readonly disconnectReleaseTimeouts = new Map<string, NodeJS.Timeout>();
+  private readonly messageRateLimits = new Map<string, number[]>();
+  private static readonly MAX_MESSAGE_LENGTH = 2000;
+  private static readonly RATE_LIMIT_MAX = 5;
+  private static readonly RATE_LIMIT_WINDOW_MS = 10_000;
+
+  private isProductCardPayload(content: string): boolean {
+    try {
+      const parsed = JSON.parse(content);
+      return parsed?.type === "product_card";
+    } catch {
+      return false;
+    }
+  }
+
+  private checkRateLimit(userId: string): boolean {
+    const now = Date.now();
+    const timestamps = this.messageRateLimits.get(userId) ?? [];
+    const recent = timestamps.filter((ts) => now - ts < ChatGateway.RATE_LIMIT_WINDOW_MS);
+    if (recent.length >= ChatGateway.RATE_LIMIT_MAX) {
+      return false;
+    }
+    recent.push(now);
+    this.messageRateLimits.set(userId, recent);
+    return true;
+  }
+
+  private cleanupRateLimits() {
+    const now = Date.now();
+    for (const [userId, timestamps] of this.messageRateLimits) {
+      const recent = timestamps.filter((ts) => now - ts < ChatGateway.RATE_LIMIT_WINDOW_MS);
+      if (recent.length === 0) {
+        this.messageRateLimits.delete(userId);
+      } else {
+        this.messageRateLimits.set(userId, recent);
+      }
+    }
+  }
 
   constructor(
     private readonly chatService: ChatService,
@@ -229,6 +266,35 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     const user = client.data.user;
     if (!user || !body?.conversationId || !body?.content?.trim()) {
+      return;
+    }
+
+    const content = body.content.trim();
+
+    // Validate message length (max 2000 characters)
+    if (content.length > ChatGateway.MAX_MESSAGE_LENGTH) {
+      client.emit("send_error", {
+        conversationId: body.conversationId,
+        reason: "message_too_long",
+      });
+      return;
+    }
+
+    // Reject direct client attempts to send product_card payloads
+    if (this.isProductCardPayload(content)) {
+      client.emit("send_error", {
+        conversationId: body.conversationId,
+        reason: "forbidden_payload",
+      });
+      return;
+    }
+
+    // Rate limiting: max 5 messages per 10 seconds per user
+    if (!this.checkRateLimit(user.userId)) {
+      client.emit("send_error", {
+        conversationId: body.conversationId,
+        reason: "rate_limited",
+      });
       return;
     }
 

@@ -64,33 +64,40 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
 
   const selectedSize = group?.sizes.find((s) => s.garmentSizeId === selectedGarmentId) ?? group?.sizes[0];
 
-  async function handleConsult() {
-    if (!group || !selectedSize) return;
-
-    // Get the conversation via API
-    const result = await getMyChatConversation();
-    if (!result.success || !result.data) {
-      setConsultMsg("Vui lòng đăng nhập để sử dụng tính năng tư vấn.");
-      setTimeout(() => setConsultMsg(null), 3000);
-      return;
-    }
-
-    const conversation = result.data;
-    const detailUrl = `/catalog/${selectedSize.garmentSizeId}`;
-
-    sendProductCardMessage({
-      conversationId: conversation.id,
-      productId: group.garmentId,
-      productName: group.name,
-      productImage: group.imageUrl,
-      sizeLabel: selectedSize.sizeLabel,
-      price: selectedSize.dailyPrice,
-      detailUrl,
-    });
-
-    setConsultMsg("Đã gửi thông tin sản phẩm đến tư vấn viên!");
+async function handleConsult() {
+  if (!group || !selectedSize) return;
+    console.log("group:", group);
+  console.log("group.garmentId:", group.garmentId);
+  console.log("selectedSize:", selectedSize);
+  const result = await getMyChatConversation();
+  if (!result.success || !result.data) {
+    setConsultMsg("Vui lòng đăng nhập để sử dụng tính năng tư vấn.");
     setTimeout(() => setConsultMsg(null), 3000);
+    return;
   }
+
+  const conversation = result.data;
+
+  if (!group.garmentId) {
+    setConsultMsg("Không tìm thấy thông tin sản phẩm.");
+    setTimeout(() => setConsultMsg(null), 3000);
+    return;
+  }
+
+  const sendResult = await sendProductCardMessage({
+    conversationId: conversation.id,
+    productId: group.garmentId,
+  });
+
+  if (!sendResult.success) {
+    setConsultMsg("Không thể gửi sản phẩm. Vui lòng thử lại.");
+    setTimeout(() => setConsultMsg(null), 3000);
+    return;
+  }
+
+  setConsultMsg("Đã gửi thông tin sản phẩm đến tư vấn viên!");
+  setTimeout(() => setConsultMsg(null), 3000);
+}
 
   function handleAddToCart() {
     if (!group || !selectedSize) return;
