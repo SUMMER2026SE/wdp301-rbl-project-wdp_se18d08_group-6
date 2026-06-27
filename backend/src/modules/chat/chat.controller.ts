@@ -1,4 +1,4 @@
-import { Controller, DefaultValuePipe, ForbiddenException, Get, ParseIntPipe, ParseUUIDPipe, Param, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, DefaultValuePipe, ForbiddenException, Get, ParseIntPipe, ParseUUIDPipe, Param, Post, Query, UseGuards } from "@nestjs/common";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/auth-user";
@@ -51,6 +51,43 @@ export class ChatController {
     }
 
     return ok(this.chatGateway.getLockStatus(conversationId));
+  }
+
+  @Post("conversations/:id/product-card")
+  async sendProductCard(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id", ParseUUIDPipe) conversationId: string,
+    @Body() body: { garmentId: string },
+  ) {
+    if (!body?.garmentId) {
+      throw new ForbiddenException("garmentId is required.");
+    }
+
+    const message = await this.chatService.sendProductCardMessage(
+      user.id,
+      user.role,
+      conversationId,
+      body.garmentId,
+    );
+
+    // Broadcast the message to the conversation room via gateway
+    this.chatGateway.server?.to(conversationId).emit("message_received", {
+      conversationId,
+      message,
+    });
+
+    if (user.role === "customer") {
+      const conversation = await this.chatService.getConversationById(conversationId);
+      if (!conversation.staff_id && conversation.status === "open") {
+        this.chatGateway.server?.to("staff").emit("new_unassigned_message", {
+          conversationId,
+          customerName: user.fullName,
+          content: message?.content ?? "",
+        });
+      }
+    }
+
+    return ok(message);
   }
 }
 

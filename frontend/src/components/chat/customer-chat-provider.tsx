@@ -110,12 +110,23 @@ export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
       }));
     };
 
+    // const onCustomMessageReceived = (event: CustomEvent<{
+    //   conversationId: string;
+    //   message: ChatMessage;
+    // }>) => {
+    //   const { conversationId, message } = event.detail;
+    //   if (conversationId === selectedConversationRef.current?.id) {
+    //     setMessages((prev) => [...prev, message]);
+    //   }
+    // };
+
     socket.on("connect", onConnect);
     socket.on("message_received", onMessageReceived);
     socket.on("new_message", onMessageReceived);
     socket.on("message_deleted", onMessageDeleted);
     socket.on("typing", onTyping);
     socket.on("user_typing", onTyping);
+    // window.addEventListener("chat:message_received", onCustomMessageReceived as EventListener);
 
     if (socket.connected) onConnect();
 
@@ -126,6 +137,7 @@ export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
       socket.off("message_deleted", onMessageDeleted);
       socket.off("typing", onTyping);
       socket.off("user_typing", onTyping);
+      // window.removeEventListener("chat:message_received", onCustomMessageReceived as EventListener);
     };
   }, [session?.accessToken, isCustomer, enabled]);
 

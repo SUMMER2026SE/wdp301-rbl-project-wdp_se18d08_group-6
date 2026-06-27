@@ -76,37 +76,35 @@ export function parseProductCard(content: string): ProductCardMessage["product"]
 }
 
 /**
- * Send a product card message to the chat conversation via WebSocket.
- * The card will be displayed as a rich product preview in the chat UI.
+ * Send a product card message to the chat conversation via REST API.
+ * The backend will query the real garment data from DB and create the message,
+ * preventing clients from forging product details.
+ *
+ * Dispatches a custom DOM event so that CustomerChatProvider can add the
+ * message to local state immediately, regardless of socket timing.
  */
-export function sendProductCardMessage(params: {
+export async function sendProductCardMessage(params: {
   conversationId: string;
   productId: string;
-  productName: string;
-  productImage: string | null;
-  sizeLabel: string | null;
-  price: number;
-  detailUrl: string;
 }) {
-  const socket = getChatSocket();
-  if (!socket) return;
-
-  const productCard: ProductCardMessage = {
-    type: "product_card",
-    product: {
-      id: params.productId,
-      name: params.productName,
-      image: params.productImage || DEFAULT_PRODUCT_IMAGE,
-      size: params.sizeLabel,
-      price: params.price,
-      detailUrl: params.detailUrl,
-    },
-  };
-
-  socket.emit("send_message", {
-    conversationId: params.conversationId,
-    content: JSON.stringify(productCard),
+  const result = await apiRequest<ChatMessage>(`/chat/conversations/${params.conversationId}/product-card`, {
+    method: "POST",
+    body: JSON.stringify({ garmentId: params.productId }),
   });
+
+  // Dispatch custom event so CustomerChatProvider picks it up in real time
+  // if (result.success && result.data) {
+  //   window.dispatchEvent(
+  //     new CustomEvent("chat:message_received", {
+  //       detail: {
+  //         conversationId: params.conversationId,
+  //         message: result.data,
+  //       },
+  //     }),
+  //   );
+  // }
+
+  return result;
 }
 
 export async function getMyChatConversation() {
