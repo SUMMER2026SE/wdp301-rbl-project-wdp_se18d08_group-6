@@ -1,0 +1,184 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { apiRequest } from "@/lib/api";
+
+export type AddressSuggestion = {
+  placeId: string;
+  label: string;
+  mainText?: string;
+  secondaryText?: string;
+  types?: string[];
+};
+
+export type ResolvedAddress = {
+  fullAddress: string;
+  name?: string;
+  ward?: string;
+  district?: string;
+  province?: string;
+  country?: string;
+  latitude?: number;
+  longitude?: number;
+  provider: "gogoduk";
+  providerPlaceId?: string;
+};
+
+type AddressAutocompleteProps = {
+  value: ResolvedAddress | null;
+  onChange: (address: ResolvedAddress | null) => void;
+  disabled?: boolean;
+};
+
+function suggestionToAddress(suggestion: AddressSuggestion): ResolvedAddress {
+  return {
+    fullAddress: suggestion.label,
+    provider: "gogoduk",
+    providerPlaceId: suggestion.placeId,
+  };
+}
+
+export function AddressAutocomplete({ value, onChange, disabled = false }: AddressAutocompleteProps) {
+  const [query, setQuery] = useState(value?.fullAddress ?? "");
+  const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
+
+  const canUseCurrentLocation = useMemo(() => typeof navigator !== "undefined" && "geolocation" in navigator, []);
+
+  useEffect(() => {
+    setQuery(value?.fullAddress ?? "");
+  }, [value?.fullAddress]);
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+
+    if (trimmed.length < 2 || value?.fullAddress === trimmed) {
+      setSuggestions([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    const timeout = window.setTimeout(async () => {
+      const result = await apiRequest<AddressSuggestion[]>(`/locations/suggest?q=${encodeURIComponent(trimmed)}`);
+
+      if (requestIdRef.current !== requestId) {
+        return;
+      }
+
+      setLoading(false);
+      if (result.success) {
+        setSuggestions(result.data ?? []);
+      } else {
+        setSuggestions([]);
+        setError(result.message ?? "Không thể tìm địa chỉ.");
+      }
+    }, 350);
+
+    return () => window.clearTimeout(timeout);
+  }, [query, value?.fullAddress]);
+
+  async function handleSelect(suggestion: AddressSuggestion) {
+    setQuery(suggestion.label);
+    setSuggestions([]);
+    setError(null);
+
+    const result = await apiRequest<ResolvedAddress>(`/locations/resolve?placeId=${encodeURIComponent(suggestion.placeId)}`);
+    onChange(result.success && result.data ? result.data : suggestionToAddress(suggestion));
+  }
+
+  function handleUseCurrentLocation() {
+    if (!canUseCurrentLocation) {
+      setError("Trình duyệt không hỗ trợ lấy vị trí hiện tại.");
+      return;
+    }
+
+    setLocating(true);
+    setError(null);
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        const result = await apiRequest<ResolvedAddress>(`/locations/reverse?lat=${latitude}&lng=${longitude}`);
+        setLocating(false);
+
+        if (result.success && result.data) {
+          onChange(result.data);
+          setQuery(result.data.fullAddress);
+          setSuggestions([]);
+        } else {
+          setError(result.message ?? "Không thể đọc địa chỉ từ vị trí hiện tại.");
+        }
+      },
+      () => {
+        setLocating(false);
+        setError("Không thể lấy vị trí hiện tại. Vui lòng nhập địa chỉ thủ công.");
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="relative">
+        <label className="mb-2 block text-sm font-semibold text-ink" htmlFor="delivery-address">
+          Địa chỉ giao/nhận
+        </label>
+        <input
+          id="delivery-address"
+          className="focus-ring block w-full rounded-lg border border-sand bg-white px-4 py-3 text-sm text-ink shadow-sm disabled:cursor-not-allowed disabled:bg-stone-50"
+          type="text"
+          value={query}
+          placeholder="Nhập địa chỉ, phường/xã, quận/huyện..."
+          disabled={disabled}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            onChange(null);
+          }}
+          autoComplete="street-address"
+        />
+
+        {(loading || suggestions.length > 0) && (
+          <div className="absolute z-20 mt-2 max-h-72 w-full overflow-auto rounded-xl border border-sand bg-white p-2 shadow-xl">
+            {loading ? <p className="px-3 py-2 text-sm text-stone-500">Đang tìm địa chỉ...</p> : null}
+            {!loading && suggestions.map((suggestion) => (
+              <button
+                key={`${suggestion.placeId}-${suggestion.label}`}
+                type="button"
+                className="block w-full rounded-lg px-3 py-2 text-left text-sm transition hover:bg-[#fff0ee]"
+                onClick={() => void handleSelect(suggestion)}
+              >
+                <span className="block font-medium text-ink">{suggestion.label}</span>
+                {suggestion.secondaryText ? (
+                  <span className="mt-1 block text-xs text-stone-500">{suggestion.secondaryText}</span>
+                ) : null}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          className="inline-flex items-center gap-2 rounded-lg border border-bronze px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-bronze transition hover:bg-[#fff0ee] disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={disabled || locating}
+          onClick={handleUseCurrentLocation}
+        >
+          <span className="material-symbols-outlined text-[16px]">my_location</span>
+          {locating ? "Đang lấy vị trí..." : "Dùng vị trí hiện tại"}
+        </button>
+        {value ? <span className="text-xs font-semibold text-jade">Đã chọn địa chỉ chuẩn hóa</span> : null}
+      </div>
+
+      {error ? <p className="text-sm text-red-500">{error}</p> : null}
+    </div>
+  );
+}
