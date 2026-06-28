@@ -86,10 +86,12 @@ export class ChatService {
       },
     });
 
-    // Update conversation timestamps
+    // Update conversation timestamps and topic context
     const updateData = role === "customer"
       ? {
           customer_last_read_at: now,
+          topic: "product_advice",
+          garment_id: garmentId,
           ...(conversation.status === "resolved" ? { status: "open" } : {}),
         }
       : { staff_last_read_at: now };
@@ -100,6 +102,142 @@ export class ChatService {
     });
 
     // Return with user_accounts for real-time display
+    if (typeof this.prisma.messages.findUnique === "function") {
+      return this.prisma.messages.findUnique({
+        where: { id: message.id },
+        include: {
+          user_accounts: {
+            select: {
+              id: true,
+              email: true,
+              role: true,
+              profile: { select: { fullName: true } },
+            },
+          },
+        },
+      });
+    }
+
+    return message;
+  }
+
+  async sendBookingCardMessage(
+    userId: string,
+    role: AppRole,
+    conversationId: string,
+    bookingId: string,
+    topic: "booking_support" | "complaint",
+  ) {
+    let conversation;
+    if (role === "customer") {
+      conversation = await this.prisma.conversations.findFirst({
+        where: { id: conversationId, customer_id: userId },
+      });
+      if (!conversation) {
+        throw new ForbiddenException("You are not part of this conversation.");
+      }
+    } else {
+      conversation = await this.prisma.conversations.findUnique({
+        where: { id: conversationId },
+      });
+      if (!conversation) {
+        throw new NotFoundException("Conversation not found.");
+      }
+    }
+
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { items: true },
+    });
+    if (!booking) {
+      throw new NotFoundException("Booking not found.");
+    }
+    if (booking.customerId !== conversation.customer_id) {
+      throw new ForbiddenException("This booking does not belong to you.");
+    }
+
+    const startDate = new Date(booking.rentalStartDate);
+    const endDate = new Date(booking.rentalEndDate);
+    const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
+    const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+    const bookingCode = booking.id.substring(0, 8).toUpperCase();
+    const statusLabels: Record<string, string> = {
+      pending_confirmation: "Chờ xác nhận",
+      confirmed: "Đã xác nhận",
+      awaiting_payment: "Chờ thanh toán",
+      paid: "Đã thanh toán",
+      preparing: "Đang chuẩn bị",
+      ready_for_pickup: "Sẵn sàng",
+      delivering: "Đang giao",
+      renting: "Đang thuê",
+      returned: "Đã trả",
+      inspection_pending: "Chờ kiểm tra",
+      completed: "Hoàn thành",
+      cancelled: "Đã hủy",
+      rejected: "Từ chối",
+      overdue: "Quá hạn",
+      draft: "Nháp",
+    };
+    const statusLabel = statusLabels[booking.status] ?? booking.status;
+
+    const detailUrl = role === "customer"
+      ? `/booking/success?bookingId=${booking.id}`
+      : `/dashboard/staff/booking/${booking.id}`;
+
+    const bookingCard = {
+      type: "booking_card",
+      topic,
+      booking: {
+        id: booking.id,
+        code: bookingCode,
+        status: booking.status,
+        statusLabel,
+        rentalStartDate: booking.rentalStartDate,
+        rentalEndDate: booking.rentalEndDate,
+        days,
+        itemCount: booking.items.length,
+        rentalTotal: Number(booking.rentalTotal),
+        depositTotal: Number(booking.depositTotal),
+        detailUrl,
+      },
+    };
+
+    const content = JSON.stringify(bookingCard);
+    const trimmed = content.trim();
+    if (trimmed.length > 2000) {
+      throw new ForbiddenException("Message content exceeds maximum length of 2000 characters.");
+    }
+
+    const now = new Date();
+    const message = await this.prisma.messages.create({
+      data: {
+        conversation_id: conversationId,
+        sender_id: userId,
+        content,
+      },
+    });
+
+    const updateData: Record<string, unknown> = {
+      topic,
+      booking_id: bookingId,
+      garment_id: null,
+      updated_at: now,
+    };
+    if (role === "customer") {
+      updateData.customer_last_read_at = now;
+      if (conversation.status === "resolved") {
+        updateData.status = "open";
+      }
+    } else {
+      updateData.staff_last_read_at = now;
+    }
+
+    await this.prisma.conversations.update({
+      where: { id: conversationId },
+      data: updateData,
+    });
+
     if (typeof this.prisma.messages.findUnique === "function") {
       return this.prisma.messages.findUnique({
         where: { id: message.id },
@@ -287,6 +425,9 @@ export class ChatService {
         staff_id: null,
         staff_last_read_at: new Date(),
         status: "resolved",
+        topic: "general",
+        garment_id: null,
+        booking_id: null,
         updated_at: new Date(),
       },
     });
@@ -456,6 +597,16 @@ export class ChatService {
         });
       }
 
+      // Resolve garment name when context is product_advice
+      let garmentName: string | null = null;
+      if (conversation.garment_id) {
+        const garment = await this.prisma.garment.findUnique({
+          where: { id: conversation.garment_id },
+          select: { name: true },
+        });
+        garmentName = garment?.name ?? null;
+      }
+
       return {
         id: conversation.id,
         customerId: conversation.customer_id,
@@ -476,6 +627,10 @@ export class ChatService {
         updatedAt: conversation.updated_at,
         lastMessage,
         unreadCount,
+        topic: conversation.topic ?? "general",
+        garmentId: conversation.garment_id ?? null,
+        garmentName,
+        bookingId: conversation.booking_id ?? null,
       };
     })
     );
@@ -524,7 +679,7 @@ export class ChatService {
   private isProductCardPayload(content: string): boolean {
     try {
       const parsed = JSON.parse(content);
-      return parsed?.type === "product_card";
+      return parsed?.type === "product_card" || parsed?.type === "booking_card";
     } catch {
       return false;
     }

@@ -52,7 +52,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private isProductCardPayload(content: string): boolean {
     try {
       const parsed = JSON.parse(content);
-      return parsed?.type === "product_card";
+      return parsed?.type === "product_card" || parsed?.type === "booking_card";
     } catch {
       return false;
     }

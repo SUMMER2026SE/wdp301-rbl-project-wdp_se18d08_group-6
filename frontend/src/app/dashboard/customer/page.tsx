@@ -6,6 +6,7 @@ import { getMyBookings, cancelBooking, getCustomerRefund, getDeliveryTrack } fro
 import type { BookingResponse, CustomerRefundResponse, DeliveryTrackData } from "@/lib/api";
 import { DeliveryTracker } from "@/components/location/delivery-tracker";
 import { readStoredSession } from "@/lib/auth";
+import { getMyChatConversation, sendBookingCardMessage } from "@/lib/chat";
 import { customerWidgets } from "@/lib/heritage-mock-data";
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
@@ -73,6 +74,8 @@ export default function CustomerDashboardPage() {
     }, 10000);
     return () => clearInterval(interval);
   }, [bookings]);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [sendingBookingId, setSendingBookingId] = useState<string | null>(null);
 
   useEffect(() => {
     const session = readStoredSession();
@@ -107,6 +110,25 @@ export default function CustomerDashboardPage() {
       setBookings((prev) => prev.map((b) => (b.id === id ? res.data! : b)));
     }
     setCancellingId(null);
+  }
+
+  async function handleSendBookingCard(bookingId: string, topic: "booking_support" | "complaint") {
+    setSendingBookingId(bookingId);
+    try {
+      let convId = conversationId;
+      if (!convId) {
+        const convRes = await getMyChatConversation();
+        if (convRes.success && convRes.data) {
+          convId = convRes.data.id;
+          setConversationId(convId);
+        }
+      }
+      if (convId) {
+        await sendBookingCardMessage({ conversationId: convId, bookingId, topic });
+      }
+    } finally {
+      setSendingBookingId(null);
+    }
   }
 
   const activeBooking = bookings.find((b) => ACTIVE_STATUSES.has(b.status));
@@ -167,6 +189,22 @@ export default function CustomerDashboardPage() {
                       {cancellingId === activeBooking.id ? "Đang hủy..." : "Hủy đơn"}
                     </button>
                   )}
+                  <button
+                    type="button"
+                    disabled={sendingBookingId === activeBooking.id}
+                    onClick={() => void handleSendBookingCard(activeBooking.id, "booking_support")}
+                    className="rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-40"
+                  >
+                    {sendingBookingId === activeBooking.id ? "Đang gửi..." : "Hỗ trợ đơn hàng"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={sendingBookingId === activeBooking.id}
+                    onClick={() => void handleSendBookingCard(activeBooking.id, "complaint")}
+                    className="rounded-lg bg-rose-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-40"
+                  >
+                    {sendingBookingId === activeBooking.id ? "Đang gửi..." : "Khiếu nại"}
+                  </button>
                 </div>
               </div>
             </section>
@@ -209,6 +247,7 @@ export default function CustomerDashboardPage() {
                       <th className="px-6 py-4">Trạng thái</th>
                       <th className="px-6 py-4">Tổng</th>
                       <th className="px-6 py-4">Hoàn cọc</th>
+                      <th className="px-6 py-4"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -249,6 +288,26 @@ export default function CustomerDashboardPage() {
                             ) : (
                               <span className="text-xs text-stone-400">—</span>
                             )}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex gap-1.5">
+                              <button
+                                type="button"
+                                disabled={sendingBookingId === b.id}
+                                onClick={() => void handleSendBookingCard(b.id, "booking_support")}
+                                className="rounded-lg bg-blue-600 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-blue-700 disabled:opacity-40"
+                              >
+                                {sendingBookingId === b.id ? "..." : "Hỗ trợ"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={sendingBookingId === b.id}
+                                onClick={() => void handleSendBookingCard(b.id, "complaint")}
+                                className="rounded-lg bg-rose-600 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-rose-700 disabled:opacity-40"
+                              >
+                                {sendingBookingId === b.id ? "..." : "Khiếu nại"}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );

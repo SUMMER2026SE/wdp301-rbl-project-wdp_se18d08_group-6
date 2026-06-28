@@ -8,7 +8,11 @@ import {
   getConversationLockStatus,
   getConversationMessages,
   getMyChatConversation,
+  isBookingCardContent,
+  isProductCardContent,
   markConversationRead,
+  parseBookingCard,
+  parseProductCard,
   type ChatConversation,
   type ChatMessage,
   type ConversationLockStatus,
@@ -32,7 +36,7 @@ export default function ChatPage() {
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [staffCanReply, setStaffCanReply] = useState(false);
   const [staffLockError, setStaffLockError] = useState<string | null>(null);
-  const [sidebarTab, setSidebarTab] = useState<"assigned" | "unassigned">("assigned");
+  const [sidebarTab, setSidebarTab] = useState<"assigned" | "unassigned" | "resolved">("assigned");
   const [notification, setNotification] = useState<string | null>(null);
 
 
@@ -102,19 +106,42 @@ export default function ChatPage() {
         void refreshLockStatus(payload.conversationId);
       }
       // Always update the sidebar conversation's lastMessage
+      let updatedTopicFields: Record<string, unknown> | null = null;
       setConversations((prev) =>
-        prev.map((c) =>
-          c.id === payload.conversationId
-            ? {
-                ...c,
-                lastMessage: payload.message,
-                updatedAt: payload.message.created_at,
-                unreadCount: payload.message.sender_id !== session?.user.id ? c.unreadCount + 1 : 0,
-                ...(payload.message.sender_id === c.customerId ? { status: "open" } : {}),
-              }
-            : c,
-        ),
+        prev.map((c) => {
+          if (c.id !== payload.conversationId) return c;
+          let topicExtras: Record<string, unknown> = {};
+          if (payload.message.sender_id === c.customerId && isProductCardContent(payload.message.content)) {
+            const product = parseProductCard(payload.message.content);
+            if (product) {
+              topicExtras = { topic: "product_advice", garmentId: product.id, garmentName: product.name, bookingId: null };
+            }
+          } else if (payload.message.sender_id === c.customerId && isBookingCardContent(payload.message.content)) {
+            const booking = parseBookingCard(payload.message.content);
+            const msg = JSON.parse(payload.message.content);
+            if (booking) {
+              topicExtras = { topic: msg?.topic ?? "booking_support", bookingId: booking.id, garmentId: null, garmentName: null };
+            }
+          }
+          const updated = {
+            ...c,
+            lastMessage: payload.message,
+            updatedAt: payload.message.created_at,
+            unreadCount: payload.message.sender_id !== session?.user.id ? c.unreadCount + 1 : 0,
+            ...(payload.message.sender_id === c.customerId ? { status: "open" } : {}),
+            ...(payload.message.sender_id === c.customerId ? topicExtras : {}),
+          };
+          if (payload.conversationId === selectedConversation?.id && Object.keys(topicExtras).length > 0) {
+            updatedTopicFields = topicExtras;
+          }
+          return updated;
+        }),
       );
+
+      // Also update selectedConversation for real-time header update
+      if (updatedTopicFields) {
+        setSelectedConversation((prev) => prev ? { ...prev, ...updatedTopicFields! } : prev);
+      }
     };
     const onMessageDeleted = (payload: { conversationId: string; messageId: string; deletedBy: string; deletedAt: string }) => {
       if (payload.conversationId === selectedConversation?.id) {
@@ -126,6 +153,14 @@ export default function ChatPage() {
           ),
         );
       }
+      // Also update sidebar lastMessage if it was the deleted message
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === payload.conversationId && c.lastMessage?.id === payload.messageId
+            ? { ...c, lastMessage: { ...c.lastMessage, deleted_at: payload.deletedAt, deleted_by: payload.deletedBy, content: "" } }
+            : c,
+        ),
+      );
     };
     const onConversationRead = (payload: { conversationId: string; readerId: string }) => {
       if (payload.conversationId !== selectedConversation?.id) return;
@@ -194,12 +229,12 @@ export default function ChatPage() {
       setConversations((prev) =>
         prev.map((conversation) =>
           conversation.id === payload.conversationId
-            ? { ...conversation, staffId: null, staffName: null, status: payload.status ?? "resolved" }
+            ? { ...conversation, staffId: null, staffName: null, status: payload.status ?? "resolved", topic: "general", garmentId: null, garmentName: null }
             : conversation,
         ),
       );
       if (payload.conversationId === selectedConversation?.id) {
-        setSelectedConversation((prev) => prev ? { ...prev, staffId: null, staffName: null, status: payload.status ?? "resolved" } : prev);
+        setSelectedConversation((prev) => prev ? { ...prev, staffId: null, staffName: null, status: payload.status ?? "resolved", topic: "general", garmentId: null, garmentName: null } : prev);
         setStaffCanReply(false);
         setStaffLockError("Cuộc trò chuyện đã được đánh dấu đã tư vấn.");
         void refreshLockStatus();
@@ -418,8 +453,10 @@ export default function ChatPage() {
     setStaffLockError(null);
     await loadMessages(conversationId);
 
-    // Mark read via REST when staff opens a conversation
-    void markConversationRead(conversationId);
+    // Mark read via REST when staff opens a conversation (skip if resolved to avoid 403)
+    if (conv?.status !== "resolved") {
+      void markConversationRead(conversationId);
+    }
 
     if (conv && conv.staffId === session?.user.id) {
       socket.emit("open_conversation", { conversationId });
@@ -504,7 +541,7 @@ export default function ChatPage() {
     socket.emit("typing", { conversationId: selectedConversation.id, isTyping });
   }
 
-  function handleSetSidebarTab(tab: "assigned" | "unassigned") {
+  function handleSetSidebarTab(tab: "assigned" | "unassigned" | "resolved") {
   hasManuallyInteractedRef.current = true;
   setSidebarTab(tab);
   }

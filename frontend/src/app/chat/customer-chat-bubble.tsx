@@ -2,8 +2,9 @@
 
 import { useRef, useEffect, useState, type RefObject } from "react";
 import type { ChatConversation, ChatMessage } from "@/lib/chat";
-import { isProductCardContent, parseProductCard } from "@/lib/chat";
+import { isBookingCardContent, isProductCardContent, parseBookingCard, parseProductCard } from "@/lib/chat";
 import type { AuthSession } from "@/lib/auth";
+import { BookingCard } from "@/components/chat/booking-card";
 import { ProductCard } from "@/components/chat/product-card";
 
 const CHAT_BUBBLE_OPEN_KEY = "co_phuc_chat_bubble_open";
@@ -136,6 +137,15 @@ export function CustomerChatBubble({
                       <div className={`${isMine ? "" : ""} max-w-[90%]`}>
                         {message.deleted_at ? (
                           <div className="italic text-stone-400 text-xs px-3 py-2">Tin nhắn đã bị xóa</div>
+                        ) : isBookingCardContent(message.content) ? (
+                          (() => {
+                            const booking = parseBookingCard(message.content);
+                            return booking ? (
+                              <BookingCard booking={booking} />
+                            ) : (
+                              <div className="text-xs text-stone-500">Không thể hiển thị đơn hàng</div>
+                            );
+                          })()
                         ) : isProductCardContent(message.content) ? (
                           (() => {
                             const product = parseProductCard(message.content);

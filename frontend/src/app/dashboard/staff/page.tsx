@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { StaffPortalShell } from "@/components/heritage/ui";
 import {
   getStaffPendingBookings,
@@ -492,11 +493,17 @@ export default function StaffDashboardPage() {
                   </div>
                 )}
 
-                {/* Actions bar */}
-                {tab === "refunds" ? (
-                  !isRefunded && (
-                    <div className="flex flex-wrap justify-end gap-2 border-t border-sand px-6 py-4">
-                      {isPendingRefund ? (
+                {/* Actions bar — luôn hiện "Xem chi tiết" cho mọi booking */}
+                <div className="flex flex-wrap justify-end gap-2 border-t border-sand px-6 py-4">
+                  <Link
+                    href={`/dashboard/staff/booking/${booking.id}`}
+                    className="rounded-lg border border-sand px-4 py-2 text-sm font-semibold text-stone-600 transition hover:bg-stone-50"
+                  >
+                    Xem chi tiết
+                  </Link>
+                  {tab === "refunds" ? (
+                    !isRefunded && (
+                      isPendingRefund ? (
                         <div className="rounded-lg bg-yellow-50 border border-yellow-200 px-4 py-2 text-sm text-yellow-700">
                           <span className="material-symbols-outlined text-base mr-1 align-middle">schedule</span>
                           {refund.refundMethod === "bank_transfer"
@@ -534,47 +541,47 @@ export default function StaffDashboardPage() {
                             </button>
                           )}
                         </>
-                      )}
-                    </div>
-                  )
-                ) : (
-                  (actions.length > 0 || booking.status === "awaiting_payment") && (
-                  <div className="flex flex-wrap justify-end gap-2 border-t border-sand px-6 py-4">
-                    {/* Nút "Đã thanh toán" cho awaiting_payment */}
-                    {booking.status === "awaiting_payment" && (
-                      booking.pickupMethod === "delivery" ? (
-                        <button
-                          type="button"
-                          disabled={isActioning}
-                          onClick={() => handleMarkDeliveryPaid(booking.id)}
-                          className="rounded-lg bg-jade px-4 py-2 text-sm font-semibold text-white transition hover:bg-forest disabled:opacity-50"
-                        >
-                          {isActioning ? "Đang xử lý..." : `Xác nhận đã nhận tiền online (${formatVND(booking.rentalTotal + booking.depositTotal)})`}
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={isActioning}
-                          onClick={() => openPaymentDialog(booking)}
-                          className="rounded-lg bg-jade px-4 py-2 text-sm font-semibold text-white transition hover:bg-forest disabled:opacity-50"
-                        >
-                          {isActioning ? "Đang xử lý..." : `Đã thanh toán (${formatVND(booking.rentalTotal + booking.depositTotal)})`}
-                        </button>
                       )
-                    )}
-                    {actions.map((action) => (
-                      <button
-                        key={action.status}
-                        type="button"
-                        disabled={isActioning}
-                        onClick={() => handleAction(booking.id, action.status)}
-                        className={`rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50 ${action.style}`}
-                      >
-                        {isActioning ? "Đang xử lý..." : action.label}
-                      </button>
-                    ))}
-                  </div>
-                ))}
+                    )
+                  ) : (
+                    (actions.length > 0 || booking.status === "awaiting_payment") && (
+                      <>
+                        {booking.status === "awaiting_payment" && (
+                          booking.pickupMethod === "delivery" ? (
+                            <button
+                              type="button"
+                              disabled={isActioning}
+                              onClick={() => handleMarkDeliveryPaid(booking.id)}
+                              className="rounded-lg bg-jade px-4 py-2 text-sm font-semibold text-white transition hover:bg-forest disabled:opacity-50"
+                            >
+                              {isActioning ? "Đang xử lý..." : `Xác nhận đã nhận tiền online (${formatVND(booking.rentalTotal + booking.depositTotal)})`}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={isActioning}
+                              onClick={() => openPaymentDialog(booking)}
+                              className="rounded-lg bg-jade px-4 py-2 text-sm font-semibold text-white transition hover:bg-forest disabled:opacity-50"
+                            >
+                              {isActioning ? "Đang xử lý..." : `Đã thanh toán (${formatVND(booking.rentalTotal + booking.depositTotal)})`}
+                            </button>
+                          )
+                        )}
+                        {actions.map((action) => (
+                          <button
+                            key={action.status}
+                            type="button"
+                            disabled={isActioning}
+                            onClick={() => handleAction(booking.id, action.status)}
+                            className={`rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50 ${action.style}`}
+                          >
+                            {isActioning ? "Đang xử lý..." : action.label}
+                          </button>
+                        ))}
+                      </>
+                    )
+                  )}
+                </div>
               </div>
             );
           })}

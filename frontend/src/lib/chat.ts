@@ -27,6 +27,10 @@ export type ChatConversation = {
   updatedAt: string;
   lastMessage: ChatMessage | null;
   unreadCount: number;
+  topic?: string;
+  garmentId?: string | null;
+  garmentName?: string | null;
+  bookingId?: string | null;
 };
 
 export type ConversationLockStatus = {
@@ -45,6 +49,24 @@ export type ProductCardMessage = {
     size: string | null;
     price: number;
     detailUrl: string;
+  };
+};
+
+export type BookingCardMessage = {
+  type: "booking_card";
+  topic?: string;
+  booking: {
+    id: string;
+    code: string;
+    status: string;
+    statusLabel: string;
+    rentalStartDate: string;
+    rentalEndDate: string;
+    days: number;
+    itemCount: number;
+    rentalTotal: number;
+    depositTotal: number;
+    detailUrl?: string;
   };
 };
 
@@ -75,6 +97,38 @@ export function parseProductCard(content: string): ProductCardMessage["product"]
   } catch {
     return null;
   }
+}
+
+export function isBookingCardContent(content: string): boolean {
+  try {
+    const parsed = JSON.parse(content);
+    return parsed?.type === "booking_card";
+  } catch {
+    return false;
+  }
+}
+
+export function parseBookingCard(content: string): BookingCardMessage["booking"] | null {
+  try {
+    const parsed = JSON.parse(content);
+    if (parsed?.type === "booking_card" && parsed?.booking) {
+      return parsed.booking;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function sendBookingCardMessage(params: {
+  conversationId: string;
+  bookingId: string;
+  topic: "booking_support" | "complaint";
+}) {
+  return apiRequest<ChatMessage>(`/chat/conversations/${params.conversationId}/booking-card`, {
+    method: "POST",
+    body: JSON.stringify({ bookingId: params.bookingId, topic: params.topic }),
+  });
 }
 
 /**

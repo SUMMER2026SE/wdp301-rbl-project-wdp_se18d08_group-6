@@ -97,5 +97,45 @@ export class ChatController {
 
     return ok(message);
   }
+
+  @Post("conversations/:id/booking-card")
+  async sendBookingCard(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id", ParseUUIDPipe) conversationId: string,
+    @Body() body: { bookingId: string; topic: string },
+  ) {
+    if (!body?.bookingId) {
+      throw new ForbiddenException("bookingId is required.");
+    }
+    if (body?.topic !== "booking_support" && body?.topic !== "complaint") {
+      throw new ForbiddenException("topic must be 'booking_support' or 'complaint'.");
+    }
+
+    const message = await this.chatService.sendBookingCardMessage(
+      user.id,
+      user.role,
+      conversationId,
+      body.bookingId,
+      body.topic,
+    );
+
+    this.chatGateway.server?.to(conversationId).emit("message_received", {
+      conversationId,
+      message,
+    });
+
+    if (user.role === "customer") {
+      const conversation = await this.chatService.getConversationById(conversationId);
+      if (!conversation.staff_id && conversation.status === "open") {
+        this.chatGateway.server?.to("staff").emit("new_unassigned_message", {
+          conversationId,
+          customerName: user.fullName,
+          content: message?.content ?? "",
+        });
+      }
+    }
+
+    return ok(message);
+  }
 }
 

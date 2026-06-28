@@ -38,7 +38,8 @@ export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
     return (
       pathname.startsWith("/catalog") ||
       pathname.startsWith("/garment") ||
-      pathname.startsWith("/booking")
+      pathname.startsWith("/booking") ||
+      pathname.startsWith("/dashboard/customer")
     );
   }, [pathname, isCustomer]);
 
