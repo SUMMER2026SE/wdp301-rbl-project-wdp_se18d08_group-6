@@ -2,8 +2,9 @@
 
 import { useRef, useEffect, useState, type RefObject } from "react";
 import type { ChatConversation, ChatMessage, ConversationLockStatus } from "@/lib/chat";
-import { isProductCardContent, parseProductCard } from "@/lib/chat";
+import { isBookingCardContent, isProductCardContent, parseBookingCard, parseProductCard } from "@/lib/chat";
 import type { AuthSession } from "@/lib/auth";
+import { BookingCard } from "@/components/chat/booking-card";
 import { ProductCard } from "@/components/chat/product-card";
 
 interface StaffChatWorkspaceProps {
@@ -19,8 +20,8 @@ interface StaffChatWorkspaceProps {
   lockStatus: ConversationLockStatus | null;
   staffCanReply: boolean;
   staffLockError: string | null;
-  sidebarTab: "assigned" | "unassigned";
-  setSidebarTab: (tab: "assigned" | "unassigned") => void;
+  sidebarTab: "assigned" | "unassigned" | "resolved";
+  setSidebarTab: (tab: "assigned" | "unassigned" | "resolved") => void;
   notification: string | null;
   session: AuthSession | null;
   onJoinConversation: (conversationId: string) => void;
@@ -67,12 +68,14 @@ export function StaffChatWorkspace({
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
 
   const assignedConversations = conversations.filter((c) => c.staffId === session?.user.id);
-  const unassignedConversations = conversations.filter((c) => c.staffId === null && c.status === "open" && c.lastMessage?.sender_id === c.customerId);
-  const displayedConversations = sidebarTab === "assigned" ? assignedConversations : unassignedConversations;
+  const unassignedConversations = conversations.filter((c) => c.staffId === null && c.status === "open" && c.lastMessage?.sender_id === c.customerId && !c.lastMessage?.deleted_at);
+  const resolvedConversations = conversations.filter((c) => c.status === "resolved");
+  const displayedConversations = sidebarTab === "assigned" ? assignedConversations : sidebarTab === "resolved" ? resolvedConversations : unassignedConversations;
 
   // Determine the viewing mode
   const isUnassignedPreview = selectedConversation && selectedConversation.staffId === null;
   const isAssignedToOther = selectedConversation && selectedConversation.staffId !== null && selectedConversation.staffId !== session?.user.id;
+  const isResolved = selectedConversation?.status === "resolved";
 
   useEffect(() => {
     if (messagesEndRef.current?.scrollIntoView) {
@@ -136,6 +139,24 @@ export function StaffChatWorkspace({
               {unassignedConversations.length}
             </span>
           </button>
+          <button
+            type="button"
+            onClick={() => setSidebarTab("resolved")}
+            className={`inline-flex items-center gap-2 rounded-full px-4 py-2 transition ${
+              sidebarTab === "resolved" ? "bg-oxblood text-white" : "bg-white text-stone-700 hover:bg-sand"
+            }`}
+          >
+            Đã tư vấn
+            <span
+              className={`inline-flex items-center justify-center min-w-[20px] h-5 rounded-full px-1.5 text-[11px] font-bold leading-none ${
+                sidebarTab === "resolved"
+                  ? "bg-white/20 text-white"
+                  : "bg-stone-200 text-stone-600"
+              }`}
+            >
+              {resolvedConversations.length}
+            </span>
+          </button>
         </div>
 
         <div className="space-y-3">
@@ -157,13 +178,55 @@ export function StaffChatWorkspace({
                   <div>
                     <p className="text-sm font-semibold text-ink">Khách hàng: {conversation.customerName}</p>
                     <p className="mt-1 text-xs text-stone-500">Nhân viên: {conversation.staffName ?? "Chưa có"}</p>
+                    {conversation.topic && (
+                      <div className="mt-1.5 flex items-center gap-1.5">
+                        {conversation.topic === "product_advice" && conversation.garmentName ? (
+                          <>
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-700">
+                              Tư vấn sản phẩm
+                            </span>
+                            <span className="truncate text-[11px] text-emerald-600 max-w-[140px]">
+                              {conversation.garmentName}
+                            </span>
+                          </>
+                        ) : conversation.topic === "booking_support" && conversation.bookingId ? (
+                          <>
+                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-700">
+                              Hỗ trợ đơn hàng
+                            </span>
+                            <span className="truncate text-[11px] text-blue-600 max-w-[140px]">
+                              #{conversation.bookingId.substring(0, 8).toUpperCase()}
+                            </span>
+                          </>
+                        ) : conversation.topic === "complaint" && conversation.bookingId ? (
+                          <>
+                            <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-700">
+                              Khiếu nại
+                            </span>
+                            <span className="truncate text-[11px] text-rose-600 max-w-[140px]">
+                              #{conversation.bookingId.substring(0, 8).toUpperCase()}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-500">
+                            General
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                   {conversation.unreadCount > 0 && (
                     <span className="rounded-full bg-sand/80 px-2 py-1 text-[11px] uppercase text-stone-600">{conversation.unreadCount} mới</span>
                   )}
                 </div>
                 {conversation.lastMessage && (
-                  <p className="mt-3 text-sm text-stone-600 line-clamp-2">{conversation.lastMessage.content}</p>
+                  <p className="mt-3 text-sm text-stone-600 line-clamp-2">
+                    {isBookingCardContent(conversation.lastMessage.content)
+                      ? `📋 Đơn #${parseBookingCard(conversation.lastMessage.content)?.code ?? ""}`
+                      : isProductCardContent(conversation.lastMessage.content)
+                        ? parseProductCard(conversation.lastMessage.content)?.name ?? "Sản phẩm"
+                        : conversation.lastMessage.content}
+                  </p>
                 )}
               </button>
             ))
@@ -183,12 +246,46 @@ export function StaffChatWorkspace({
         <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between shrink-0">
           <div>
             <h2 className="font-semibold text-lg text-ink">{selectedConversation ? `Chat với ${selectedConversation.customerName}` : "Chọn cuộc trò chuyện"}</h2>
-            {selectedConversation && <p className="mt-1 text-sm text-stone-500">ID: {selectedConversation.id}</p>}
+            {selectedConversation && (
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                {selectedConversation.topic === "product_advice" && selectedConversation.garmentName ? (
+                  <>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-700">
+                      Tư vấn sản phẩm
+                    </span>
+                    <span className="text-sm text-emerald-600">{selectedConversation.garmentName}</span>
+                  </>
+                ) : selectedConversation.topic === "booking_support" && selectedConversation.bookingId ? (
+                  <>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-700">
+                      Hỗ trợ đơn hàng
+                    </span>
+                    <span className="text-sm text-blue-600">Mã đơn: #{selectedConversation.bookingId.substring(0, 8).toUpperCase()}</span>
+                  </>
+                ) : selectedConversation.topic === "complaint" && selectedConversation.bookingId ? (
+                  <>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-700">
+                      Khiếu nại
+                    </span>
+                    <span className="text-sm text-rose-600">Mã đơn: #{selectedConversation.bookingId.substring(0, 8).toUpperCase()}</span>
+                  </>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-500">
+                    General
+                  </span>
+                )}
+                {isResolved && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-stone-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-stone-600">
+                    Đã tư vấn
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {selectedConversation && (
             <div className="flex gap-2">
-              {isUnassignedPreview ? (
+              {isUnassignedPreview && !isResolved ? (
                 <button
                   type="button"
                   onClick={onOpenConversation}
@@ -281,6 +378,15 @@ export function StaffChatWorkspace({
                           </div>
                           {message.deleted_at ? (
                             <p className="text-sm italic text-stone-400">Tin nhắn đã bị xóa</p>
+                          ) : isBookingCardContent(message.content) ? (
+                            (() => {
+                              const booking = parseBookingCard(message.content);
+                              return booking ? (
+                                <BookingCard booking={booking} />
+                              ) : (
+                                <p className="text-sm text-stone-500">Không thể hiển thị đơn hàng</p>
+                              );
+                            })()
                           ) : isProductCardContent(message.content) ? (
                             (() => {
                               const product = parseProductCard(message.content);
@@ -328,6 +434,12 @@ export function StaffChatWorkspace({
                 onBlur={() => {
                   if (!isUnassignedPreview) onTyping(false);
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    onSendMessage();
+                  }
+                }}
                 disabled={isUnassignedPreview || !staffCanReply}
                 className="min-h-[140px] rounded-3xl border border-sand bg-white px-4 py-3 text-sm outline-none focus:border-lotus disabled:bg-stone-100 disabled:text-stone-400 disabled:cursor-not-allowed"
                 placeholder={isUnassignedPreview ? "Tiếp nhận cuộc trò chuyện để trả lời..." : "Nhập tin nhắn..."}
@@ -343,13 +455,15 @@ export function StaffChatWorkspace({
                 >
                   Gửi tin nhắn
                 </button>
-                <button
-                  type="button"
-                  onClick={onMarkRead}
-                  className="inline-flex items-center justify-center rounded-3xl border border-lotus px-5 py-3 text-sm font-semibold text-lotus hover:bg-lotus/10"
-                >
-                  Đánh dấu đã tư vấn
-                </button>
+                {!isUnassignedPreview && !isResolved && (
+                  <button
+                    type="button"
+                    onClick={onMarkRead}
+                    className="inline-flex items-center justify-center rounded-3xl border border-lotus px-5 py-3 text-sm font-semibold text-lotus hover:bg-lotus/10"
+                  >
+                    Đánh dấu đã tư vấn
+                  </button>
+                )}
               </div>
             </div>
 

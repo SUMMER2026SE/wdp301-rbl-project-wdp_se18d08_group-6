@@ -311,7 +311,25 @@ export class BookingsService {
 
 
     return ok(this.serializeBooking(updated));
-  }  async findAllPending() {
+  }  async findOneForStaff(id: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id },
+      include: {
+        items: {
+          include: {
+            garment_sizes: { include: { garments: true } },
+            garmentAsset: true,
+          },
+        },
+        customer: { select: { profile: { select: { fullName: true, phone: true } }, email: true } },
+        deliveryAddress: true,
+      },
+    });
+    if (!booking) throw new NotFoundException("Booking not found.");
+    return ok(this.serializeStaffBooking(booking));
+  }
+
+  async findAllPending() {
     const bookings = await this.prisma.booking.findMany({
       where: { status: BookingStatus.pending_confirmation },
       orderBy: { createdAt: "asc" },

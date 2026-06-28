@@ -460,6 +460,10 @@ export async function assignAssetToBookingItem(
   });
 }
 
+export async function getStaffBooking(id: string) {
+  return apiRequest<StaffBookingResponse>(`/bookings/staff/${id}`);
+}
+
 export async function getStaffCompletedRefundBookings() {
   return apiRequest<StaffBookingResponse[]>("/bookings/staff/completed-refunds");
 }

@@ -23,16 +23,16 @@ describe("ChatService", () => {
 
   describe("sendProductCardMessage", () => {
     it("rejects when user is not a conversation participant", async () => {
-      // findUnique returns null (conversation not found) → NotFoundException
-      prisma.conversations.findUnique.mockResolvedValue(null);
+      // findFirst returns null (conversation not found) → ForbiddenException
+      prisma.conversations.findFirst.mockResolvedValue(null);
 
       await expect(
         service.sendProductCardMessage("user-1", "customer", "conv-1", "garment-1"),
-      ).rejects.toThrow(NotFoundException);
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it("rejects when garment does not exist", async () => {
-      prisma.conversations.findUnique.mockResolvedValue({
+      prisma.conversations.findFirst.mockResolvedValue({
         id: "conv-1",
         customer_id: "user-1",
         staff_id: null,
@@ -49,8 +49,8 @@ describe("ChatService", () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it("creates a product card message with garment data from DB", async () => {
-      prisma.conversations.findUnique.mockResolvedValue({
+    it("creates a product card message with garment data from DB and updates conversation context", async () => {
+      prisma.conversations.findFirst.mockResolvedValue({
         id: "conv-1",
         customer_id: "user-1",
         staff_id: null,
@@ -92,6 +92,12 @@ describe("ChatService", () => {
           images: { orderBy: { sortOrder: "asc" as const }, take: 1 },
           garment_sizes: { take: 1 },
         },
+      });
+      // Verify conversation update includes topic context
+      const updateCall = prisma.conversations.update.mock.calls[0]?.[0];
+      expect(updateCall.data).toMatchObject({
+        topic: "product_advice",
+        garment_id: "garment-1",
       });
     });
   });
@@ -220,6 +226,35 @@ describe("ChatService", () => {
     });
   });
 
+  it("resolves a conversation and clears topic context", async () => {
+    const prisma = {
+      conversations: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "conv-resolve",
+          customer_id: "customer-1",
+          staff_id: "staff-1",
+          status: "open",
+          topic: "product_advice",
+          garment_id: "garment-1",
+          booking_id: null,
+        }),
+        update: vi.fn().mockResolvedValue({ id: "conv-resolve", status: "resolved" }),
+      },
+    };
+
+    const service = new ChatService(prisma as never);
+    await service.resolveConversation("conv-resolve", "staff-1");
+
+    expect(prisma.conversations.update).toHaveBeenCalledOnce();
+    const updateCall = prisma.conversations.update.mock.calls[0]?.[0];
+    expect(updateCall.data).toMatchObject({
+      status: "resolved",
+      topic: "general",
+      garment_id: null,
+      booking_id: null,
+    });
+  });
+
   it("marks a conversation as read for the current user", async () => {
     const prisma = {
       conversations: {
@@ -276,6 +311,115 @@ describe("ChatService", () => {
     expect(messages[0].id).toBe("message-2");
   });
 
+  describe("sendBookingCardMessage", () => {
+    it("rejects when user is not a conversation participant", async () => {
+      prisma.conversations.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.sendBookingCardMessage("user-1", "customer", "conv-1", "booking-1", "booking_support"),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it("rejects when booking does not exist", async () => {
+      prisma.conversations.findFirst.mockResolvedValue({
+        id: "conv-1",
+        customer_id: "user-1",
+        staff_id: null,
+        status: "open",
+        customer_last_read_at: null,
+        staff_last_read_at: null,
+      });
+      prisma.booking = { findUnique: vi.fn().mockResolvedValue(null) };
+
+      await expect(
+        service.sendBookingCardMessage("user-1", "customer", "conv-1", "booking-1", "booking_support"),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it("rejects when booking does not belong to the conversation's customer", async () => {
+      prisma.conversations.findFirst.mockResolvedValue({
+        id: "conv-1",
+        customer_id: "user-1",
+        staff_id: null,
+        status: "open",
+      });
+      prisma.booking = {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "booking-1",
+          customerId: "other-user",
+        }),
+      };
+
+      await expect(
+        service.sendBookingCardMessage("user-1", "customer", "conv-1", "booking-1", "booking_support"),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it("creates a booking card message and updates conversation context", async () => {
+      prisma.conversations.findFirst.mockResolvedValue({
+        id: "conv-1",
+        customer_id: "user-1",
+        staff_id: null,
+        status: "open",
+        customer_last_read_at: null,
+        staff_last_read_at: null,
+      });
+      prisma.booking = {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "booking-1",
+          customerId: "user-1",
+          status: "pending_confirmation",
+          rentalStartDate: new Date("2026-06-28"),
+          rentalEndDate: new Date("2026-06-29"),
+          rentalTotal: 640000,
+          depositTotal: 900000,
+          items: [{ id: "item-1" }],
+        }),
+      };
+      prisma.messages = {
+        create: vi.fn().mockResolvedValue({
+          id: "msg-booking-1",
+          conversation_id: "conv-1",
+          sender_id: "user-1",
+          content: JSON.stringify({
+            type: "booking_card",
+            booking: {
+              id: "booking-1",
+              code: "BOOKING-",
+              status: "pending_confirmation",
+              statusLabel: "Chờ xác nhận",
+              rentalStartDate: new Date("2026-06-28"),
+              rentalEndDate: new Date("2026-06-29"),
+              days: 2,
+              itemCount: 1,
+              rentalTotal: 640000,
+              depositTotal: 900000,
+            },
+          }),
+          created_at: new Date(),
+        }),
+        findUnique: vi.fn().mockResolvedValue({
+          id: "msg-booking-1",
+          conversation_id: "conv-1",
+          sender_id: "user-1",
+          content: "{\"type\":\"booking_card\",\"booking\":{}}",
+          created_at: new Date(),
+        }),
+      };
+      prisma.conversations.update.mockResolvedValue({});
+
+      const result = await service.sendBookingCardMessage("user-1", "customer", "conv-1", "booking-1", "complaint");
+
+      expect(result).toBeDefined();
+      const updateCall = prisma.conversations.update.mock.calls[0]?.[0];
+      expect(updateCall.data).toMatchObject({
+        topic: "complaint",
+        booking_id: "booking-1",
+        garment_id: null,
+      });
+    });
+  });
+
   it("lists conversations and computes unread message counts", async () => {
     const prisma = {
       conversations: {
@@ -285,6 +429,9 @@ describe("ChatService", () => {
             customer_id: "customer-4",
             staff_id: "staff-4",
             status: "open",
+            topic: "product_advice",
+            garment_id: "garment-1",
+            booking_id: null,
             updated_at: new Date("2025-01-01T00:00:00.000Z"),
             customer_last_read_at: new Date("2024-12-01T00:00:00.000Z"),
             staff_last_read_at: null,
@@ -301,6 +448,9 @@ describe("ChatService", () => {
       },
       messages: {
         count: vi.fn().mockResolvedValue(1),
+      },
+      garment: {
+        findUnique: vi.fn().mockResolvedValue({ name: "Ao dai sen" }),
       },
     };
 
@@ -323,6 +473,9 @@ describe("ChatService", () => {
         id: "message-3",
         content: "A new question",
       },
+      topic: "product_advice",
+      garmentId: "garment-1",
+      garmentName: "Ao dai sen",
     });
   });
 });

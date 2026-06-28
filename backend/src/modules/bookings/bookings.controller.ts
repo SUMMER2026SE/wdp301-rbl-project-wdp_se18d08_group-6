@@ -96,6 +96,13 @@ export class BookingsController {
     return this.bookingsService.markPaid(id, dto, user.id);
   }
 
+  @Get("staff/:id")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("staff", "manager_owner", "admin")
+  findOneForStaff(@Param("id", ParseUUIDPipe) id: string) {
+    return this.bookingsService.findOneForStaff(id);
+  }
+
   @Get("staff/assets-needed")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("manager_owner", "admin")
