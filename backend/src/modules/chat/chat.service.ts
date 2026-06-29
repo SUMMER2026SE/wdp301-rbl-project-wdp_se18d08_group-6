@@ -1,5 +1,6 @@
-import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { ForbiddenException, Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
 import type { AppRole } from "@prisma/client";
+import { createClient } from "@supabase/supabase-js";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { AuthenticatedUser } from "../auth/auth-user";
 
@@ -452,10 +453,9 @@ export class ChatService {
   async getMessages(user: AuthenticatedUser, conversationId: string, before?: string, limit = 15) {
     await this.ensureCustomerOrStaffParticipant(user, conversationId);
 
-    // Default: load the most recent `limit` messages (newest last for display)
-    if (!before) {
-      const messages = await this.prisma.messages.findMany({
-        where: { conversation_id: conversationId },
+    const fetchMessages = async (where: Record<string, unknown>) => {
+      const msgs = await this.prisma.messages.findMany({
+        where,
         orderBy: { created_at: "desc" },
         take: limit,
         include: {
@@ -464,18 +464,18 @@ export class ChatService {
               id: true,
               email: true,
               role: true,
-              profile: {
-                select: { fullName: true },
-              },
+              profile: { select: { fullName: true } },
             },
           },
         },
       });
-      // Reverse so newest is last (ASC order for frontend display)
-      return messages.reverse();
+      return Promise.all(msgs.reverse().map((m) => this.attachSignedUrl(m)));
+    };
+
+    if (!before) {
+      return fetchMessages({ conversation_id: conversationId });
     }
 
-    // Load messages OLDER than the `before` message
     const beforeMessage = typeof this.prisma.messages.findUnique === "function"
       ? await this.prisma.messages.findUnique({
           where: { id: before },
@@ -490,28 +490,10 @@ export class ChatService {
       throw new NotFoundException("Cursor message not found.");
     }
 
-    const messages = await this.prisma.messages.findMany({
-      where: {
-        conversation_id: conversationId,
-        created_at: { lt: beforeMessage.created_at },
-      },
-      orderBy: { created_at: "desc" },
-      take: limit,
-      include: {
-        user_accounts: {
-          select: {
-            id: true,
-            email: true,
-            role: true,
-            profile: {
-              select: { fullName: true },
-            },
-          },
-        },
-      },
-    });
-    // Reverse so newest is last (ASC order for frontend display)
-    return messages.reverse();
+    return fetchMessages({
+      conversation_id: conversationId,
+      created_at: { lt: beforeMessage.created_at },
+    } as Record<string, unknown>);
   }
 
   async listConversations(user: AuthenticatedUser) {
@@ -529,6 +511,8 @@ export class ChatService {
             content: true,
             sender_id: true,
             created_at: true,
+            message_type: true,
+            metadata: true,
           },
         },
         user_accounts_conversations_customer_idTouser_accounts: {
@@ -674,6 +658,119 @@ export class ChatService {
         ],
       },
     });
+  }
+
+  async uploadFile(
+    userId: string,
+    role: AppRole,
+    conversationId: string,
+    file: Express.Multer.File,
+  ) {
+    let conversation;
+    if (role === "customer") {
+      conversation = await this.prisma.conversations.findFirst({
+        where: { id: conversationId, customer_id: userId },
+      });
+      if (!conversation) throw new ForbiddenException("You are not part of this conversation.");
+    } else {
+      conversation = await this.prisma.conversations.findUnique({ where: { id: conversationId } });
+      if (!conversation) throw new NotFoundException("Conversation not found.");
+    }
+
+    const bucket = process.env.SUPABASE_CHAT_BUCKET?.trim() || "chat-attachments";
+
+    const mimeType = file.mimetype;
+    const ext = mimeType.split("/").pop() || "bin";
+    const objectPath = `${conversationId}/${crypto.randomUUID()}.${ext}`;
+
+    const { error: uploadError } = await this.getSupabaseStorage()
+      .from(bucket)
+      .upload(objectPath, file.buffer, {
+        contentType: mimeType,
+        upsert: true,
+      });
+
+    if (uploadError) {
+      throw new Error(`Upload failed: ${uploadError.message}`);
+    }
+
+    const messageType = mimeType.startsWith("video/") ? "video" : "image";
+
+    const meta = {
+      bucket,
+      path: objectPath,
+      mimetype: mimeType,
+      size: file.size,
+    };
+
+    const now = new Date();
+    const message = await this.prisma.messages.create({
+      data: {
+        conversation_id: conversationId,
+        sender_id: userId,
+        content: "",
+        message_type: messageType,
+        metadata: meta,
+      },
+    });
+
+    const updateData: Record<string, unknown> = { updated_at: now };
+    if (role === "customer") {
+      updateData.customer_last_read_at = now;
+      if (conversation.status === "resolved") updateData.status = "open";
+    } else {
+      updateData.staff_last_read_at = now;
+    }
+    await this.prisma.conversations.update({
+      where: { id: conversationId },
+      data: updateData,
+    });
+
+    const fullMsg = await this.prisma.messages.findUnique({
+      where: { id: message.id },
+      include: {
+        user_accounts: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            profile: { select: { fullName: true } },
+          },
+        },
+      },
+    });
+    return fullMsg ? this.attachSignedUrl(fullMsg) : null;
+  }
+
+  private async attachSignedUrl<T extends { message_type?: string | null; metadata?: unknown }>(msg: T): Promise<T> {
+    if (msg.message_type === "image" || msg.message_type === "video") {
+      const meta = msg.metadata as Record<string, unknown> | null;
+      if (meta?.bucket && meta?.path) {
+        meta.url = await this.generateSignedUrl(meta.bucket as string, meta.path as string);
+      }
+    }
+    return msg;
+  }
+
+  private getSupabaseStorage() {
+    const baseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!baseUrl || !serviceRoleKey) throw new Error("Supabase not configured");
+    return createClient(baseUrl, serviceRoleKey).storage;
+  }
+
+  private async generateSignedUrl(bucket: string, path: string): Promise<string | null> {
+    try {
+      const { data, error } = await this.getSupabaseStorage()
+        .from(bucket)
+        .createSignedUrl(path, 60 * 60 * 24 * 7);
+      if (error) {
+        return null;
+      }
+      return data?.signedUrl ?? null;
+    } catch {
+      return null;
+    }
   }
 
   private isProductCardPayload(content: string): boolean {
