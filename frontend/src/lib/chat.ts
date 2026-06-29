@@ -1,4 +1,5 @@
 import { apiRequest } from "./api";
+import { readStoredAccessToken } from "./auth";
 import { getChatSocket } from "./socket";
 
 export type ChatMessage = {
@@ -9,6 +10,14 @@ export type ChatMessage = {
   created_at: string;
   deleted_at?: string | null;
   deleted_by?: string | null;
+  message_type?: string;
+  metadata?: {
+    bucket?: string;
+    path?: string;
+    mimetype?: string;
+    size?: number;
+    url?: string | null;
+  } | null;
   user_accounts?: {
     id: string;
     email: string;
@@ -191,4 +200,24 @@ export async function markConversationRead(conversationId: string) {
 
 export async function getConversationLockStatus(conversationId: string) {
   return apiRequest<ConversationLockStatus>(`/chat/conversations/${conversationId}/lock-status`);
+}
+
+export async function uploadChatFile(conversationId: string, file: File) {
+  const token = readStoredAccessToken();
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`${apiBase}/chat/conversations/${conversationId}/upload`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+
+  if (!res.ok) {
+    throw new Error("Upload failed");
+  }
+
+  return (await res.json()) as { success: boolean; data: ChatMessage };
 }

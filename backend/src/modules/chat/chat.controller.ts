@@ -1,4 +1,5 @@
-import { Body, Controller, DefaultValuePipe, ForbiddenException, Get, ParseIntPipe, ParseUUIDPipe, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, DefaultValuePipe, ForbiddenException, Get, ParseIntPipe, ParseUUIDPipe, Param, Patch, Post, Query, UploadedFile, UseGuards, UseInterceptors, MaxFileSizeValidator, ParseFilePipe, FileTypeValidator } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/auth-user";
@@ -118,6 +119,42 @@ export class ChatController {
       body.bookingId,
       body.topic,
     );
+
+    this.chatGateway.server?.to(conversationId).emit("message_received", {
+      conversationId,
+      message,
+    });
+
+    if (user.role === "customer") {
+      const conversation = await this.chatService.getConversationById(conversationId);
+      if (!conversation.staff_id && conversation.status === "open") {
+        this.chatGateway.server?.to("staff").emit("new_unassigned_message", {
+          conversationId,
+          customerName: user.fullName,
+          content: message?.content ?? "",
+        });
+      }
+    }
+
+    return ok(message);
+  }
+
+  @Post("conversations/:id/upload")
+  @UseInterceptors(FileInterceptor("file"))
+  async uploadFile(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id", ParseUUIDPipe) conversationId: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 50 * 1024 * 1024 }),
+          new FileTypeValidator({ fileType: "^(image/|video/)" }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    const message = await this.chatService.uploadFile(user.id, user.role, conversationId, file);
 
     this.chatGateway.server?.to(conversationId).emit("message_received", {
       conversationId,

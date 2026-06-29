@@ -2,7 +2,8 @@
 
 import { useRef, useEffect, useState, type RefObject } from "react";
 import type { ChatConversation, ChatMessage, ConversationLockStatus } from "@/lib/chat";
-import { isBookingCardContent, isProductCardContent, parseBookingCard, parseProductCard } from "@/lib/chat";
+import { isBookingCardContent, isProductCardContent, parseBookingCard, parseProductCard, uploadChatFile } from "@/lib/chat";
+import { Paperclip } from "lucide-react";
 import type { AuthSession } from "@/lib/auth";
 import { BookingCard } from "@/components/chat/booking-card";
 import { ProductCard } from "@/components/chat/product-card";
@@ -64,8 +65,40 @@ export function StaffChatWorkspace({
   messagesContainerRef,
   onDeleteMessage,
 }: StaffChatWorkspaceProps) {
+  // Cleanup toast timer on unmount
+  useEffect(() => {
+    return () => {
+      if (uploadToastTimerRef.current) clearTimeout(uploadToastTimerRef.current);
+    };
+  }, []);
+
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadToast, setUploadToast] = useState<string | null>(null);
+  const uploadToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showUploadToast(msg: string) {
+    setUploadToast(msg);
+    if (uploadToastTimerRef.current) clearTimeout(uploadToastTimerRef.current);
+    uploadToastTimerRef.current = setTimeout(() => setUploadToast(null), 3000);
+  }
+
+  async function handleUploadFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !selectedConversation) return;
+    setUploading(true);
+    try {
+      await uploadChatFile(selectedConversation.id, file);
+    } catch {
+      const maxMB = 50;
+      showUploadToast(`Không thể tải file lên. File phải là hình ảnh hoặc video, dung lượng tối đa ${maxMB}MB.`);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
 
   const assignedConversations = conversations.filter((c) => c.staffId === session?.user.id);
   const unassignedConversations = conversations.filter((c) => c.staffId === null && c.status === "open" && c.lastMessage?.sender_id === c.customerId && !c.lastMessage?.deleted_at);
@@ -225,7 +258,11 @@ export function StaffChatWorkspace({
                       ? `📋 Đơn #${parseBookingCard(conversation.lastMessage.content)?.code ?? ""}`
                       : isProductCardContent(conversation.lastMessage.content)
                         ? parseProductCard(conversation.lastMessage.content)?.name ?? "Sản phẩm"
-                        : conversation.lastMessage.content}
+                        : conversation.lastMessage.message_type === "image"
+                          ? "📷 Hình ảnh"
+                          : conversation.lastMessage.message_type === "video"
+                            ? "🎬 Video"
+                            : conversation.lastMessage.content}
                   </p>
                 )}
               </button>
@@ -378,6 +415,20 @@ export function StaffChatWorkspace({
                           </div>
                           {message.deleted_at ? (
                             <p className="text-sm italic text-stone-400">Tin nhắn đã bị xóa</p>
+                          ) : message.message_type === "image" && message.metadata?.url ? (
+                            <img
+                              src={message.metadata.url}
+                              alt=""
+                              className="rounded-xl border border-sand/70 shadow-sm max-w-[260px] h-auto object-cover"
+                              loading="lazy"
+                            />
+                          ) : message.message_type === "video" && message.metadata?.url ? (
+                            <video
+                              src={message.metadata.url}
+                              controls
+                              className="rounded-xl border border-sand/70 shadow-sm max-w-[260px] h-auto"
+                              preload="metadata"
+                            />
                           ) : isBookingCardContent(message.content) ? (
                             (() => {
                               const booking = parseBookingCard(message.content);
@@ -419,31 +470,58 @@ export function StaffChatWorkspace({
               )}
             </div>
 
+            {/* Upload Error Toast */}
+            {uploadToast && (
+              <div className="rounded-3xl bg-rose-600 px-4 py-3 text-sm text-white shadow-lg shrink-0">
+                {uploadToast}
+              </div>
+            )}
+
             <div className="flex flex-col gap-3 shrink-0">
-              <textarea
-                rows={4}
-                value={messageText}
-                onChange={(event) => {
-                  if (!isUnassignedPreview) {
-                    setMessageText(event.currentTarget.value);
-                  }
-                }}
-                onFocus={() => {
-                  if (!isUnassignedPreview) onTyping(true);
-                }}
-                onBlur={() => {
-                  if (!isUnassignedPreview) onTyping(false);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    onSendMessage();
-                  }
-                }}
-                disabled={isUnassignedPreview || !staffCanReply}
-                className="min-h-[140px] rounded-3xl border border-sand bg-white px-4 py-3 text-sm outline-none focus:border-lotus disabled:bg-stone-100 disabled:text-stone-400 disabled:cursor-not-allowed"
-                placeholder={isUnassignedPreview ? "Tiếp nhận cuộc trò chuyện để trả lời..." : "Nhập tin nhắn..."}
-              />
+              <div className="relative">
+                <textarea
+                  rows={4}
+                  value={messageText}
+                  onChange={(event) => {
+                    if (!isUnassignedPreview) {
+                      setMessageText(event.currentTarget.value);
+                    }
+                  }}
+                  onFocus={() => {
+                    if (!isUnassignedPreview) onTyping(true);
+                  }}
+                  onBlur={() => {
+                    if (!isUnassignedPreview) onTyping(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      onSendMessage();
+                    }
+                  }}
+                  disabled={isUnassignedPreview || !staffCanReply}
+                  className="min-h-[140px] w-full rounded-3xl border border-sand bg-white px-4 py-3 pb-10 text-sm outline-none focus:border-lotus disabled:bg-stone-100 disabled:text-stone-400 disabled:cursor-not-allowed"
+                  placeholder={isUnassignedPreview ? "Tiếp nhận cuộc trò chuyện để trả lời..." : "Nhập tin nhắn..."}
+                />
+                <div className="absolute bottom-2 left-3 flex items-center gap-1">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,video/*"
+                    className="hidden"
+                    onChange={handleUploadFile}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading || isUnassignedPreview || !staffCanReply}
+                    className="inline-flex items-center justify-center rounded-full w-8 h-8 border border-sand bg-white text-stone-400 transition hover:bg-sand/50 hover:text-stone-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    aria-label="Đính kèm file"
+                  >
+                    {uploading ? <span className="text-xs">⏳</span> : <Paperclip className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <button
                   type="button"
