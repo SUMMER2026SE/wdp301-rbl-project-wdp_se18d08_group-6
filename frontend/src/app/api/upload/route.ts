@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
+import { supabase } from '@/lib/supabase';
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,20 +17,55 @@ export async function POST(req: NextRequest) {
     const originalName = (file as File).name || 'image.png';
     const sanitizedName = originalName.replace(/[^a-zA-Z0-9.-]/g, '_');
     const filename = `${Date.now()}-${sanitizedName}`;
-    const uploadDir = join(process.cwd(), 'public', 'uploads');
+    
+    const bucketName = process.env.SUPABASE_ASSETS_BUCKET || 'products';
 
-    await mkdir(uploadDir, { recursive: true });
+    const { error: uploadError } = await supabase.storage
+      .from(bucketName)
+      .upload(filename, buffer, {
+        contentType: file.type || 'image/png',
+        upsert: true,
+      });
 
-    const filepath = join(uploadDir, filename);
-    await writeFile(filepath, buffer);
+    if (uploadError) {
+      console.error('Supabase upload error:', uploadError);
+      return NextResponse.json({ success: false, message: 'Supabase upload failed' }, { status: 500 });
+    }
 
-    // Return absolute URL so the backend API can resolve the image
-    const origin = req.nextUrl.origin;
-    const url = `${origin}/uploads/${filename}`;
+    const { data: publicUrlData } = supabase.storage
+      .from(bucketName)
+      .getPublicUrl(filename);
 
-    return NextResponse.json({ success: true, url });
+    return NextResponse.json({ success: true, url: publicUrlData.publicUrl });
   } catch (error) {
     console.error('Upload Error:', error);
     return NextResponse.json({ success: false, message: 'Upload failed' }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const { url } = await req.json();
+    if (!url || typeof url !== 'string') {
+      return NextResponse.json({ success: false, message: 'No URL provided' }, { status: 400 });
+    }
+
+    const bucketName = process.env.SUPABASE_ASSETS_BUCKET || 'products';
+    const prefix = `/storage/v1/object/public/${bucketName}/`;
+    const matchIndex = url.indexOf(prefix);
+    
+    if (matchIndex !== -1) {
+      const objectPath = url.substring(matchIndex + prefix.length);
+      const { error } = await supabase.storage.from(bucketName).remove([objectPath]);
+      if (error) {
+        console.error('Supabase delete error:', error);
+        return NextResponse.json({ success: false, message: 'Delete failed' }, { status: 500 });
+      }
+      return NextResponse.json({ success: true });
+    }
+    return NextResponse.json({ success: false, message: 'Invalid URL' }, { status: 400 });
+  } catch (error) {
+    console.error('Delete Error:', error);
+    return NextResponse.json({ success: false, message: 'Delete failed' }, { status: 500 });
   }
 }

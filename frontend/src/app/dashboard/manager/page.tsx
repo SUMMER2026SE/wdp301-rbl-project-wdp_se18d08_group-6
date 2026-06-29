@@ -263,7 +263,10 @@ export default function ManagerDashboardPage() {
       setGarmentModalOpen(false);
       setEditingGarment(null);
     } else {
-      setErrorMsg(res.message ?? "Kh\u00f4ng th\u1ec3 t\u1ea1o trang ph\u1ee5c.");
+      setErrorMsg(res.message ?? "Không thể tạo trang phục.");
+      for (const url of imagesToAdd) {
+        await fetch("/api/upload", { method: "DELETE", body: JSON.stringify({ url }) }).catch(() => {});
+      }
     }
     setSubmitting(false);
   }
@@ -279,13 +282,19 @@ export default function ManagerDashboardPage() {
     const res = await updateGarment(id, payload);
     if (res.success) {
       let imageOpsFailed = false;
-      for (const imageId of imageIdsToRemove) {
-        const removeRes = await removeGarmentImage(id, imageId);
-        if (!removeRes.success) imageOpsFailed = true;
-      }
       for (const imgUrl of imagesToAdd) {
         const addRes = await addGarmentImage(id, { imageUrl: imgUrl });
         if (!addRes.success) imageOpsFailed = true;
+      }
+      if (!imageOpsFailed) {
+        for (const imageId of imageIdsToRemove) {
+          const removeRes = await removeGarmentImage(id, imageId);
+          if (!removeRes.success) imageOpsFailed = true;
+        }
+      } else {
+        for (const url of imagesToAdd) {
+          await fetch("/api/upload", { method: "DELETE", body: JSON.stringify({ url }) }).catch(() => {});
+        }
       }
       // Re-fetch the updated garment to get its current images[]
       const fresh = await getGarmentById(id);
@@ -295,14 +304,17 @@ export default function ManagerDashboardPage() {
         await refreshGarments();
       }
       if (imageOpsFailed) {
-        setErrorMsg("Kh\u00f4ng th\u1ec3 c\u1eadp nh\u1eadt \u0111\u1ea7y \u0111\u1ee7 \u1ea3nh. Vui l\u00f2ng th\u1eed l\u1ea1i.");
+        setErrorMsg("Không thể cập nhật đầy đủ ảnh. Vui lòng thử lại.");
         setSubmitting(false);
         return;
       }
       setGarmentModalOpen(false);
       setEditingGarment(null);
     } else {
-      setErrorMsg(res.message ?? "Kh\u00f4ng th\u1ec3 c\u1eadp nh\u1eadt trang ph\u1ee5c.");
+      setErrorMsg(res.message ?? "Không thể cập nhật trang phục.");
+      for (const url of imagesToAdd) {
+        await fetch("/api/upload", { method: "DELETE", body: JSON.stringify({ url }) }).catch(() => {});
+      }
     }
     setSubmitting(false);
   }
@@ -1373,6 +1385,19 @@ function GarmentFormModal({
   const [uploadingImage, setUploadingImage] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  async function handleClose() {
+    for (const url of pendingImages) {
+      await fetch("/api/upload", { method: "DELETE", body: JSON.stringify({ url }) }).catch(() => {});
+    }
+    onClose();
+  }
+
+  function handleRemovePendingImage(index: number) {
+    const urlToRemove = pendingImages[index];
+    setPendingImages((prev) => prev.filter((_, idx) => idx !== index));
+    fetch("/api/upload", { method: "DELETE", body: JSON.stringify({ url: urlToRemove }) }).catch(() => {});
+  }
+
   function handleCurrencyChange(e: React.ChangeEvent<HTMLInputElement>, setter: (v: string) => void) {
     const numeric = e.target.value.replace(/\D/g, "");
     if (!numeric) return setter("");
@@ -1448,7 +1473,7 @@ function GarmentFormModal({
       <form onSubmit={handleSubmit} className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-sand bg-white p-6 shadow-2xl">
         <div className="mb-6 flex items-center justify-between">
           <h3 className="font-display text-2xl text-ink">{garment ? "Sửa trang phục" : "Thêm trang phục mới"}</h3>
-          <button type="button" onClick={onClose} className="text-stone-500 hover:text-lotus">
+          <button type="button" onClick={handleClose} className="text-stone-500 hover:text-lotus">
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
@@ -1593,7 +1618,7 @@ function GarmentFormModal({
                     <img src={imgUrl} alt="Pending" className="h-24 w-full object-cover opacity-90" />
                     <button
                       type="button"
-                      onClick={() => setPendingImages((prev) => prev.filter((_, idx) => idx !== i))}
+                      onClick={() => handleRemovePendingImage(i)}
                       className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80"
                       aria-label="Xóa ảnh mới"
                     >
@@ -1615,7 +1640,7 @@ function GarmentFormModal({
         </div>
 
         <div className="mt-6 flex justify-end gap-3">
-          <button type="button" onClick={onClose} className="rounded-lg border border-sand px-5 py-2.5 text-sm font-semibold text-stone-600 hover:bg-stone-50">Hủy</button>
+          <button type="button" onClick={handleClose} className="rounded-lg border border-sand px-5 py-2.5 text-sm font-semibold text-stone-600 hover:bg-stone-50">Hủy</button>
           <button type="submit" disabled={submitting} className="rounded-lg bg-lotus px-6 py-2.5 text-sm font-semibold text-white hover:bg-oxblood disabled:opacity-50">
             {submitting ? "Đang lưu..." : garment ? "Lưu thay đổi" : "Tạo trang phục"}
           </button>

@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { createClient } from "@supabase/supabase-js";
 import { ok } from "../../common/api-response";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { CreateGarmentDto } from "./dto/create-garment.dto";
@@ -147,6 +148,37 @@ export class GarmentsService {
 
   // ── Manager / Owner: Delete ────────────────────────────────────────────────
 
+  private async deleteFromSupabase(imageUrls: string[]) {
+    const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const bucket = process.env.SUPABASE_ASSETS_BUCKET?.trim() || "products";
+
+    if (!supabaseUrl || !serviceRoleKey || !imageUrls.length) return;
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false },
+    });
+
+    const pathsToRemove: string[] = [];
+    const prefix = `/storage/v1/object/public/${bucket}/`;
+
+    for (const url of imageUrls) {
+      if (!url.startsWith(supabaseUrl)) continue;
+      const matchIndex = url.indexOf(prefix);
+      if (matchIndex !== -1) {
+        const objectPath = url.substring(matchIndex + prefix.length);
+        if (objectPath) pathsToRemove.push(objectPath);
+      }
+    }
+
+    if (pathsToRemove.length > 0) {
+      const { error } = await supabase.storage.from(bucket).remove(pathsToRemove);
+      if (error) {
+        console.error("[GarmentsService] Failed to delete from Supabase:", error);
+      }
+    }
+  }
+
   async remove(id: string) {
     const garment = await this.prisma.garment.findFirst({
       where: { id, deletedAt: null },
@@ -201,6 +233,9 @@ export class GarmentsService {
     if (!image) throw new NotFoundException("Garment image not found.");
 
     await this.prisma.garmentImage.delete({ where: { id: imageId } });
+
+    await this.deleteFromSupabase([image.imageUrl]);
+
     return ok({ id: imageId, deleted: true });
   }
 
