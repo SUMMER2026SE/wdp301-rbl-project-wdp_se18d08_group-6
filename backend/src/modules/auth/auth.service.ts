@@ -246,9 +246,9 @@ export class AuthService {
   async loginWithGoogle(input: GoogleLoginInput) {
     const googleToken = await this.verifyGoogleIdToken(input.idToken);
     const normalizedEmail = googleToken.email!.trim().toLowerCase();
-    const user = await this.findOrProvisionGoogleUser(googleToken, normalizedEmail);
+    const { user, isNewUser } = await this.findOrProvisionGoogleUser(googleToken, normalizedEmail);
 
-    return ok(await this.buildLoginSession(user));
+    return ok({ ...(await this.buildLoginSession(user)), isNewUser });
   }
 
   async me(userId: string) {
@@ -445,7 +445,7 @@ export class AuthService {
     if (!existingUser) {
       const passwordHash = await bcrypt.hash(randomUUID(), 12);
 
-      return this.prisma.userAccount.create({
+      const user = await this.prisma.userAccount.create({
         data: {
           email,
           passwordHash,
@@ -460,6 +460,7 @@ export class AuthService {
         },
         include: { profile: true },
       });
+      return { user, isNewUser: true };
     }
 
     if (!existingUser.isActive) {
@@ -471,10 +472,10 @@ export class AuthService {
     const shouldSyncProfile = displayName.length > 0 && !existingFullName;
 
     if (!shouldVerifyEmail && !shouldSyncProfile) {
-      return existingUser;
+      return { user: existingUser, isNewUser: false };
     }
 
-    return this.prisma.userAccount.update({
+    const updatedUser = await this.prisma.userAccount.update({
       where: { id: existingUser.id },
       data: {
         ...(shouldVerifyEmail
@@ -501,6 +502,7 @@ export class AuthService {
       },
       include: { profile: true },
     });
+    return { user: updatedUser, isNewUser: false };
   }
 
   private async buildLoginSession(user: UserWithProfile) {
