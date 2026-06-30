@@ -1,17 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { FormEvent, Suspense, useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
+import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 import { apiRequest } from "@/lib/api";
-import { resolveDashboardPath } from "@/lib/auth";
+import { resolveDashboardPath, toAuthenticatedUser, type AppRole } from "@/lib/auth";
 import { PasswordVisibilityToggle } from "@/components/auth/password-visibility-toggle";
 
 type RegisterResult = {
-  id: string;
   email: string;
-  role: string;
+  requiresVerification?: boolean;
+};
+
+type GoogleLoginResult = {
+  accessToken: string;
+  isNewUser: boolean;
+  user: {
+    id: string;
+    email: string;
+    role: AppRole;
+  };
 };
 
 type PasswordStrength = {
@@ -49,9 +59,11 @@ const benefitItems = [
   { icon: "magic_button", label: "Thử đồ ảo AI" },
 ];
 
-export default function RegisterPage() {
+function RegisterPageContent() {
   const router = useRouter();
-  const { session, status } = useAuth();
+  const searchParams = useSearchParams();
+  const { session, status, signIn } = useAuth();
+
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -59,11 +71,15 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [passwordTouched, setPasswordTouched] = useState(false);
 
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() ?? "";
   const strength = checkPasswordStrength(password);
   const passwordMismatch = confirmPassword.length > 0 && password !== confirmPassword;
+  const isBusy = loading || googleLoading;
 
   // Nếu đã đăng nhập rồi thì redirect về dashboard
   useEffect(() => {
@@ -72,9 +88,49 @@ export default function RegisterPage() {
     }
   }, [router, session, status]);
 
+  const handleGoogleCredential = useCallback(
+    async (credential: string) => {
+      setError(null);
+      setNotice(null);
+      setGoogleLoading(true);
+
+      try {
+        const result = await apiRequest<GoogleLoginResult>("/auth/google", {
+          method: "POST",
+          body: JSON.stringify({ idToken: credential }),
+        });
+
+        if (!result.success || !result.data) {
+          setError(result.message ?? "Không thể đăng nhập bằng Google.");
+          return;
+        }
+
+        const { accessToken, user, isNewUser } = result.data;
+
+        if (!isNewUser) {
+          setNotice("Tài khoản Google của bạn đã tồn tại. Đang tự động đăng nhập...");
+        }
+
+        signIn({ accessToken, user: toAuthenticatedUser(user), persist: true });
+        const next = searchParams.get("next");
+        router.push(
+          next && next.startsWith("/") && !next.startsWith("//")
+            ? next
+            : resolveDashboardPath(user.role),
+        );
+      } catch {
+        setError("Không thể kết nối đến hệ thống đăng nhập.");
+      } finally {
+        setGoogleLoading(false);
+      }
+    },
+    [router, searchParams, signIn],
+  );
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setNotice(null);
 
     const trimmedName = fullName.trim();
     const trimmedEmail = email.trim().toLowerCase();
@@ -146,6 +202,33 @@ export default function RegisterPage() {
             </p>
           </div>
 
+          {/* Google Sign-In */}
+          {googleClientId ? (
+            <div className="space-y-3">
+              <GoogleSignInButton
+                clientId={googleClientId}
+                disabled={isBusy}
+                onCredential={handleGoogleCredential}
+              />
+              {googleLoading && (
+                <p className="text-center text-sm text-slate-500">Đang xử lý đăng nhập Google...</p>
+              )}
+
+              <div className="relative flex items-center gap-4 py-1">
+                <div className="h-px flex-1 bg-sand/60" />
+                <span className="text-xs font-medium uppercase tracking-widest text-[#5a403c]/60">hoặc</span>
+                <div className="h-px flex-1 bg-sand/60" />
+              </div>
+            </div>
+          ) : null}
+
+          {/* Notice (existing account detected) */}
+          {notice ? (
+            <div className="rounded-lg border border-jade/30 bg-jade/10 px-4 py-3 text-center text-sm text-jade">
+              {notice}
+            </div>
+          ) : null}
+
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div className="space-y-4">
               {/* Họ và tên - float label đẹp */}
@@ -159,6 +242,7 @@ export default function RegisterPage() {
                   type="text"
                   value={fullName}
                   onChange={(event) => setFullName(event.target.value)}
+                  disabled={isBusy}
                 />
                 <label
                   className="absolute left-0 top-3 cursor-text text-sm text-[#5a403c] transition-all duration-200 peer-focus:-top-3.5 peer-focus:text-[11px] peer-focus:text-antique peer-[:not(:placeholder-shown)]:-top-3.5 peer-[:not(:placeholder-shown)]:text-[11px]"
@@ -179,6 +263,7 @@ export default function RegisterPage() {
                   type="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
+                  disabled={isBusy}
                 />
                 <label
                   className="absolute left-0 top-3 cursor-text text-sm text-[#5a403c] transition-all duration-200 peer-focus:-top-3.5 peer-focus:text-[11px] peer-focus:text-antique peer-[:not(:placeholder-shown)]:-top-3.5 peer-[:not(:placeholder-shown)]:text-[11px]"
@@ -200,6 +285,7 @@ export default function RegisterPage() {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   onBlur={() => setPasswordTouched(true)}
+                  disabled={isBusy}
                 />
                 <PasswordVisibilityToggle
                   visible={showPassword}
@@ -236,6 +322,7 @@ export default function RegisterPage() {
                   type={showConfirmPassword ? "text" : "password"}
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
+                  disabled={isBusy}
                 />
                 <PasswordVisibilityToggle
                   visible={showConfirmPassword}
@@ -262,7 +349,7 @@ export default function RegisterPage() {
             <button
               className="w-full rounded-sm bg-lotus py-4 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-[#920703] disabled:cursor-not-allowed disabled:opacity-60"
               type="submit"
-              disabled={loading}
+              disabled={isBusy}
             >
               {loading ? "Đang tạo tài khoản..." : "Đăng ký ngay"}
             </button>
@@ -291,5 +378,13 @@ export default function RegisterPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#fff8f6]" />}>
+      <RegisterPageContent />
+    </Suspense>
   );
 }

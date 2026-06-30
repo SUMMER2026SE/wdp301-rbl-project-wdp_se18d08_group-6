@@ -282,6 +282,7 @@ describe("AuthService", () => {
       success: true,
       data: {
         accessToken: "google-access-token",
+        isNewUser: true,
         user: {
           id: "user-google-1",
           email: "google.customer@example.com",
@@ -352,6 +353,7 @@ describe("AuthService", () => {
       success: true,
       data: {
         accessToken: "google-access-token",
+        isNewUser: false,
         user: {
           id: "user-2",
           email: "customer@example.com",
