@@ -14,11 +14,7 @@ export class AssetsService {
     const assets = await this.prisma.garmentAsset.findMany({
       where: statusFilter ? { status: statusFilter as any } : undefined,
       orderBy: { assetCode: "asc" },
-<<<<<<< HEAD
       include: { garment: { select: { name: true } }, garment_sizes: { select: { size_label: true } } },
-=======
-      include: { garment: { select: { name: true, sizeLabel: true } } },
->>>>>>> 6fb0177 (role manager)
     });
 
     return ok(
@@ -26,11 +22,7 @@ export class AssetsService {
         id: a.id,
         garmentId: a.garmentId,
         garmentName: a.garment.name,
-<<<<<<< HEAD
         sizeLabel: a.garment_sizes?.size_label ?? null,
-=======
-        sizeLabel: a.garment.sizeLabel,
->>>>>>> 6fb0177 (role manager)
         assetCode: a.assetCode,
         status: a.status,
         conditionNote: a.conditionNote,
@@ -66,22 +58,14 @@ export class AssetsService {
         purchaseCost: dto.purchaseCost ?? null,
         status: "available",
       },
-<<<<<<< HEAD
       include: { garment: { select: { name: true } }, garment_sizes: { select: { size_label: true } } },
-=======
-      include: { garment: { select: { name: true, sizeLabel: true } } },
->>>>>>> 6fb0177 (role manager)
     });
 
     return ok({
       id: asset.id,
       garmentId: asset.garmentId,
       garmentName: asset.garment.name,
-<<<<<<< HEAD
         sizeLabel: asset.garment_sizes?.size_label ?? null,
-=======
-      sizeLabel: asset.garment.sizeLabel,
->>>>>>> 6fb0177 (role manager)
       assetCode: asset.assetCode,
       status: asset.status,
       conditionNote: asset.conditionNote,
@@ -100,11 +84,7 @@ export class AssetsService {
     const assets = await this.prisma.garmentAsset.findMany({
       where: { garmentId },
       orderBy: { assetCode: "asc" },
-<<<<<<< HEAD
       include: { garment: { select: { name: true } }, garment_sizes: { select: { size_label: true } } },
-=======
-      include: { garment: { select: { name: true, sizeLabel: true } } },
->>>>>>> 6fb0177 (role manager)
     });
 
     return ok(
@@ -112,11 +92,7 @@ export class AssetsService {
         id: a.id,
         garmentId: a.garmentId,
         garmentName: a.garment.name,
-<<<<<<< HEAD
         sizeLabel: a.garment_sizes?.size_label ?? null,
-=======
-        sizeLabel: a.garment.sizeLabel,
->>>>>>> 6fb0177 (role manager)
         assetCode: a.assetCode,
         status: a.status,
         conditionNote: a.conditionNote,
@@ -130,11 +106,7 @@ export class AssetsService {
   async findOne(id: string) {
     const asset = await this.prisma.garmentAsset.findUnique({
       where: { id },
-<<<<<<< HEAD
       include: { garment: { select: { name: true } }, garment_sizes: { select: { size_label: true, daily_price: true } } },
-=======
-      include: { garment: { select: { name: true, sizeLabel: true, dailyPrice: true } } },
->>>>>>> 6fb0177 (role manager)
     });
     if (!asset) throw new NotFoundException("Garment asset not found.");
 
@@ -142,13 +114,8 @@ export class AssetsService {
       id: asset.id,
       garmentId: asset.garmentId,
       garmentName: asset.garment.name,
-<<<<<<< HEAD
         sizeLabel: asset.garment_sizes?.size_label ?? null,
       dailyPrice: asset.garment_sizes?.daily_price ? Number(asset.garment_sizes.daily_price) : 0,
-=======
-      sizeLabel: asset.garment.sizeLabel,
-      dailyPrice: Number(asset.garment.dailyPrice),
->>>>>>> 6fb0177 (role manager)
       assetCode: asset.assetCode,
       status: asset.status,
       conditionNote: asset.conditionNote,
@@ -206,11 +173,7 @@ export class AssetsService {
         status: dto.status as any,
         ...(dto.note ? { conditionNote: dto.note } : {}),
       },
-<<<<<<< HEAD
       include: { garment: { select: { name: true } }, garment_sizes: { select: { size_label: true } } },
-=======
-      include: { garment: { select: { name: true, sizeLabel: true } } },
->>>>>>> 6fb0177 (role manager)
     });
 
     return ok({

@@ -408,7 +408,7 @@ describe("AuthService", () => {
     ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
-  it("sends a reset link for forgot-password requests", async () => {
+  it("sends a reset OTP for forgot-password requests", async () => {
     const prisma = {
       userAccount: {
         findUnique: vi.fn().mockResolvedValue({
@@ -416,8 +416,12 @@ describe("AuthService", () => {
           email: "customer@example.com",
         }),
       },
+      emailVerificationCode: {
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        create: vi.fn().mockResolvedValue({ id: "code-1" }),
+      },
     };
-    const jwtService = { signAsync: vi.fn().mockResolvedValue("reset-token") };
+    const jwtService = { signAsync: vi.fn() };
     const logger = { log: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const service = new AuthService(prisma as never, jwtService as never, notificationService as never);
     (service as unknown as {
@@ -427,26 +431,16 @@ describe("AuthService", () => {
         error: (...args: unknown[]) => void;
       };
     }).logger = logger;
-    process.env.SMTP_EMAIL = "mailer@example.com";
-    process.env.SMTP_PASSWORD = "mailer-password";
 
     const result = await service.forgotPassword({
       email: "Customer@Example.com",
     });
 
-    expect(jwtService.signAsync).toHaveBeenCalledWith(
-      {
-        sub: "user-1",
-        email: "customer@example.com",
-        tokenType: "password-reset",
-      },
-      { expiresIn: "1h" },
-    );
-    expect(logger.log).toHaveBeenCalledWith(expect.stringContaining("DEV password reset link for customer@example.com"));
+    expect(prisma.emailVerificationCode.create).toHaveBeenCalledOnce();
     expect(result).toEqual({
       success: true,
       data: { email: "customer@example.com" },
-      message: "Nếu email tồn tại trong hệ thống, chúng tôi đã gửi liên kết đặt lại mật khẩu.",
+      message: "N\u1ebfu email t\u1ed3n t\u1ea1i trong h\u1ec7 th\u1ed1ng, ch\u00fang t\u00f4i \u0111\u00e3 g\u1eedi m\u00e3 OTP \u0111\u1eb7t l\u1ea1i m\u1eadt kh\u1ea9u.",
     });
   });
 
@@ -463,81 +457,81 @@ describe("AuthService", () => {
       email: "missing@example.com",
     });
 
-    expect(jwtService.signAsync).not.toHaveBeenCalled();
     expect(result).toEqual({
       success: true,
       data: { email: "missing@example.com" },
-      message: "Nếu email tồn tại trong hệ thống, chúng tôi đã gửi liên kết đặt lại mật khẩu.",
+      message: "N\u1ebfu email t\u1ed3n t\u1ea1i trong h\u1ec7 th\u1ed1ng, ch\u00fang t\u00f4i \u0111\u00e3 g\u1eedi m\u00e3 OTP \u0111\u1eb7t l\u1ea1i m\u1eadt kh\u1ea9u.",
     });
   });
 
-  it("resets the password with a valid reset token", async () => {
+  it("resets the password with a valid reset OTP", async () => {
     const oldUpdatedAt = new Date("2024-01-01T00:00:00.000Z");
     const prisma = {
       userAccount: {
         findUnique: vi.fn().mockResolvedValue({
           id: "user-1",
           email: "customer@example.com",
-          passwordHash: await bcrypt.hash("old-password", 12),
+          passwordHash: "old-password-hash",
           updatedAt: oldUpdatedAt,
         }),
         update: vi.fn().mockResolvedValue({}),
       },
+      emailVerificationCode: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "code-1",
+          userId: "user-1",
+          code: "123456",
+          used: false,
+          expiresAt: new Date(Date.now() + 100000),
+        }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      $transaction: vi.fn().mockImplementation(async (queries) => {
+        // simulate transaction
+        return Promise.all(queries);
+      }),
     };
     const jwtService = {
       signAsync: vi.fn(),
-      verifyAsync: vi.fn().mockResolvedValue({
-        sub: "user-1",
-        email: "customer@example.com",
-        tokenType: "password-reset",
-        iat: Math.floor(oldUpdatedAt.getTime() / 1000) + 60,
-      }),
+      verifyAsync: vi.fn(),
     };
     const service = new AuthService(prisma as never, jwtService as never, notificationService as never);
 
     const result = await service.resetPassword({
-      token: "reset-token",
+      email: "customer@example.com",
+      otp: "123456",
       password: "NewPassword123",
     });
 
-    expect(jwtService.verifyAsync).toHaveBeenCalledWith("reset-token");
-    expect(prisma.userAccount.update).toHaveBeenCalledOnce();
-    const updateCall = prisma.userAccount.update.mock.calls[0]?.[0];
-    expect(updateCall.data.updatedAt).toEqual(expect.any(Date));
-    expect(updateCall.data.passwordHash).not.toBe("NewPassword123");
-    await expect(bcrypt.compare("NewPassword123", updateCall.data.passwordHash)).resolves.toBe(true);
+    expect(prisma.$transaction).toHaveBeenCalledOnce();
     expect(result).toEqual({
       success: true,
       data: { email: "customer@example.com" },
-      message: "Mật khẩu đã được đặt lại thành công. Bạn có thể đăng nhập lại.",
+      message: "M\u1eadt kh\u1ea9u \u0111\u00e3 \u0111\u01b0\u1ee3c \u0111\u1eb7t l\u1ea1i th\u00e0nh c\u00f4ng. B\u1ea1n c\u00f3 th\u1ec3 \u0111\u0103ng nh\u1eadp l\u1ea1i.",
     });
   });
 
-  it("rejects reset tokens issued before the latest account update", async () => {
+  it("rejects invalid reset OTPs", async () => {
     const prisma = {
       userAccount: {
         findUnique: vi.fn().mockResolvedValue({
           id: "user-1",
           email: "customer@example.com",
-          updatedAt: new Date("2024-01-01T00:10:00.000Z"),
         }),
-        update: vi.fn(),
+      },
+      emailVerificationCode: {
+        findFirst: vi.fn().mockResolvedValue(null),
       },
     };
     const jwtService = {
       signAsync: vi.fn(),
-      verifyAsync: vi.fn().mockResolvedValue({
-        sub: "user-1",
-        email: "customer@example.com",
-        tokenType: "password-reset",
-        iat: Math.floor(new Date("2024-01-01T00:00:00.000Z").getTime() / 1000),
-      }),
     };
     const service = new AuthService(prisma as never, jwtService as never, notificationService as never);
 
     await expect(
       service.resetPassword({
-        token: "stale-reset-token",
+        email: "customer@example.com",
+        otp: "wrong-otp",
         password: "NewPassword123",
       }),
     ).rejects.toBeInstanceOf(BadRequestException);

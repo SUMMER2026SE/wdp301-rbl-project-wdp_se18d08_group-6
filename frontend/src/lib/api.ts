@@ -47,6 +47,22 @@ export async function apiRequest<T>(path: string, init?: ApiRequestOptions): Pro
   return payload ?? { success: true };
 }
 
+// ---------- Auth API functions ----------
+
+export async function forgotPassword(email: string) {
+  return apiRequest<{ email: string }>("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function resetPassword(email: string, otp: string, password: string) {
+  return apiRequest<{ email: string }>("/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ email, otp, password }),
+  });
+}
+
 // ---------- Garment types ----------
 
 export type GarmentSummary = {

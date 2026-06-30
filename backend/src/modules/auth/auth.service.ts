@@ -35,15 +35,9 @@ type ForgotPasswordInput = {
 };
 
 type ResetPasswordInput = {
-  token: string;
+  email: string;
+  otp: string;
   password: string;
-};
-
-type ResetPasswordTokenPayload = {
-  sub?: string;
-  email?: string;
-  tokenType?: "access" | "password-reset";
-  iat?: number;
 };
 
 type GoogleJwtHeader = {
@@ -174,40 +168,50 @@ export class AuthService {
     const user = await this.prisma.userAccount.findUnique({ where: { email: normalizedEmail } });
 
     if (user) {
-      await this.sendPasswordResetLink(user.id, normalizedEmail);
+      await this.sendPasswordResetOtp(user.id, normalizedEmail);
     }
 
     return ok(
       { email: normalizedEmail },
-      "Nếu email tồn tại trong hệ thống, chúng tôi đã gửi liên kết đặt lại mật khẩu.",
+      "Nếu email tồn tại trong hệ thống, chúng tôi đã gửi mã OTP đặt lại mật khẩu.",
     );
   }
 
   async resetPassword(input: ResetPasswordInput) {
-    const payload = await this.verifyPasswordResetToken(input.token);
+    const normalizedEmail = input.email.trim().toLowerCase();
+    const user = await this.prisma.userAccount.findUnique({ where: { email: normalizedEmail } });
 
-    if (!payload.sub || !payload.email || payload.tokenType !== "password-reset") {
-      throw new BadRequestException("Mã đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.");
+    if (!user) {
+      throw new BadRequestException("Mã OTP không hợp lệ hoặc đã hết hạn.");
     }
 
-    const user = await this.prisma.userAccount.findUnique({ where: { id: payload.sub } });
+    const record = await this.prisma.emailVerificationCode.findFirst({
+      where: {
+        userId: user.id,
+        code: input.otp,
+        used: false,
+        expiresAt: { gt: new Date() },
+      },
+    });
 
-    if (!user || user.email !== payload.email) {
-      throw new BadRequestException("Mã đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.");
-    }
-
-    if (typeof payload.iat !== "number" || payload.iat * 1000 < user.updatedAt.getTime()) {
-      throw new BadRequestException("Mã đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.");
+    if (!record) {
+      throw new BadRequestException("Mã OTP không hợp lệ hoặc đã hết hạn.");
     }
 
     const passwordHash = await bcrypt.hash(input.password, 12);
-    await this.prisma.userAccount.update({
-      where: { id: user.id },
-      data: {
-        passwordHash,
-        updatedAt: new Date(),
-      },
-    });
+    await this.prisma.$transaction([
+      this.prisma.userAccount.update({
+        where: { id: user.id },
+        data: {
+          passwordHash,
+          updatedAt: new Date(),
+        },
+      }),
+      this.prisma.emailVerificationCode.update({
+        where: { id: record.id },
+        data: { used: true },
+      }),
+    ]);
 
     return ok({ email: user.email }, "Mật khẩu đã được đặt lại thành công. Bạn có thể đăng nhập lại.");
   }
@@ -263,20 +267,20 @@ export class AuthService {
   // ─── Private helpers ──────────────────────────────────────────────────────
 
   private async sendVerificationCode(userId: string, email: string) {
-    // V� hi?u ho� t?t c? OTP cu chua d�ng c?a user n�y
+    // V� hi?u ho� t?t c? OTP cu chua d�ng c?a user n�y
     await this.prisma.emailVerificationCode.updateMany({
       where: { userId, used: false },
       data: { used: true },
     });
 
-    // T?o m� OTP 6 s?
+    // T?o m� OTP 6 s?
     const code = Math.floor(100_000 + Math.random() * 900_000).toString();
 
     if (process.env.NODE_ENV !== "production") {
       this.logger.log(`DEV OTP for ${email}: ${code}`);
     }
 
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 ph�t
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 ph�t
 
     await this.prisma.emailVerificationCode.create({
       data: { userId, code, expiresAt },
@@ -294,56 +298,50 @@ export class AuthService {
     }
 
     if (result.status === "sent") {
-      this.logger.log(`�� g?i OTP qua email d?n: ${email}`);
+      this.logger.log(`�� g?i OTP qua email d?n: ${email}`);
       return;
     }
 
     this.logger.error(`L?i khi g?i email d?n ${email}:`, result.reason ?? "unknown error");
   }
 
-  private async sendPasswordResetLink(userId: string, email: string) {
-    const resetToken = await this.jwtService.signAsync(
-      {
-        sub: userId,
-        email,
-        tokenType: "password-reset",
-      },
-      { expiresIn: "1h" },
-    );
+  private async sendPasswordResetOtp(userId: string, email: string) {
+    await this.prisma.emailVerificationCode.updateMany({
+      where: { userId, used: false },
+      data: { used: true },
+    });
 
-    const frontendUrl = (process.env.FRONTEND_URL ?? "http://localhost:3000").replace(/\/$/, "");
-    const resetUrl = `${frontendUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
+    const code = Math.floor(100_000 + Math.random() * 900_000).toString();
 
     if (process.env.NODE_ENV !== "production") {
-      this.logger.log(`DEV password reset link for ${email}: ${resetUrl}`);
+      this.logger.log(`DEV password reset OTP for ${email}: ${code}`);
     }
+
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    await this.prisma.emailVerificationCode.create({
+      data: { userId, code, expiresAt },
+    });
 
     const result = await this.notificationsService.sendPasswordResetEmail({
       email,
-      resetUrl,
+      code,
+      expiresIn: 10,
     });
 
     if (result.status === "skipped") {
       this.logger.warn(
-        `SMTP not configured. Skipping email delivery for ${email}. Use the backend terminal reset link above.`,
+        `SMTP not configured. Skipping email delivery for ${email}. Use the backend terminal OTP above.`,
       );
       return;
     }
 
     if (result.status === "sent") {
-      this.logger.log(`�� g?i email d?t l?i m?t kh?u d?n: ${email}`);
+      this.logger.log(`Đã gửi email OTP đặt lại mật khẩu đến: ${email}`);
       return;
     }
 
-    this.logger.error(`L?i khi g?i email d?t l?i m?t kh?u d?n ${email}:`, result.reason ?? "unknown error");
-  }
-
-  private async verifyPasswordResetToken(token: string) {
-    try {
-      return await this.jwtService.verifyAsync<ResetPasswordTokenPayload>(token);
-    } catch {
-      throw new BadRequestException("Mã đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.");
-    }
+    this.logger.error(`Lỗi khi gửi email OTP đặt lại mật khẩu đến ${email}:`, result.reason ?? "unknown error");
   }
 
   private async verifyGoogleIdToken(idToken: string) {
