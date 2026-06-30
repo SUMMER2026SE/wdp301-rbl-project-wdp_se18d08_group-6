@@ -64,7 +64,7 @@ const DEFAULT_TEMPLATES: NotificationTemplateMap = {
   "auth.password_reset": {
     subject: "Đặt lại mật khẩu Cổ Phục ERP",
     title: "Đặt lại mật khẩu",
-    body: "Xin chào {{recipientName}},\nBạn vừa yêu cầu đặt lại mật khẩu. Hãy mở liên kết này: {{resetUrl}}",
+    body: "Xin chào {{recipientName}},\nMã OTP đặt lại mật khẩu của bạn là {{code}}. Mã này hết hạn sau {{expiresIn}} phút.",
     channels: ["email"],
     enabled: true,
   },
@@ -367,13 +367,14 @@ export class NotificationsService {
     });
   }
 
-  async sendPasswordResetEmail(input: { email: string; recipientName?: string | null; resetUrl: string; }) {
+  async sendPasswordResetEmail(input: { email: string; recipientName?: string | null; code: string; expiresIn: number; }) {
     return this.sendTemplateEmail({
       email: input.email,
       templateKey: "auth.password_reset",
       data: {
         recipientName: input.recipientName ?? input.email,
-        resetUrl: input.resetUrl,
+        code: input.code,
+        expiresIn: input.expiresIn,
       },
     });
   }

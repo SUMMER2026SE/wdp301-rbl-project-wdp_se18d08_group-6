@@ -35,7 +35,7 @@ describe("Header", () => {
     expect(screen.getByRole("link", { name: "Tài khoản" })).toHaveAttribute("href", "/login");
   });
 
-  it.each(["/login", "/register", "/verify-email", "/forgot-password", "/reset-password"])('hides the header on auth route %s', (pathname) => {
+  it.each(["/login", "/register", "/verify-email", "/forgot-password"])('hides the header on auth route %s', (pathname) => {
     usePathnameMock.mockReturnValue(pathname);
     const { container } = render(createElement(Header));
 
