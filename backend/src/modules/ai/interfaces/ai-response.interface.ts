@@ -6,6 +6,7 @@ export interface AdvisorProduct {
   depositAmount: number;
   size: string;
   reason: string;
+  inStock: boolean;
 }
 
 export interface AdvisorTopic {

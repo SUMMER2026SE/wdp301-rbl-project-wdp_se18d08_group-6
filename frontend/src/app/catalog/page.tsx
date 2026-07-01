@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { PublicAtelierNav } from "@/components/heritage/ui";
 import { getGarmentsGrouped, type GarmentGrouped } from "@/lib/api";
 import { addToCart, cartCount, removeFromCart, getCart } from "@/lib/cart";
+import { getProductAdvisor, type AIAdvisorTopic, type AIAdvisorProduct } from "@/lib/chat";
 
 function formatVND(amount: number) {
   return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
@@ -18,6 +19,10 @@ export default function CatalogPage() {
   const [selectedSizes, setSelectedSizes] = useState<Record<string, string>>({});
   const [addedMsg, setAddedMsg] = useState<string | null>(null);
   const [showCart, setShowCart] = useState(false);
+  const [aiQuery, setAiQuery] = useState("");
+  const [aiTopics, setAiTopics] = useState<AIAdvisorTopic[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   useEffect(() => {
     function fetchGroups() {
@@ -95,6 +100,44 @@ export default function CatalogPage() {
   function handleRemoveFromCart(garmentId: string) {
     removeFromCart(garmentId);
     setCartCountVal(cartCount());
+  }
+
+  async function handleAiConsult() {
+    if (!aiQuery.trim()) return;
+    setAiLoading(true);
+    setAiError(null);
+    setAiTopics([]);
+    const res = await getProductAdvisor({ message: aiQuery.trim() });
+    if (res.success && res.data) {
+      setAiTopics(res.data.topics);
+    } else {
+      setAiError("Không thể gợi ý sản phẩm. Vui lòng thử lại.");
+    }
+    setAiLoading(false);
+  }
+
+  function findAiProductSizeId(product: AIAdvisorProduct): string | undefined {
+    const group = groups.find((g) => g.name === product.name);
+    if (!group?.sizes.length) return undefined;
+    const matched = group.sizes.find((s) => s.sizeLabel === product.size);
+    return (matched ?? group.sizes[0])?.garmentSizeId;
+  }
+
+  function handleAiAddToCart(product: AIAdvisorProduct) {
+    const sizeId = findAiProductSizeId(product);
+    if (!sizeId) return;
+    addToCart({
+      garmentSizeId: sizeId,
+      garmentId: product.garmentId,
+      name: product.name + (product.size ? ` (Size ${product.size})` : ""),
+      sizeLabel: product.size,
+      dailyPrice: product.dailyPrice,
+      depositAmount: product.depositAmount,
+      imageUrl: product.imageUrl,
+    });
+    setCartCountVal(cartCount());
+    setAddedMsg(`Đã thêm "${product.name}" vào giỏ`);
+    setTimeout(() => setAddedMsg(null), 2000);
   }
 
   const featured = filtered[0];
@@ -200,6 +243,117 @@ export default function CatalogPage() {
               Hiển thị <span className="font-semibold text-oxblood">{filtered.length}</span> trang phục
             </div>
           </div>
+        </section>
+
+        {/* AI Product Advisor */}
+        <section className="mb-12 rounded-2xl border border-sand/70 bg-white p-6 shadow-sm">
+          <h2 className="font-display text-2xl text-ink mb-2">Bạn cần tìm trang phục gì?</h2>
+          <p className="text-sm text-stone-500 mb-4">
+            Mô tả nhu cầu của bạn, AI sẽ gợi ý sản phẩm phù hợp.
+          </p>
+          <div className="flex gap-3">
+            <input
+              type="text"
+              value={aiQuery}
+              onChange={(e) => setAiQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleAiConsult(); }}
+              placeholder="VD: Tôi cần áo dài hồng pastel size M cho tiệc cưới..."
+              className="flex-1 rounded-xl border border-sand bg-[#fff8f6] px-4 py-3 text-sm outline-none focus:border-lotus"
+            />
+            <button
+              type="button"
+              onClick={handleAiConsult}
+              disabled={aiLoading || !aiQuery.trim()}
+              className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {aiLoading ? (
+                <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
+              )}
+              Gợi ý
+            </button>
+          </div>
+          {aiError && (
+            <p className="mt-3 text-sm text-red-500">{aiError}</p>
+          )}
+          {aiTopics.length > 0 && (
+            <div className="mt-6 space-y-6">
+              {aiTopics.map((topic, ti) => (
+                <div key={ti}>
+                  <h3 className="font-display text-xl text-ink mb-3">{topic.title}</h3>
+                  {topic.products.length > 0 && (
+                    <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 mb-4">
+                      {[...topic.products].sort((a, b) => a.inStock === b.inStock ? 0 : a.inStock ? -1 : 1).map((p) => {
+                        const sizeId = findAiProductSizeId(p);
+                        return (
+                          <div
+                            key={p.garmentId}
+                            className="flex flex-col rounded-xl border border-sand/70 bg-[#fff8f6] p-2"
+                          >
+                            <div className="w-full aspect-[1/1] rounded-lg border border-sand/70 mb-2 overflow-hidden bg-stone-100 flex items-center justify-center">
+                              {p.imageUrl ? (
+                                <img
+                                  src={p.imageUrl}
+                                  alt={p.name}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => { e.currentTarget.style.display = "none"; }}
+                                />
+                              ) : (
+                                <span className="material-symbols-outlined text-2xl text-stone-300">image</span>
+                              )}
+                            </div>
+                            <p className="text-xs font-semibold text-ink truncate">{p.name}</p>
+                            <p className="text-[11px] text-lotus font-semibold mt-0.5">{formatVND(p.dailyPrice)}</p>
+                            {p.size && <p className="text-[10px] text-stone-500">Size: {p.size}</p>}
+                            {p.reason && (
+                              <p className="text-[10px] text-stone-500 mt-0.5 line-clamp-2">{p.reason}</p>
+                            )}
+                            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                              {sizeId && (
+                                <Link
+                                  href={`/catalog/${sizeId}`}
+                                  className="inline-flex items-center gap-1 rounded-full border border-lotus/30 px-2 py-1 text-[10px] font-semibold text-lotus transition hover:bg-lotus/10"
+                                >
+                                  Xem chi tiết
+                                </Link>
+                              )}
+                              {sizeId && (
+                                <Link
+                                  href={`/try-on?garmentSizeId=${sizeId}`}
+                                  className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 px-2 py-1 text-[10px] font-semibold text-emerald-600 transition hover:bg-emerald-50"
+                                >
+                                  Thử đồ AI
+                                </Link>
+                              )}
+                              {p.inStock ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleAiAddToCart(p)}
+                                  disabled={!sizeId}
+                                  className="inline-flex items-center gap-1 rounded-full bg-lotus px-2 py-1 text-[10px] font-semibold text-white transition hover:bg-oxblood disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  <span className="material-symbols-outlined text-[12px]">shopping_bag</span>
+                                  Thêm vào giỏ
+                                </button>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-1 text-[10px] font-semibold text-stone-400">
+                                  Đang hết hàng
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <p className="text-sm text-stone-700 italic border-l-2 border-sand pl-3">
+                    {topic.assistantReply}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         {/* Featured */}

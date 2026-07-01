@@ -8,11 +8,10 @@ import {
   getConversationLockStatus,
   getConversationMessages,
   getMyChatConversation,
-  isBookingCardContent,
-  isProductCardContent,
+  getBookingCardData,
+  getProductCardData,
+  getBookingTopic,
   markConversationRead,
-  parseBookingCard,
-  parseProductCard,
   type ChatConversation,
   type ChatMessage,
   type ConversationLockStatus,
@@ -111,16 +110,15 @@ export default function ChatPage() {
         prev.map((c) => {
           if (c.id !== payload.conversationId) return c;
           let topicExtras: Record<string, unknown> = {};
-          if (payload.message.sender_id === c.customerId && isProductCardContent(payload.message.content)) {
-            const product = parseProductCard(payload.message.content);
+          if (payload.message.sender_id === c.customerId && payload.message.message_type === "product_card") {
+            const product = getProductCardData(payload.message);
             if (product) {
               topicExtras = { topic: "product_advice", garmentId: product.id, garmentName: product.name, bookingId: null };
             }
-          } else if (payload.message.sender_id === c.customerId && isBookingCardContent(payload.message.content)) {
-            const booking = parseBookingCard(payload.message.content);
-            const msg = JSON.parse(payload.message.content);
-            if (booking) {
-              topicExtras = { topic: msg?.topic ?? "booking_support", bookingId: booking.id, garmentId: null, garmentName: null };
+          } else if (payload.message.sender_id === c.customerId && payload.message.message_type === "booking_card") {
+            const data = getBookingCardData(payload.message);
+            if (data?.booking) {
+              topicExtras = { topic: data.topic ?? "booking_support", bookingId: data.booking.id, garmentId: null, garmentName: null };
             }
           }
           const updated = {

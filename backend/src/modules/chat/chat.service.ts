@@ -58,32 +58,23 @@ export class ChatService {
     const dailyPrice = garment.garment_sizes[0]?.daily_price ?? 0;
     const detailUrl = `/catalog/${garment.garment_sizes[0]?.id ?? garment.id}`;
 
-    const productCard = {
-      type: "product_card",
-      product: {
-        id: garment.id,
-        name: garment.name,
-        image: imageUrl,
-        size: sizeLabel,
-        price: Number(dailyPrice),
-        detailUrl,
-      },
-    };
-
-    const content = JSON.stringify(productCard);
-
-    // Validate length and product card rules (already checked, but keep defense-in-depth)
-    const trimmed = content?.trim() ?? "";
-    if (trimmed.length > 2000) {
-      throw new ForbiddenException("Message content exceeds maximum length of 2000 characters.");
-    }
-
     const now = new Date();
     const message = await this.prisma.messages.create({
       data: {
         conversation_id: conversationId,
         sender_id: userId,
-        content,
+        content: "",
+        message_type: "product_card",
+        metadata: {
+          product: {
+            id: garment.id,
+            name: garment.name,
+            image: imageUrl,
+            size: sizeLabel,
+            price: Number(dailyPrice),
+            detailUrl,
+          },
+        },
       },
     });
 
@@ -186,36 +177,29 @@ export class ChatService {
       ? `/booking/success?bookingId=${booking.id}`
       : `/dashboard/staff/booking/${booking.id}`;
 
-    const bookingCard = {
-      type: "booking_card",
-      topic,
-      booking: {
-        id: booking.id,
-        code: bookingCode,
-        status: booking.status,
-        statusLabel,
-        rentalStartDate: booking.rentalStartDate,
-        rentalEndDate: booking.rentalEndDate,
-        days,
-        itemCount: booking.items.length,
-        rentalTotal: Number(booking.rentalTotal),
-        depositTotal: Number(booking.depositTotal),
-        detailUrl,
-      },
-    };
-
-    const content = JSON.stringify(bookingCard);
-    const trimmed = content.trim();
-    if (trimmed.length > 2000) {
-      throw new ForbiddenException("Message content exceeds maximum length of 2000 characters.");
-    }
-
     const now = new Date();
     const message = await this.prisma.messages.create({
       data: {
         conversation_id: conversationId,
         sender_id: userId,
-        content,
+        content: "",
+        message_type: "booking_card",
+        metadata: {
+          topic,
+          booking: {
+            id: booking.id,
+            code: bookingCode,
+            status: booking.status,
+            statusLabel,
+            rentalStartDate: booking.rentalStartDate,
+            rentalEndDate: booking.rentalEndDate,
+            days,
+            itemCount: booking.items.length,
+            rentalTotal: Number(booking.rentalTotal),
+            depositTotal: Number(booking.depositTotal),
+            detailUrl,
+          },
+        },
       },
     });
 
@@ -292,10 +276,6 @@ export class ChatService {
 
     if (trimmed.length > 2000) {
       throw new ForbiddenException("Message content exceeds maximum length of 2000 characters.");
-    }
-
-    if (this.isProductCardPayload(trimmed)) {
-      throw new ForbiddenException("Product cards must be created by server.");
     }
 
     let conversation;
@@ -819,12 +799,4 @@ export class ChatService {
     }
   }
 
-  private isProductCardPayload(content: string): boolean {
-    try {
-      const parsed = JSON.parse(content);
-      return parsed?.type === "product_card" || parsed?.type === "booking_card";
-    } catch {
-      return false;
-    }
-  }
 }

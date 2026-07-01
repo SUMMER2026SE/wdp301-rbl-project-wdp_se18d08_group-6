@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState, type RefObject } from "react";
 import type { ChatConversation, ChatMessage, ConversationLockStatus } from "@/lib/chat";
-import { isBookingCardContent, isProductCardContent, parseBookingCard, parseProductCard, uploadChatFile, getProductAdvisor, sendProductCardMessage, type AIAdvisorTopic } from "@/lib/chat";
+import { getBookingCardData, getProductCardData, uploadChatFile, getProductAdvisor, sendProductCardMessage, type AIAdvisorTopic } from "@/lib/chat";
 import { Paperclip } from "lucide-react";
 import type { AuthSession } from "@/lib/auth";
 import { BookingCard } from "@/components/chat/booking-card";
@@ -337,10 +337,10 @@ export function StaffChatWorkspace({
                 </div>
                 {conversation.lastMessage && (
                   <p className="mt-3 text-sm text-stone-600 line-clamp-2">
-                    {isBookingCardContent(conversation.lastMessage.content)
-                      ? `📋 Đơn #${parseBookingCard(conversation.lastMessage.content)?.code ?? ""}`
-                      : isProductCardContent(conversation.lastMessage.content)
-                        ? parseProductCard(conversation.lastMessage.content)?.name ?? "Sản phẩm"
+                    {conversation.lastMessage.message_type === "booking_card"
+                      ? `📋 Đơn #${getBookingCardData(conversation.lastMessage)?.booking?.code ?? ""}`
+                      : conversation.lastMessage.message_type === "product_card"
+                        ? getProductCardData(conversation.lastMessage)?.name ?? "Sản phẩm"
                         : conversation.lastMessage.message_type === "image"
                           ? "📷 Hình ảnh"
                           : conversation.lastMessage.message_type === "video"
@@ -512,30 +512,30 @@ export function StaffChatWorkspace({
                             <p className="text-sm italic text-stone-400">Tin nhắn đã bị xóa</p>
                           ) : message.message_type === "image" && message.metadata?.url ? (
                             <img
-                              src={message.metadata.url}
+                              src={message.metadata.url as string}
                               alt=""
                               className="rounded-xl border border-sand/70 shadow-sm max-w-[260px] h-auto object-cover"
                               loading="lazy"
                             />
                           ) : message.message_type === "video" && message.metadata?.url ? (
                             <video
-                              src={message.metadata.url}
+                              src={message.metadata.url as string}
                               controls
-                              className="rounded-xl border border-sand/70 shadow-sm max-w-[260px] h-auto"
+                              className="rounded-xl border border-sand/70 shadow-sm max-w-[260px] w-full h-auto max-h-[320px] object-contain bg-black"
                               preload="metadata"
                             />
-                          ) : isBookingCardContent(message.content) ? (
+                          ) : message.message_type === "booking_card" ? (
                             (() => {
-                              const booking = parseBookingCard(message.content);
-                              return booking ? (
-                                <BookingCard booking={booking} />
+                              const data = getBookingCardData(message);
+                              return data?.booking ? (
+                                <BookingCard booking={data.booking} />
                               ) : (
                                 <p className="text-sm text-stone-500">Không thể hiển thị đơn hàng</p>
                               );
                             })()
-                          ) : isProductCardContent(message.content) ? (
+                          ) : message.message_type === "product_card" ? (
                             (() => {
-                              const product = parseProductCard(message.content);
+                              const product = getProductCardData(message);
                               return product ? (
                                 <ProductCard product={product} />
                               ) : (

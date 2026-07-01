@@ -510,6 +510,7 @@ export class AiService {
       depositAmount: g.garment_sizes[0]?.deposit_amount ? Number(g.garment_sizes[0].deposit_amount) : 0,
       size: g.garment_sizes[0]?.size_label ?? "",
       reason: "",
+      inStock: g.assets.length > 0,
     }));
   }
 
