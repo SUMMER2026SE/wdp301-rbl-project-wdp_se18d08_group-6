@@ -54,11 +54,11 @@ export default function ChatPage() {
   const isStaff = session?.user.role === "staff";
 
   const assignedConversations = isStaff
-    ? conversations.filter((conversation) => conversation.staffId === session?.user.id)
+    ? conversations.filter((conversation) => conversation.staffId === session?.user.id && conversation.status !== "resolved")
     : conversations;
 
   const unassignedConversations = isStaff
-    ? conversations.filter((conversation) => conversation.staffId === null && conversation.status === "open" && conversation.lastMessage?.sender_id === conversation.customerId)
+    ? conversations.filter((conversation) => conversation.staffId === null && conversation.status === "open" && !conversation.reopenedFromResolved && conversation.lastMessage?.sender_id === conversation.customerId)
     : [];
 
   const socket = useMemo(() => {
@@ -92,7 +92,7 @@ export default function ChatPage() {
   useEffect(() => {
     if (!socket) return;
 
-    const onMessageReceived = (payload: { conversationId: string; message: ChatMessage }) => {
+    const onMessageReceived = (payload: { conversationId: string; message: ChatMessage; staffId?: string | null; status?: string }) => {
       // Always update messages if this conversation is selected
       if (payload.conversationId === selectedConversation?.id) {
         setMessages((prev) => [...prev, payload.message]);
@@ -128,7 +128,8 @@ export default function ChatPage() {
             lastMessage: payload.message,
             updatedAt: payload.message.created_at,
             unreadCount: payload.message.sender_id !== session?.user.id ? c.unreadCount + 1 : 0,
-            ...(payload.message.sender_id === c.customerId ? { status: "open" } : {}),
+            ...(payload.staffId !== undefined ? { staffId: payload.staffId } : {}),
+            ...(payload.status !== undefined ? { status: payload.status } : {}),
             ...(payload.message.sender_id === c.customerId ? topicExtras : {}),
           };
           if (payload.conversationId === selectedConversation?.id && Object.keys(topicExtras).length > 0) {
@@ -139,8 +140,15 @@ export default function ChatPage() {
       );
 
       // Also update selectedConversation for real-time header update
-      if (updatedTopicFields) {
-        setSelectedConversation((prev) => prev ? { ...prev, ...updatedTopicFields! } : prev);
+      if (payload.conversationId === selectedConversation?.id) {
+        setSelectedConversation((prev) => {
+          if (!prev) return prev;
+          const updates: Record<string, unknown> = {};
+          if (payload.staffId !== undefined) updates.staffId = payload.staffId;
+          if (payload.status !== undefined) updates.status = payload.status;
+          if (updatedTopicFields) Object.assign(updates, updatedTopicFields);
+          return Object.keys(updates).length > 0 ? { ...prev, ...updates } : prev;
+        });
       }
     };
     const onMessageDeleted = (payload: { conversationId: string; messageId: string; deletedBy: string; deletedAt: string }) => {
@@ -170,7 +178,7 @@ export default function ChatPage() {
       if (payload.conversationId !== selectedConversation?.id) return;
       setTypingUsers((prev) => ({ ...prev, [payload.userId]: payload.isTyping }));
     };
-    const onOpenResult = (payload: { conversationId?: string; canReply: boolean; lockedBy?: string }) => {
+    const onOpenResult = (payload: { conversationId?: string; canReply: boolean; lockedBy?: string; staffId?: string; staffName?: string; status?: string }) => {
       const conversationId = payload.conversationId ?? selectedConversation?.id;
       setStaffCanReply(payload.canReply);
       setStaffLockError(payload.canReply ? null : `Bị khoá bởi ${payload.lockedBy ?? "người khác"}`);
@@ -180,12 +188,12 @@ export default function ChatPage() {
         setConversations((prev) =>
           prev.map((conversation) =>
             conversation.id === conversationId
-              ? { ...conversation, staffId: session.user.id, staffName }
+              ? { ...conversation, staffId: session.user.id, staffName, status: payload.status ?? conversation.status }
               : conversation,
           ),
         );
         setSelectedConversation((prev) =>
-          prev?.id === conversationId ? { ...prev, staffId: session.user.id, staffName } : prev,
+          prev?.id === conversationId ? { ...prev, staffId: session.user.id, staffName, status: payload.status ?? prev.status } : prev,
         );
           if (isAcceptingConversationRef.current) {
             setSidebarTab("assigned");
@@ -206,14 +214,17 @@ export default function ChatPage() {
         void refreshLockStatus();
       }
     };
-    const onChatUnlocked = (payload: { conversationId: string }) => {
+    const onChatUnlocked = (payload: { conversationId: string; status?: string }) => {
+      const isRevertingToResolved = payload.status === "resolved";
       setConversations((prev) =>
         prev.map((conversation) =>
-          conversation.id === payload.conversationId ? { ...conversation, staffId: null, staffName: null } : conversation,
+          conversation.id === payload.conversationId
+            ? { ...conversation, ...(isRevertingToResolved ? {} : { staffId: null, staffName: null }), status: payload.status ?? conversation.status }
+            : conversation,
         ),
       );
       if (payload.conversationId === selectedConversation?.id) {
-        setSelectedConversation((prev) => prev ? { ...prev, staffId: null, staffName: null } : prev);
+        setSelectedConversation((prev) => prev ? { ...prev, ...(isRevertingToResolved ? {} : { staffId: null, staffName: null }), status: payload.status ?? prev.status } : prev);
         setStaffCanReply(false);
         setStaffLockError(null);
         void refreshLockStatus();
@@ -229,12 +240,12 @@ export default function ChatPage() {
       setConversations((prev) =>
         prev.map((conversation) =>
           conversation.id === payload.conversationId
-            ? { ...conversation, staffId: null, staffName: null, status: payload.status ?? "resolved", topic: "general", garmentId: null, garmentName: null }
+            ? { ...conversation, status: payload.status ?? "resolved", topic: "general", garmentId: null, garmentName: null }
             : conversation,
         ),
       );
       if (payload.conversationId === selectedConversation?.id) {
-        setSelectedConversation((prev) => prev ? { ...prev, staffId: null, staffName: null, status: payload.status ?? "resolved", topic: "general", garmentId: null, garmentName: null } : prev);
+        setSelectedConversation((prev) => prev ? { ...prev, status: payload.status ?? "resolved", topic: "general", garmentId: null, garmentName: null } : prev);
         setStaffCanReply(false);
         setStaffLockError("Cuộc trò chuyện đã được đánh dấu đã tư vấn.");
         void refreshLockStatus();
@@ -266,6 +277,7 @@ export default function ChatPage() {
             created_at: new Date().toISOString(),
           },
           unreadCount: 1,
+          reopenedFromResolved: false,
         };
         return [newConv, ...prev];
       });
@@ -453,12 +465,12 @@ export default function ChatPage() {
     setStaffLockError(null);
     await loadMessages(conversationId);
 
-    // Mark read via REST when staff opens a conversation (skip if resolved to avoid 403)
-    if (conv?.status !== "resolved") {
+    // Mark read via REST when assigned staff opens a conversation
+    if (conv?.status !== "resolved" && conv?.staffId === session?.user.id) {
       void markConversationRead(conversationId);
     }
 
-    if (conv && conv.staffId === session?.user.id) {
+    if (conv && conv.staffId === session?.user.id && conv.status !== "resolved") {
       socket.emit("open_conversation", { conversationId });
     } else {
       void refreshLockStatus(conversationId);

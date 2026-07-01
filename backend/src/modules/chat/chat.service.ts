@@ -93,7 +93,7 @@ export class ChatService {
           customer_last_read_at: now,
           topic: "product_advice",
           garment_id: garmentId,
-          ...(conversation.status === "resolved" ? { status: "open" } : {}),
+          ...(conversation.status === "resolved" ? { status: "open", staff_id: null } : {}),
         }
       : { staff_last_read_at: now };
 
@@ -334,7 +334,7 @@ export class ChatService {
     const updateData = role === "customer"
       ? {
           customer_last_read_at: now,
-          ...(conversation.status === "resolved" ? { status: "open" } : {}),
+          ...(conversation.status === "resolved" ? { status: "open", staff_id: null } : {}),
         }
       : { staff_last_read_at: now };
 
@@ -402,16 +402,51 @@ export class ChatService {
     return this.getConversationById(conversationId);
   }
 
+  async reopenConversation(conversationId: string, staffId: string) {
+    const result = await this.prisma.conversations.updateMany({
+      where: { id: conversationId, staff_id: staffId },
+      data: {
+        status: "open",
+        reopened_from_resolved: true,
+        staff_last_read_at: new Date(),
+        updated_at: new Date(),
+      },
+    });
+
+    if (result.count === 0) {
+      const conv = await this.getConversationById(conversationId);
+      if (conv.staff_id && conv.staff_id !== staffId) {
+        throw new ForbiddenException("Only the original staff can reopen this conversation.");
+      }
+    }
+
+    return this.getConversationById(conversationId);
+  }
+
   async releaseStaffAssignment(conversationId: string, staffId?: string) {
     await this.prisma.conversations.updateMany({
       where: {
         id: conversationId,
         ...(staffId ? { staff_id: staffId } : {}),
       },
-      data: { staff_id: null, staff_last_read_at: null, updated_at: new Date() },
+      data: { staff_id: null, updated_at: new Date() },
     });
 
     return this.getConversationById(conversationId);
+  }
+
+  async clearAllStaffAssignments() {
+    await this.prisma.conversations.updateMany({
+      where: { status: "open", staff_id: { not: null } },
+      data: { staff_id: null, updated_at: new Date() },
+    });
+  }
+
+  async resolveAllReopenedConversations() {
+    await this.prisma.conversations.updateMany({
+      where: { reopened_from_resolved: true },
+      data: { status: "resolved", reopened_from_resolved: false, updated_at: new Date() },
+    });
   }
 
   async resolveConversation(conversationId: string, staffId: string) {
@@ -423,15 +458,25 @@ export class ChatService {
     return this.prisma.conversations.update({
       where: { id: conversationId },
       data: {
-        staff_id: null,
         staff_last_read_at: new Date(),
         status: "resolved",
+        reopened_from_resolved: false,
         topic: "general",
         garment_id: null,
         booking_id: null,
         updated_at: new Date(),
       },
     });
+  }
+
+  async releaseConversationLock(conversationId: string, staffId: string) {
+    const conversation = await this.getConversationById(conversationId);
+    if (conversation.reopened_from_resolved) {
+      await this.resolveConversation(conversationId, staffId);
+      return "resolved";
+    }
+    await this.releaseStaffAssignment(conversationId, staffId);
+    return "open";
   }
 
   async markConversationRead(userId: string, role: AppRole, conversationId: string) {
@@ -615,6 +660,7 @@ export class ChatService {
         garmentId: conversation.garment_id ?? null,
         garmentName,
         bookingId: conversation.booking_id ?? null,
+        reopenedFromResolved: conversation.reopened_from_resolved,
       };
     })
     );
@@ -717,7 +763,7 @@ export class ChatService {
     const updateData: Record<string, unknown> = { updated_at: now };
     if (role === "customer") {
       updateData.customer_last_read_at = now;
-      if (conversation.status === "resolved") updateData.status = "open";
+      if (conversation.status === "resolved") { updateData.status = "open"; updateData.staff_id = null; }
     } else {
       updateData.staff_last_read_at = now;
     }

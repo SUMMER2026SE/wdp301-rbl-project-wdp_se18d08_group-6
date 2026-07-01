@@ -40,6 +40,7 @@ export type ChatConversation = {
   garmentId?: string | null;
   garmentName?: string | null;
   bookingId?: string | null;
+  reopenedFromResolved: boolean;
 };
 
 export type ConversationLockStatus = {
@@ -200,6 +201,45 @@ export async function markConversationRead(conversationId: string) {
 
 export async function getConversationLockStatus(conversationId: string) {
   return apiRequest<ConversationLockStatus>(`/chat/conversations/${conversationId}/lock-status`);
+}
+
+export type AIAdvisorProduct = {
+  garmentId: string;
+  name: string;
+  imageUrl: string;
+  dailyPrice: number;
+  depositAmount: number;
+  size: string;
+  reason: string;
+};
+
+export type AIAdvisorTopic = {
+  title: string;
+  assistantReply: string;
+  recommendedProductIds: string[];
+  reasons: Record<string, string>;
+  products: AIAdvisorProduct[];
+};
+
+export type AIAdvisorResponse = {
+  topics: AIAdvisorTopic[];
+};
+
+export async function getProductAdvisor(params: {
+  message: string;
+  history?: Array<{ role: "customer" | "staff"; content: string; createdAt: string }>;
+  rentalStartDate?: string;
+  rentalEndDate?: string;
+}) {
+  return apiRequest<AIAdvisorResponse>("/ai/product-advisor", {
+    method: "POST",
+    body: JSON.stringify({
+      message: params.message,
+      history: params.history,
+      rentalStartDate: params.rentalStartDate,
+      rentalEndDate: params.rentalEndDate,
+    }),
+  });
 }
 
 export async function uploadChatFile(conversationId: string, file: File) {

@@ -19,8 +19,6 @@ export function ProductCard({ product }: ProductCardProps) {
   return (
     <Link
       href={product.detailUrl}
-      target="_blank"
-      rel="noopener noreferrer"
       className="block max-w-[180px] rounded-xl border border-sand/70 bg-white shadow-sm transition hover:shadow-md hover:border-antique overflow-hidden"
     >
       {/* Thumbnail */}

@@ -37,8 +37,6 @@ export function BookingCard({ booking }: BookingCardProps) {
     return (
       <Link
         href={booking.detailUrl}
-        target="_blank"
-        rel="noopener noreferrer"
         className="block max-w-[220px] rounded-xl border border-sand/70 bg-white p-3 shadow-sm space-y-1.5 text-xs transition hover:shadow-md hover:border-antique overflow-hidden"
       >
         {content}

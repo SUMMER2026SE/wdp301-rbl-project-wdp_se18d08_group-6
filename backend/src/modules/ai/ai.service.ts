@@ -3,6 +3,8 @@ import { TryonStatus, type TryonCategory } from "@prisma/client";
 import { ok } from "../../common/api-response";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { CreateTryonDto, TryonMode } from "./dto/create-tryon.dto";
+import type { ProductAdvisorDto } from "./dto/product-advisor.dto";
+import type { AdvisorProduct, OpenRouterResponse, ProductAdvisorResponse } from "./interfaces/ai-response.interface";
 
 const REPLICATE_API = "https://api.replicate.com/v1";
 const DEFAULT_FACE_SWAP_MODEL = "cdingram/face-swap";
@@ -469,5 +471,187 @@ export class AiService {
     });
 
     return ok({ id: result.id, hidden: true });
+  }
+
+  async productAdvisor(dto: ProductAdvisorDto) {
+    const catalog = await this.queryCatalog();
+
+    if (catalog.length === 0) {
+      return ok({ topics: [] });
+    }
+
+    const systemPrompt = this.buildAdvisorPrompt(catalog);
+    const userContent = this.buildUserMessage(dto.message, dto.history, dto.rentalStartDate, dto.rentalEndDate);
+    const raw = await this.callOpenRouter(systemPrompt, userContent);
+    return ok(this.parseAdvisorResponse(raw, catalog));
+  }
+
+  private async queryCatalog(): Promise<AdvisorProduct[]> {
+    const garments = await this.prisma.garment.findMany({
+      where: { isActive: true, deletedAt: null },
+      take: 50,
+      include: {
+        category: true,
+        images: { orderBy: { sortOrder: "asc" }, take: 1 },
+        garment_sizes: { where: { is_active: true }, take: 1 },
+        assets: {
+          where: { status: "available" },
+          select: { id: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return garments.map((g) => ({
+      garmentId: g.id,
+      name: g.name,
+      imageUrl: g.images[0]?.imageUrl ?? "",
+      dailyPrice: g.garment_sizes[0]?.daily_price ? Number(g.garment_sizes[0].daily_price) : 0,
+      depositAmount: g.garment_sizes[0]?.deposit_amount ? Number(g.garment_sizes[0].deposit_amount) : 0,
+      size: g.garment_sizes[0]?.size_label ?? "",
+      reason: "",
+    }));
+  }
+
+  private buildAdvisorPrompt(catalog: AdvisorProduct[]): string {
+    const productLines = catalog.map((p, i) =>
+      `${i + 1}. ID: ${p.garmentId} | Tên: ${p.name} | Giá: ${p.dailyPrice.toLocaleString()}đ/ngày | Cọc: ${p.depositAmount.toLocaleString()}đ`,
+    ).join("\n");
+
+    return `Bạn là trợ lý AI tư vấn sản phẩm cho cửa hàng cho thuê áo dài và trang phục truyền thống Việt Nam. Bạn phân tích lịch sử chat và catalogue để tư vấn.
+
+Dưới đây là danh sách sản phẩm hiện có trong cửa hàng:
+
+${productLines}
+
+### QUY TẮC XỬ LÝ HỘI THOẠI
+1. INTENT SEGMENTATION: Xác định các câu hỏi độc lập trong chuỗi tin nhắn gần đây của khách.
+2. TOPIC GROUPING: Gom các câu hỏi cùng sản phẩm hoặc chủ đề vào một nhóm.
+3. DEPENDENCY DETECTION: Nếu câu sau dùng "nó", "cái này", "size M", "còn không" → kế thừa context từ câu trước. Nếu đổi chủ đề → tạo topic mới.
+4. Ưu tiên câu hỏi MỚI NHẤT. Tin nhắn cũ hơn dùng làm context (màu sắc, dịp, budget, size đã đề cập).
+
+### GUARDRAILS (TUYỆT ĐỐI TUÂN THỦ)
+- KHÔNG tạo booking, KHÔNG hứa giảm giá.
+- KHÔNG hứa còn hàng — chỉ nói "sản phẩm này hiện đang có sẵn" nếu availableStock > 0.
+- KHÔNG xử lý hoàn tiền, đổi trả.
+- KHÔNG tư vấn pháp lý hoặc chính sách ngoài phạm vi cho thuê trang phục.
+- Nếu câu hỏi ngoài phạm vi tư vấn sản phẩm → trả lời: "Vấn đề này cần nhân viên hỗ trợ trực tiếp."
+- CHỈ đề xuất sản phẩm có trong danh sách bên trên.
+- Không tạo topic nếu không liên quan đến sản phẩm.
+
+### ĐỊNH DẠNG ĐẦU RA
+Trả về JSON hợp lệ, không markdown, không giải thích thêm:
+{
+  "topics": [
+    {
+      "title": "Tên chủ đề ngắn gọn (VD: Áo dài đỏ, Vận chuyển, Kích cỡ...)",
+      "assistantReply": "Câu trả lời cho chủ đề này",
+      "recommendedProductIds": ["id1"],
+      "reasons": { "id1": "Lý do chọn sản phẩm..." }
+    }
+  ]
+}
+Nếu không có gợi ý sản phẩm thì recommendedProductIds là mảng rỗng.
+Tối đa 3 topics.`;
+  }
+
+  private buildUserMessage(
+    message: string,
+    history?: Array<{ role: string; content: string; createdAt: string }>,
+    rentalStartDate?: string,
+    rentalEndDate?: string,
+  ): string {
+    const parts: string[] = [];
+
+    if (history && history.length > 0) {
+      parts.push("### LỊCH SỬ CHAT (mới nhất → cũ nhất)");
+      const sorted = [...history].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+      for (const msg of sorted) {
+        parts.push(`[${msg.role === "customer" ? "Khách" : "Staff"}]: ${msg.content}`);
+      }
+    }
+
+    parts.push(`\n### TIN NHẮN MỚI NHẤT CỦA KHÁCH\n${message}`);
+
+    if (rentalStartDate && rentalEndDate) {
+      parts.push(`\nNgày thuê: ${rentalStartDate} → ${rentalEndDate}`);
+    }
+
+    return parts.join("\n");
+  }
+
+  private async callOpenRouter(systemPrompt: string, userMessage: string): Promise<string> {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
+
+    const model = process.env.OPENROUTER_MODEL?.trim() || "openai/gpt-4o";
+
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage },
+        ],
+        response_format: { type: "json_object" },
+      }),
+    });
+
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(`OpenRouter API ${res.status}: ${text.substring(0, 200)}`);
+    }
+
+    let data: OpenRouterResponse;
+    try {
+      data = JSON.parse(text) as OpenRouterResponse;
+    } catch {
+      throw new Error(`Invalid JSON from OpenRouter: ${text.substring(0, 200)}`);
+    }
+
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) throw new Error("OpenRouter returned empty response");
+
+    return content;
+  }
+
+  private parseAdvisorResponse(raw: string, catalog: AdvisorProduct[]): ProductAdvisorResponse {
+    let parsed: { topics?: Array<{ title?: string; assistantReply?: string; recommendedProductIds?: string[]; reasons?: Record<string, string> }> };
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return { topics: [] };
+    }
+
+    if (!Array.isArray(parsed.topics) || parsed.topics.length === 0) {
+      return { topics: [] };
+    }
+
+    const catalogMap = new Map(catalog.map((p) => [p.garmentId, p]));
+
+    const topics = parsed.topics.slice(0, 3).map((t) => {
+      const validIds = Array.isArray(t.recommendedProductIds)
+        ? t.recommendedProductIds.filter((id): id is string => typeof id === "string" && catalogMap.has(id))
+        : [];
+      return {
+        title: t.title ?? "Tư vấn sản phẩm",
+        assistantReply: t.assistantReply ?? "",
+        recommendedProductIds: validIds,
+        reasons: t.reasons ?? {},
+        products: validIds.map((id) => {
+          const p = catalogMap.get(id)!;
+          return { ...p, reason: t.reasons?.[id] ?? p.reason };
+        }),
+      };
+    });
+
+    return { topics };
   }
 }
