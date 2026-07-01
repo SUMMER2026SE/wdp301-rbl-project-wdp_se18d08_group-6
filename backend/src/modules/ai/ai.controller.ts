@@ -4,6 +4,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import type { AuthenticatedUser } from "../auth/auth-user";
 import { AiService } from "./ai.service";
 import { CreateTryonDto } from "./dto/create-tryon.dto";
+import { ProductAdvisorDto } from "./dto/product-advisor.dto";
 
 @Controller("ai")
 export class AiController {
@@ -31,5 +32,11 @@ export class AiController {
     @Param("id") id: string,
   ) {
     return this.aiService.hideResult(id, user.id);
+  }
+
+  @Post("product-advisor")
+  @UseGuards(JwtAuthGuard)
+  productAdvisor(@Body() body: ProductAdvisorDto) {
+    return this.aiService.productAdvisor(body);
   }
 }

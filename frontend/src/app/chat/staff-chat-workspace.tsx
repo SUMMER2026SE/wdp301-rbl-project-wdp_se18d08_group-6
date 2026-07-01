@@ -2,11 +2,17 @@
 
 import { useRef, useEffect, useState, type RefObject } from "react";
 import type { ChatConversation, ChatMessage, ConversationLockStatus } from "@/lib/chat";
-import { isBookingCardContent, isProductCardContent, parseBookingCard, parseProductCard, uploadChatFile } from "@/lib/chat";
+import { isBookingCardContent, isProductCardContent, parseBookingCard, parseProductCard, uploadChatFile, getProductAdvisor, sendProductCardMessage, type AIAdvisorTopic } from "@/lib/chat";
 import { Paperclip } from "lucide-react";
 import type { AuthSession } from "@/lib/auth";
 import { BookingCard } from "@/components/chat/booking-card";
 import { ProductCard } from "@/components/chat/product-card";
+
+function formatVND(amount: number) {
+  return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
+}
+
+const DEFAULT_PRODUCT_IMAGE = "https://dep.com.vn/wp-content/uploads/2020/11/ao-dai-9.jpg";
 
 interface StaffChatWorkspaceProps {
   conversations: ChatConversation[];
@@ -79,6 +85,22 @@ export function StaffChatWorkspace({
   const [uploadToast, setUploadToast] = useState<string | null>(null);
   const uploadToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [aiSuggestion, setAiSuggestion] = useState<{
+    loading: boolean;
+    topics: AIAdvisorTopic[];
+    error: string | null;
+  }>({ loading: false, topics: [], error: null });
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
+  const lastSuggestedMsgIdRef = useRef<string | null>(null);
+  const [aiToast, setAiToast] = useState<string | null>(null);
+  const aiToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showAiToast(msg: string) {
+    setAiToast(msg);
+    if (aiToastTimerRef.current) clearTimeout(aiToastTimerRef.current);
+    aiToastTimerRef.current = setTimeout(() => setAiToast(null), 3000);
+  }
+
   function showUploadToast(msg: string) {
     setUploadToast(msg);
     if (uploadToastTimerRef.current) clearTimeout(uploadToastTimerRef.current);
@@ -100,8 +122,8 @@ export function StaffChatWorkspace({
     }
   }
 
-  const assignedConversations = conversations.filter((c) => c.staffId === session?.user.id);
-  const unassignedConversations = conversations.filter((c) => c.staffId === null && c.status === "open" && c.lastMessage?.sender_id === c.customerId && !c.lastMessage?.deleted_at);
+  const assignedConversations = conversations.filter((c) => c.staffId === session?.user.id && c.status !== "resolved");
+  const unassignedConversations = conversations.filter((c) => c.staffId === null && c.status === "open" && c.lastMessage?.sender_id === c.customerId);
   const resolvedConversations = conversations.filter((c) => c.status === "resolved");
   const displayedConversations = sidebarTab === "assigned" ? assignedConversations : sidebarTab === "resolved" ? resolvedConversations : unassignedConversations;
 
@@ -115,6 +137,67 @@ export function StaffChatWorkspace({
       messagesEndRef.current.scrollIntoView({ block: "end", behavior: "smooth" });
     }
   }, [messages]);
+
+  // AI suggestion: auto-call when customer sends a new message
+  useEffect(() => {
+    if (isUnassignedPreview || isAssignedToOther || isResolved || !selectedConversation || !session) return;
+
+    const lastCustomerMsg = [...messages].reverse().find(
+      (m) => m.sender_id !== session.user.id && !m.deleted_at,
+    );
+    if (!lastCustomerMsg || lastSuggestedMsgIdRef.current === lastCustomerMsg.id) return;
+    if (aiSuggestion.loading) return;
+
+    lastSuggestedMsgIdRef.current = lastCustomerMsg.id;
+    setAiSuggestion({ loading: true, topics: [], error: null });
+    setAiPanelOpen(true);
+
+    // Collect last 10 messages (excluding the last customer msg) as history
+    const historyMessages = messages
+      .filter((m) => !m.deleted_at && m.sender_id === m.sender_id)
+      .slice(-10)
+      .map((m) => ({
+        role: (m.sender_id === session.user.id ? "staff" : "customer") as "customer" | "staff",
+        content: m.content,
+        createdAt: m.created_at,
+      }));
+
+    getProductAdvisor({
+      message: lastCustomerMsg.content,
+      history: historyMessages,
+    })
+      .then((res) => {
+        if (res.success && res.data) {
+          setAiSuggestion({ loading: false, topics: res.data.topics, error: null });
+        } else {
+          const errMsg = res.error ?? "Không thể phân tích";
+          setAiSuggestion({ loading: false, topics: [], error: errMsg });
+          showAiToast(errMsg);
+        }
+      })
+      .catch(() => {
+        setAiSuggestion({ loading: false, topics: [], error: "Lỗi kết nối AI" });
+        showAiToast("Lỗi kết nối AI, vui lòng thử lại.");
+      });
+  }, [messages, selectedConversation, session, isUnassignedPreview, isAssignedToOther, isResolved]);
+
+  async function handleInsertProductCard(productId: string) {
+    if (!selectedConversation) return;
+    try {
+      await sendProductCardMessage({
+        conversationId: selectedConversation.id,
+        productId,
+      });
+      showAiToast(`Đã gửi product card`);
+    } catch {
+      showAiToast("Không thể gửi product card.");
+    }
+  }
+
+  function handleInsertReply(reply: string) {
+    setMessageText(reply);
+    setAiPanelOpen(false);
+  }
 
   // Handle scroll to top to load older messages
   function handleMessagesScroll() {
@@ -330,6 +413,18 @@ export function StaffChatWorkspace({
                 >
                   Tiếp nhận hỗ trợ
                 </button>
+              ) : isResolved && selectedConversation.staffId === session?.user.id ? (
+                <button
+                  type="button"
+                  onClick={onOpenConversation}
+                  className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                >
+                  Tư vấn bổ sung
+                </button>
+              ) : isResolved ? (
+                <div className="rounded-full px-5 py-2 text-sm font-semibold text-stone-500">
+                  Đã tư vấn bởi {selectedConversation.staffName ?? "nhân viên khác"}
+                </div>
               ) : isAssignedToOther ? (
                 <div className="rounded-full px-5 py-2 text-sm font-semibold text-stone-600">
                   Đang xử lý bởi {selectedConversation.staffName}
@@ -474,6 +569,121 @@ export function StaffChatWorkspace({
             {uploadToast && (
               <div className="rounded-3xl bg-rose-600 px-4 py-3 text-sm text-white shadow-lg shrink-0">
                 {uploadToast}
+              </div>
+            )}
+
+            {/* AI Suggestion Panel */}
+            {(aiSuggestion.loading || aiSuggestion.topics.length > 0 || aiSuggestion.error) && !isUnassignedPreview && !isResolved && (
+              <div className="rounded-3xl border border-sand/70 bg-white shadow-sm shrink-0 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setAiPanelOpen(!aiPanelOpen)}
+                  className="flex w-full items-center justify-between px-4 py-3 text-sm font-semibold text-ink transition hover:bg-[#fff7f2]"
+                >
+                  <span className="flex items-center gap-2">
+                    🤖 Gợi ý AI
+                    {aiSuggestion.loading && (
+                      <span className="inline-flex items-center gap-1 text-xs font-normal text-stone-500">
+                        <span className="inline-block w-3 h-3 border-2 border-stone-400 border-t-transparent rounded-full animate-spin" />
+                        Đang phân tích...
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-stone-400 text-xs">{aiPanelOpen ? "▲" : "▼"}</span>
+                </button>
+
+                {aiPanelOpen && (
+                  <div className="border-t border-sand/70 px-4 py-3 space-y-3 max-h-[400px] overflow-y-auto">
+                    {aiSuggestion.loading ? (
+                      <div className="flex items-center gap-2 text-sm text-stone-500 py-2">
+                        <span className="inline-block w-4 h-4 border-2 border-lotus border-t-transparent rounded-full animate-spin" />
+                        AI đang phân tích nhu cầu khách hàng...
+                      </div>
+                    ) : aiSuggestion.error ? (
+                      <div className="text-sm text-rose-600 py-2">{aiSuggestion.error}</div>
+                    ) : aiSuggestion.topics.length === 0 ? (
+                      <div className="text-sm text-stone-500 py-2">Không có gợi ý sản phẩm nào.</div>
+                    ) : (
+                      <div className="space-y-3">
+                        {aiSuggestion.topics.map((topic, i) => (
+                          <div
+                            key={i}
+                            className="rounded-xl border border-sand/70 bg-[#fff7f2] p-4 space-y-3"
+                          >
+                            {/* Title + reason */}
+                            <div>
+                              <p className="text-sm font-semibold text-ink">
+                                Gợi ý {i + 1}: {topic.title}
+                              </p>
+                            </div>
+
+                            {/* Product previews */}
+                            {topic.products.length > 0 && (
+                              <div className="grid grid-cols-2 gap-2">
+                                {topic.products.map((p) => (
+                                  <div
+                                    key={p.garmentId}
+                                    className="flex gap-2 rounded-xl border border-sand/70 bg-white p-2 min-w-0"
+                                  >
+                                    <img
+                                      src={p.imageUrl}
+                                      alt={p.name}
+                                      className="w-12 h-12 rounded-lg object-cover border border-sand/70 shrink-0"
+                                      onError={(e) => { e.currentTarget.src = DEFAULT_PRODUCT_IMAGE; }}
+                                    />
+                                    <div className="min-w-0 space-y-0.5 flex-1">
+                                      <p className="text-xs font-semibold text-ink truncate">{p.name}</p>
+                                      <p className="text-[11px] text-lotus font-semibold">{formatVND(p.dailyPrice)}</p>
+                                      {p.size && <p className="text-[10px] text-stone-500">Size: {p.size}</p>}
+                                      {p.reason && (
+                                        <p className="text-[10px] text-stone-500 line-clamp-1">{p.reason}</p>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleInsertProductCard(p.garmentId)}
+                                        className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 transition hover:bg-emerald-200 mt-1"
+                                      >
+                                        Gửi sản phẩm
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Reply preview */}
+                            <div className="rounded-lg border border-sand/60 bg-white px-3 py-2">
+                              <p className="text-[11px] uppercase tracking-wider text-stone-400 mb-1">
+                                Tin nhắn sẽ gửi:
+                              </p>
+                              <p className="text-sm text-stone-700 leading-relaxed line-clamp-3">
+                                {topic.assistantReply}
+                              </p>
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleInsertReply(topic.assistantReply)}
+                                className="inline-flex items-center gap-1.5 rounded-full bg-lotus/10 px-4 py-2 text-xs font-semibold text-lotus transition hover:bg-lotus/20"
+                              >
+                                ⚙️ Chèn tin nhắn này
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* AI Toast */}
+            {aiToast && (
+              <div className="rounded-3xl bg-emerald-600 px-4 py-3 text-sm text-white shadow-lg shrink-0">
+                {aiToast}
               </div>
             )}
 

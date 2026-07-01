@@ -79,15 +79,19 @@ export class ChatController {
       body.garmentId,
     );
 
+    // Fetch updated conversation to get latest staff_id/status after message processing
+    const updatedConv = await this.chatService.getConversationById(conversationId);
+
     // Broadcast the message to the conversation room via gateway
     this.chatGateway.server?.to(conversationId).emit("message_received", {
       conversationId,
       message,
+      staffId: updatedConv.staff_id,
+      status: updatedConv.status,
     });
 
     if (user.role === "customer") {
-      const conversation = await this.chatService.getConversationById(conversationId);
-      if (!conversation.staff_id && conversation.status === "open") {
+      if (!updatedConv.staff_id && updatedConv.status === "open") {
         this.chatGateway.server?.to("staff").emit("new_unassigned_message", {
           conversationId,
           customerName: user.fullName,
@@ -120,14 +124,17 @@ export class ChatController {
       body.topic,
     );
 
+    const updatedConv = await this.chatService.getConversationById(conversationId);
+
     this.chatGateway.server?.to(conversationId).emit("message_received", {
       conversationId,
       message,
+      staffId: updatedConv.staff_id,
+      status: updatedConv.status,
     });
 
     if (user.role === "customer") {
-      const conversation = await this.chatService.getConversationById(conversationId);
-      if (!conversation.staff_id && conversation.status === "open") {
+      if (!updatedConv.staff_id && updatedConv.status === "open") {
         this.chatGateway.server?.to("staff").emit("new_unassigned_message", {
           conversationId,
           customerName: user.fullName,
@@ -156,14 +163,17 @@ export class ChatController {
   ) {
     const message = await this.chatService.uploadFile(user.id, user.role, conversationId, file);
 
+    const updatedConv = await this.chatService.getConversationById(conversationId);
+
     this.chatGateway.server?.to(conversationId).emit("message_received", {
       conversationId,
       message,
+      staffId: updatedConv.staff_id,
+      status: updatedConv.status,
     });
 
     if (user.role === "customer") {
-      const conversation = await this.chatService.getConversationById(conversationId);
-      if (!conversation.staff_id && conversation.status === "open") {
+      if (!updatedConv.staff_id && updatedConv.status === "open") {
         this.chatGateway.server?.to("staff").emit("new_unassigned_message", {
           conversationId,
           customerName: user.fullName,

@@ -1,6 +1,6 @@
 import { ConnectedSocket, MessageBody, SubscribeMessage, WebSocketGateway, OnGatewayConnection, OnGatewayDisconnect, WebSocketServer } from "@nestjs/websockets";
 import { JwtService } from "@nestjs/jwt";
-import { Injectable } from "@nestjs/common";
+import { Injectable, OnModuleInit } from "@nestjs/common";
 import type { AppRole } from "@prisma/client";
 import type { Server, Socket } from "socket.io";
 import { ChatService } from "./chat.service";
@@ -36,7 +36,14 @@ interface ActiveReplier {
   },
 })
 @Injectable()
-export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGatewayDisconnect {
+
+  async onModuleInit() {
+    // Resolve all reopened conversations first (server was restarted, in-memory timers are gone)
+    await this.chatService.resolveAllReopenedConversations();
+    // Then clear staff assignments for normal open conversations
+    await this.chatService.clearAllStaffAssignments();
+  }
   @WebSocketServer()
   server!: Server;
 
@@ -193,6 +200,23 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
+    const existingLock = this.activeReplier.get(body.conversationId);
+
+    // Zombie lock: DB has staff_id but in-memory lock is gone (e.g. server restart)
+    // Don't clear reopened conversations — keep original staff assigned
+    if (conversation.staff_id && conversation.staff_id !== user.userId && !existingLock && !conversation.reopened_from_resolved) {
+      conversation = await this.chatService.releaseStaffAssignment(body.conversationId);
+    }
+
+    // Reopen resolved conversation when staff clicks it
+    if (conversation.status === "resolved") {
+      if (conversation.staff_id && conversation.staff_id !== user.userId) {
+        client.emit("open_conversation_result", { conversationId: body.conversationId, canReply: false, lockedBy: "staff cũ" });
+        return;
+      }
+      conversation = await this.chatService.reopenConversation(body.conversationId, user.userId);
+    }
+
     if (conversation.staff_id && conversation.staff_id !== user.userId) {
       client.emit("open_conversation_result", { conversationId: body.conversationId, canReply: false, lockedBy: "nhân viên khác" });
       return;
@@ -206,7 +230,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       }
     }
 
-    const existingLock = this.activeReplier.get(body.conversationId);
     if (existingLock?.staffId === user.userId) {
       this.clearDisconnectReleaseForSocket(existingLock.socketId);
     }
@@ -316,14 +339,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     const message = await this.chatService.sendMessage(user.userId, user.role, body.conversationId, body.content);
+    const updatedConv = await this.chatService.getConversationById(body.conversationId);
     this.server.to(body.conversationId).emit("message_received", {
       conversationId: body.conversationId,
       message,
+      staffId: updatedConv.staff_id,
+      status: updatedConv.status,
     });
 
     if (user.role === "customer") {
-      const conversation = await this.chatService.getConversationById(body.conversationId);
-      if (!conversation.staff_id && conversation.status === "open") {
+      if (!updatedConv.staff_id && updatedConv.status === "open") {
         this.server.to("staff").emit("new_unassigned_message", {
           conversationId: body.conversationId,
           customerName: user.fullName,
@@ -347,7 +372,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         conversationId: body.conversationId,
         status: conversation.status,
       });
-      this.server.to("staff").emit("chat_unlocked", { conversationId: body.conversationId });
+      this.server.to("staff").emit("chat_unlocked", { conversationId: body.conversationId, status: conversation.status });
     } catch {
       client.emit("resolve_error", { conversationId: body.conversationId, reason: "cannot_resolve" });
     }
@@ -454,8 +479,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     this.clearActiveLock(conversationId);
-    void this.chatService.releaseStaffAssignment(conversationId, lock.staffId);
-    this.server?.to("staff").emit("chat_unlocked", { conversationId });
+
+    void this.chatService.releaseConversationLock(conversationId, lock.staffId).then((status) => {
+      this.server?.to("staff").emit("chat_unlocked", { conversationId, status });
+    });
   }
 
   private scheduleLockExpiration(conversationId: string) {

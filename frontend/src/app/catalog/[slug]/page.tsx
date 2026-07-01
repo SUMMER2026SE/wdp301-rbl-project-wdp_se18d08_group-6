@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound, useRouter } from "next/navigation";
 import { use, useEffect, useState } from "react";
 import { PublicAtelierNav } from "@/components/heritage/ui";
+import { useAuth } from "@/components/auth/auth-provider";
 import { getGarmentsGrouped, type GarmentGrouped } from "@/lib/api";
 import { addToCart, cartCount } from "@/lib/cart";
 import { garmentSpecs, pairingItems } from "@/lib/heritage-mock-data";
@@ -38,6 +39,7 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
   const today = todayIso();
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(addDays(today, 2));
+  const { user } = useAuth();
 
   useEffect(() => {
     // Tìm garment trong danh sách grouped
@@ -315,14 +317,16 @@ async function handleConsult() {
                   Thêm vào giỏ
                   <span className="material-symbols-outlined text-[18px]">shopping_bag</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={handleConsult}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-600 px-6 py-4 text-sm font-semibold uppercase tracking-[0.18em] text-emerald-600 transition hover:bg-emerald-50"
-                >
-                  Tư vấn
-                  <span className="material-symbols-outlined text-[18px]">support_agent</span>
-                </button>
+                {(!user || user.role === "customer") && (
+                  <button
+                    type="button"
+                    onClick={handleConsult}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-600 px-6 py-4 text-sm font-semibold uppercase tracking-[0.18em] text-emerald-600 transition hover:bg-emerald-50"
+                  >
+                    Tư vấn
+                    <span className="material-symbols-outlined text-[18px]">support_agent</span>
+                  </button>
+                )}
                 {addedMsg && <p className="text-center text-sm font-medium text-jade">{addedMsg}</p>}
                 {consultMsg && <p className="text-center text-sm font-medium text-emerald-600">{consultMsg}</p>}
                 <p className="text-center text-sm text-stone-500">Đã bao gồm công là ủi, làm sạch và hỗ trợ chỉnh sửa cơ bản.</p>

@@ -7,6 +7,7 @@ describe("ChatGateway (unit)", () => {
     getConversationById: vi.fn(),
     assignStaffToConversationIfEmpty: vi.fn(),
     releaseStaffAssignment: vi.fn(),
+    releaseConversationLock: vi.fn(),
   } as any;
 
   const mockJwtService = {} as any;
@@ -18,6 +19,7 @@ describe("ChatGateway (unit)", () => {
     mockChatService.getConversationById.mockReset();
     mockChatService.assignStaffToConversationIfEmpty.mockReset();
     mockChatService.releaseStaffAssignment.mockReset();
+    mockChatService.releaseConversationLock.mockReset();
   });
 
   afterEach(() => {
@@ -45,6 +47,7 @@ describe("ChatGateway (unit)", () => {
   it("releases lock on timeout", async () => {
     mockChatService.getConversationById.mockResolvedValue({ id: "conv-2", staff_id: null, status: "open" });
     mockChatService.assignStaffToConversationIfEmpty.mockResolvedValue({ id: "conv-2", staff_id: "staff-2", status: "open" });
+    mockChatService.releaseConversationLock.mockResolvedValue("open");
     const client = {
       id: "sock-2",
       data: { user: { userId: "staff-2", role: "staff", fullName: "Staff Two" } },
