@@ -83,6 +83,8 @@ model Address {
   ward         String?
   district     String?
   city         String?
+  latitude     Float?
+  longitude    Float?
   isDefault    Boolean     @default(false) @map("is_default")
   createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   customer     UserAccount @relation(fields: [customerId], references: [id])
@@ -164,6 +166,7 @@ model Booking {
   pickupMethod          String                 @default("store_pickup") @map("pickup_method")
   rentalTotal           Decimal                @default(0) @map("rental_total") @db.Decimal(12, 2)
   depositTotal          Decimal                @default(0) @map("deposit_total") @db.Decimal(12, 2)
+  shippingFee           Decimal                @default(0) @map("shipping_fee") @db.Decimal(12, 2)
   penaltyTotal          Decimal                @default(0) @map("penalty_total") @db.Decimal(12, 2)
   note                  String?
   createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)

@@ -33,3 +33,25 @@ export type DirectionSummary = {
   durationText: string | null;
   raw: unknown;
 };
+
+export type ShippingFeeEstimate = {
+  distanceKm: number;
+  estimatedFee: number;
+  durationMinutes: number;
+  distanceText: string;
+  durationText: string;
+  ratePerKm: number;
+  storeLat: number;
+  storeLng: number;
+  customerLat: number;
+  customerLng: number;
+};
+
+export type StoreInfo = {
+  name: string;
+  address: string;
+  phone: string;
+  latitude: number | null;
+  longitude: number | null;
+  businessHours: string;
+};

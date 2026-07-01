@@ -38,6 +38,12 @@ export class BookingsController {
     return this.bookingsService.findOne(user.id, id);
   }
 
+  @Get(":id/delivery-track")
+  @UseGuards(JwtAuthGuard)
+  getDeliveryTrack(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseUUIDPipe) id: string) {
+    return this.bookingsService.getDeliveryTrack(user.id, id);
+  }
+
   @Patch(":id/cancel")
   @UseGuards(JwtAuthGuard)
   cancel(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseUUIDPipe) id: string) {
@@ -63,6 +69,11 @@ export class BookingsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("staff", "manager_owner", "admin")
   findCompletedWithPendingRefunds() { return this.bookingsService.findCompletedWithPendingRefunds(); }
+
+  @Get("staff/delivery-map")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("staff", "manager_owner", "admin")
+  getDeliveryMap() { return this.bookingsService.getDeliveryMap(); }
 
   @Patch(":id/status")
   @UseGuards(JwtAuthGuard, RolesGuard)

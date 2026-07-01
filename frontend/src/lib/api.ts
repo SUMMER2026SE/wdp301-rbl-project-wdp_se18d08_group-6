@@ -115,12 +115,86 @@ export type CustomerAddress = {
   ward: string | null;
   district: string | null;
   city: string | null;
+  latitude: number | null;
+  longitude: number | null;
   isDefault: boolean;
   createdAt: string;
 };
 
 export async function getMyAddresses() {
   return apiRequest<CustomerAddress[]>("/users/me/addresses");
+}
+
+// ---------- Shipping / Locations ----------
+
+export type ShippingFeeEstimate = {
+  distanceKm: number;
+  estimatedFee: number;
+  durationMinutes: number;
+  distanceText: string;
+  durationText: string;
+  ratePerKm: number;
+  storeLat: number;
+  storeLng: number;
+  customerLat: number;
+  customerLng: number;
+};
+
+export async function getShippingFee(addressId: string) {
+  return apiRequest<ShippingFeeEstimate>(`/locations/shipping-fee?addressId=${encodeURIComponent(addressId)}`);
+}
+
+export type StoreInfo = {
+  name: string;
+  address: string;
+  phone: string;
+  latitude: number | null;
+  longitude: number | null;
+  businessHours: string;
+};
+
+export async function getStoreInfo() {
+  return apiRequest<StoreInfo>("/locations/store-info");
+}
+
+// ---------- Delivery map ----------
+
+export type DeliveryPoint = {
+  bookingId: string;
+  customerName: string;
+  customerPhone: string;
+  status: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  garmentNames: string;
+  rentalStartDate: string;
+  rentalEndDate: string;
+};
+
+export async function getDeliveryMap() {
+  return apiRequest<DeliveryPoint[]>("/bookings/staff/delivery-map");
+}
+
+// ---------- Delivery tracking ----------
+
+export type DeliveryTrackData = {
+  bookingId: string;
+  status: "preparing" | "in_transit" | "arrived";
+  progress: number;
+  storeLat: number;
+  storeLng: number;
+  customerLat: number;
+  customerLng: number;
+  shipperLat: number;
+  shipperLng: number;
+  customerName: string;
+  customerAddress: string;
+  estimatedDelivery: string;
+};
+
+export async function getDeliveryTrack(bookingId: string) {
+  return apiRequest<DeliveryTrackData>(`/bookings/${bookingId}/delivery-track`);
 }
 
 // ---------- Booking types ----------
@@ -148,6 +222,7 @@ export type BookingResponse = {
   pickupMethod: string;
   rentalTotal: number;
   depositTotal: number;
+  shippingFee?: number;
   penaltyTotal?: number;
   note: string | null;
   deliveryAddressId?: string | null;
@@ -178,6 +253,7 @@ export async function createBooking(payload: {
   endDate: string;
   pickupMethod?: string;
   deliveryAddressId?: string;
+  shippingFee?: number;
   note?: string;
 }) {
   return apiRequest<BookingResponse>("/bookings", {

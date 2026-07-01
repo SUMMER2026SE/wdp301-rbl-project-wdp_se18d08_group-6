@@ -22,6 +22,8 @@ type CustomerAddress = {
   ward: string | null;
   district: string | null;
   city: string | null;
+  latitude: number | null;
+  longitude: number | null;
   isDefault: boolean;
   createdAt: string;
 };
@@ -33,11 +35,13 @@ type AddressFormState = {
   ward: string;
   district: string;
   city: string;
+  latitude: number | null;
+  longitude: number | null;
   isDefault: boolean;
 };
 
 function createEmptyForm(): AddressFormState {
-  return { receiverName: "", phone: "", line1: "", ward: "", district: "", city: "", isDefault: false };
+  return { receiverName: "", phone: "", line1: "", ward: "", district: "", city: "", latitude: null, longitude: null, isDefault: false };
 }
 
 /* Underline input style */
@@ -117,6 +121,8 @@ export default function CustomerAddressesPage() {
       line1: address.fullAddress || current.line1,
       district: address.district ?? current.district,
       city: address.province ?? current.city,
+      latitude: address.latitude ?? current.latitude,
+      longitude: address.longitude ?? current.longitude,
     }));
   }
 
@@ -128,6 +134,8 @@ export default function CustomerAddressesPage() {
       ward: address.ward ?? "",
       district: address.district ?? "",
       city: address.city ?? "",
+      latitude: address.latitude ?? null,
+      longitude: address.longitude ?? null,
       isDefault: address.isDefault,
     });
     setEditingId(address.id);
@@ -158,6 +166,8 @@ export default function CustomerAddressesPage() {
           ward: normalizeNullableText(form.ward),
           district: normalizeNullableText(form.district),
           city: normalizeNullableText(form.city),
+          latitude: form.latitude,
+          longitude: form.longitude,
           isDefault: form.isDefault,
         }),
       });
@@ -213,6 +223,8 @@ export default function CustomerAddressesPage() {
           ward: normalizeNullableText(form.ward),
           district: normalizeNullableText(form.district),
           city: normalizeNullableText(form.city),
+          latitude: form.latitude,
+          longitude: form.longitude,
           isDefault: form.isDefault,
         }),
       });

@@ -1,6 +1,14 @@
-import { HttpException, HttpStatus, Injectable } from "@nestjs/common";
+import { HttpException, HttpStatus, Injectable, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import type { AddressSuggestion, AdministrativeArea, DirectionSummary, ResolvedAddress } from "./locations.types";
+import { PrismaService } from "../../prisma/prisma.service";
+import type {
+  AddressSuggestion,
+  AdministrativeArea,
+  DirectionSummary,
+  ResolvedAddress,
+  ShippingFeeEstimate,
+  StoreInfo,
+} from "./locations.types";
 
 const DEFAULT_GOGODUK_BASE_URL = "https://api.gogoduk.com";
 
@@ -10,7 +18,10 @@ type RawRecord = Record<string, unknown>;
 export class LocationsService {
   private readonly baseUrl: string;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {
     this.baseUrl = (this.config.get<string>("GOGODUK_BASE_URL") ?? DEFAULT_GOGODUK_BASE_URL).replace(/\/$/, "");
   }
 
@@ -23,7 +34,20 @@ export class LocationsService {
 
   async resolve(placeId: string): Promise<ResolvedAddress> {
     const payload = await this.gogodukFetch<unknown>("/v1/place/resolve", { id: placeId, lang: "vi" });
-    return this.normalizeResolved(this.extractObject(payload, ["result"]));
+    const resolved = this.normalizeResolved(this.extractObject(payload, ["result"]));
+
+    // Auto-populate administrative fields from reverse geocode
+    if (resolved.latitude != null && resolved.longitude != null) {
+      try {
+        const admin = await this.reverseGeocode(resolved.latitude, resolved.longitude);
+        if (admin.city) resolved.province = admin.city;
+        if (admin.district) resolved.district = admin.district;
+      } catch {
+        // swallow — resolved without admin fields is still usable
+      }
+    }
+
+    return resolved;
   }
 
   async reverse(latitude: number, longitude: number): Promise<ResolvedAddress> {
@@ -35,7 +59,18 @@ export class LocationsService {
       "boundary.country": "VN",
     });
     const firstResult = this.extractArray(payload, ["results"])[0] ?? {};
-    return this.normalizeResolved(firstResult);
+    const resolved = this.normalizeResolved(firstResult);
+
+    // Enrich with administrative area data from reverse-geocode
+    try {
+      const admin = await this.reverseGeocode(latitude, longitude);
+      if (admin.city && !resolved.province) resolved.province = admin.city;
+      if (admin.district && !resolved.district) resolved.district = admin.district;
+    } catch {
+      // swallow — address still usable without admin fields
+    }
+
+    return resolved;
   }
 
   async reverseGeocode(latitude: number, longitude: number): Promise<AdministrativeArea> {
@@ -73,6 +108,159 @@ export class LocationsService {
       durationText: duration ? this.str(duration.text) ?? null : null,
       raw: payload,
     };
+  }
+
+  async estimateShippingFee(addressId: string): Promise<ShippingFeeEstimate> {
+    // 1. Look up address from DB
+    const address = await this.prisma.address.findUnique({ where: { id: addressId } });
+    if (!address) {
+      throw new NotFoundException("Không tìm thấy địa chỉ.");
+    }
+
+    // 2. Get customer coordinates: use stored lat/lng if available, otherwise geocode
+    let customerLat: number;
+    let customerLng: number;
+
+    if (address.latitude != null && address.longitude != null) {
+      // Fast path: use coordinates already stored on the address
+      customerLat = Number(address.latitude);
+      customerLng = Number(address.longitude);
+    } else {
+      // Slow path: geocode the address text via GoGoDuk
+      const normalizedCity = address.city
+        ?.replace(/\bTP\.?\s*/gi, "")
+        ?.replace(/\bTp\.?\s*/gi, "")
+        ?.replace(/\bThành\s+phố\s+/gi, "")
+        .trim()
+        ?? null;
+
+      const candidates = [
+        [address.line1, address.ward, address.district, normalizedCity],
+        [address.line1, address.ward, address.district],
+        [address.line1, address.district, normalizedCity],
+        [address.line1, address.district],
+        [address.line1],
+      ];
+
+      let suggestions = await this.suggest(
+        (candidates[0] ?? []).filter(Boolean).join(", "),
+      );
+
+      for (const candidate of candidates.slice(1)) {
+        if (suggestions.length > 0) break;
+        const text = candidate.filter(Boolean).join(", ");
+        if (!text) continue;
+        suggestions = await this.suggest(text);
+      }
+
+      if (suggestions.length === 0) {
+        throw new HttpException("Không thể định vị địa chỉ.", HttpStatus.UNPROCESSABLE_ENTITY);
+      }
+
+      const resolved = await this.resolve(suggestions[0].placeId);
+      if (resolved.latitude == null || resolved.longitude == null) {
+        throw new HttpException("Không thể lấy tọa độ địa chỉ.", HttpStatus.UNPROCESSABLE_ENTITY);
+      }
+
+      customerLat = resolved.latitude;
+      customerLng = resolved.longitude;
+
+      // Store coordinates on the address for future use
+      try {
+        await this.prisma.address.update({
+          where: { id: addressId },
+          data: { latitude: customerLat, longitude: customerLng },
+        });
+      } catch {
+        // non-critical — coordinates will be re-geocoded next time
+      }
+    }
+
+    // 3. Get store coordinates from system settings (fall back to defaults)
+    const storeLat = (await this.getSettingNumber("store_lat")) ?? 10.7769;
+    const storeLng = (await this.getSettingNumber("store_lng")) ?? 106.7009;
+
+    // 4. Get shipping rate (fall back to 5000 VND/km)
+    const ratePerKm = (await this.getSettingNumber("shipping_rate_per_km")) ?? 5000;
+
+    // 5. Call directions API
+    const dir = await this.directions(
+      `${storeLat},${storeLng}`,
+      `${customerLat},${customerLng}`,
+    );
+
+    // 6. Calculate
+    const distanceKm = dir.distanceMeters ? dir.distanceMeters / 1000 : 0;
+    const estimatedFee = Math.round(distanceKm * ratePerKm);
+    const durationMinutes = dir.durationSeconds ? Math.round(dir.durationSeconds / 60) : 0;
+
+    return {
+      distanceKm: Math.round(distanceKm * 100) / 100,
+      estimatedFee,
+      durationMinutes,
+      distanceText: dir.distanceText ?? `${distanceKm.toFixed(1)} km`,
+      durationText: dir.durationText ?? `${durationMinutes} phút`,
+      ratePerKm,
+      storeLat,
+      storeLng,
+      customerLat,
+      customerLng,
+    };
+  }
+
+  async getStoreInfo(): Promise<StoreInfo> {
+    const storeAddress =
+      (await this.getSettingText("store_address")) ?? "123 Lê Lợi, Bến Thành, Quận 1, TP. Hồ Chí Minh";
+    const storePhone = (await this.getSettingText("store_phone")) ?? "0901999888";
+    const storeLat = (await this.getSettingNumber("store_lat")) ?? 10.7769;
+    const storeLng = (await this.getSettingNumber("store_lng")) ?? 106.7009;
+
+    let businessHours = "09:00 - 20:00";
+    const hoursSetting = await this.prisma.systemSetting.findUnique({ where: { key: "business_hours" } });
+    if (hoursSetting?.value && typeof hoursSetting.value === "object" && !Array.isArray(hoursSetting.value)) {
+      const bh = hoursSetting.value as Record<string, unknown>;
+      if (typeof bh.open === "string" && typeof bh.close === "string") {
+        businessHours = `${bh.open} - ${bh.close}`;
+      }
+    }
+
+    return {
+      name: "Heritage Atelier",
+      address: storeAddress,
+      phone: storePhone,
+      latitude: storeLat,
+      longitude: storeLng,
+      businessHours,
+    };
+  }
+
+  private async getSettingText(key: string): Promise<string | null> {
+    const setting = await this.prisma.systemSetting.findUnique({ where: { key } });
+    if (!setting?.value) return null;
+    const raw = setting.value as Record<string, unknown>;
+    if (raw && typeof raw === "object" && "value" in raw) {
+      return typeof raw.value === "string" ? raw.value : String(raw.value);
+    }
+    return typeof setting.value === "string" ? setting.value : null;
+  }
+
+  private async getSettingNumber(key: string): Promise<number | null> {
+    const setting = await this.prisma.systemSetting.findUnique({ where: { key } });
+    if (!setting?.value) return null;
+
+    // Handle both formats:
+    //   { value: "10.7769" }  → extract .value
+    //   { value: 5000 }       → extract .value
+    //   "10.7769"             → use directly (admin page may save raw value)
+    const raw = setting.value as Record<string, unknown>;
+    const val = raw && typeof raw === "object" && "value" in raw ? raw.value : setting.value;
+
+    if (typeof val === "number") return val;
+    if (typeof val === "string") {
+      const parsed = Number(val);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
   }
 
   private async gogodukFetch<T>(path: string, params: Record<string, string | number | undefined>): Promise<T> {

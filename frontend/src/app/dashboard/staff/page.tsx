@@ -6,11 +6,14 @@ import {
   getStaffPendingBookings,
   getStaffAllBookings,
   getStaffCompletedRefundBookings,
+  getDeliveryMap,
   advanceBookingStatus,
   markBookingPaid,
   createRefund,
   type StaffBookingResponse,
+  type DeliveryPoint,
 } from "@/lib/api";
+import { DeliveryMap } from "@/components/location/delivery-map";
 
 function formatDate(iso: string) {
   const [y, m, d] = iso.split("-");
@@ -78,7 +81,7 @@ const NEXT_ACTIONS: Partial<Record<string, { status: string; label: string; styl
   ],
 };
 
-type Tab = "pending" | "all" | "refunds";
+type Tab = "pending" | "all" | "refunds" | "map";
 
 type PaymentDialog = {
   bookingId: string;
@@ -125,6 +128,10 @@ export default function StaffDashboardPage() {
   const [refundBankHolder, setRefundBankHolder] = useState("");
 
   useEffect(() => {
+    if (tab === "map") {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setErrorMsg(null);
     let fetcher;
@@ -353,6 +360,18 @@ export default function StaffDashboardPage() {
         >
           Hoàn cọc
         </button>
+        <button
+          type="button"
+          onClick={() => setTab("map")}
+          className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold uppercase tracking-[0.16em] transition border-b-2 -mb-px ${
+            tab === "map"
+              ? "border-lotus text-lotus"
+              : "border-transparent text-stone-500 hover:text-lotus"
+          }`}
+        >
+          <span className="material-symbols-outlined text-[18px]">map</span>
+          Bản đồ giao hàng
+        </button>
       </div>
 
       {errorMsg && (
@@ -361,7 +380,9 @@ export default function StaffDashboardPage() {
         </div>
       )}
 
-      {loading ? (
+      {tab === "map" ? (
+        <DeliveryMapPanel />
+      ) : loading ? (
         <div className="py-20 text-center text-stone-400">Đang tải...</div>
       ) : bookings.length === 0 ? (
         <div className="py-20 text-center text-stone-400">
@@ -736,4 +757,23 @@ export default function StaffDashboardPage() {
       )}
     </StaffPortalShell>
   );
+}
+
+function DeliveryMapPanel() {
+  const [points, setPoints] = useState<DeliveryPoint[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getDeliveryMap()
+      .then((res) => {
+        if (res.success && res.data) setPoints(res.data);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return <div className="py-20 text-center text-stone-400">Đang tải bản đồ giao hàng...</div>;
+  }
+
+  return <DeliveryMap points={points} />;
 }

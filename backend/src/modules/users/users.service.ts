@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { ok } from "../../common/api-response";
 import { PrismaService } from "../../prisma/prisma.service";
+import { LocationsService } from "../locations/locations.service";
 import { toAuthenticatedUser } from "../auth/auth-user";
 
 type UpdateProfileInput = {
@@ -24,6 +25,8 @@ type CreateAddressInput = {
   ward?: string | null;
   district?: string | null;
   city?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   isDefault?: boolean;
 };
 
@@ -46,6 +49,8 @@ type AddressRecord = {
   ward: string | null;
   district: string | null;
   city: string | null;
+  latitude: number | null;
+  longitude: number | null;
   isDefault: boolean;
   createdAt: Date;
 };
@@ -78,7 +83,10 @@ type UsersPrismaBridge = {
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly locations: LocationsService,
+  ) {}
 
   async updateProfile(userId: string, input: UpdateProfileInput) {
     const profileData = this.pickDefined({
@@ -178,10 +186,15 @@ export class UsersService {
           ward: input.ward ?? null,
           district: input.district ?? null,
           city: input.city ?? null,
+          latitude: input.latitude ?? null,
+          longitude: input.longitude ?? null,
           isDefault: shouldBeDefault,
         },
       });
     });
+
+    // Geocode in background (don't block response)
+    void this.geocodeAddressIfNeeded(address);
 
     return ok(this.serializeAddress(address));
   }
@@ -207,7 +220,7 @@ export class UsersService {
     }
 
     const updateData: Record<string, unknown> = {};
-    for (const key of ["receiverName", "phone", "line1", "ward", "district", "city"] as const) {
+    for (const key of ["receiverName", "phone", "line1", "ward", "district", "city", "latitude", "longitude"] as const) {
       if (input[key] !== undefined) {
         updateData[key] = input[key] ?? null;
       }
@@ -230,6 +243,9 @@ export class UsersService {
         data: updateData,
       });
     });
+
+    // Geocode in background (don't block response)
+    void this.geocodeAddressIfNeeded(address);
 
     return ok(this.serializeAddress(address));
   }
@@ -294,9 +310,37 @@ export class UsersService {
       ward: address.ward,
       district: address.district,
       city: address.city,
+      latitude: address.latitude ?? null,
+      longitude: address.longitude ?? null,
       isDefault: address.isDefault,
       createdAt: address.createdAt,
     };
+  }
+
+  /** Background geocode: try to fill lat/lng from GoGoDuk if missing */
+  private async geocodeAddressIfNeeded(address: AddressRecord) {
+    if (address.latitude != null && address.longitude != null) return;
+
+    const text = [address.line1, address.ward, address.district, address.city]
+      .filter(Boolean)
+      .join(", ");
+    if (!text) return;
+
+    try {
+      const suggestions = await this.locations.suggest(text);
+      if (suggestions.length === 0) return;
+
+      const resolved = await this.locations.resolve(suggestions[0].placeId);
+      if (resolved.latitude == null || resolved.longitude == null) return;
+
+      const prisma = this.prisma as unknown as UsersPrismaBridge;
+      await prisma.address.update({
+        where: { id: address.id },
+        data: { latitude: resolved.latitude, longitude: resolved.longitude },
+      });
+    } catch {
+      // silent — address works fine without coordinates
+    }
   }
 
   private toNullableNumber(value: unknown) {
