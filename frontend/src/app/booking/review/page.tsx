@@ -38,6 +38,8 @@ function BookingReviewInner() {
   const endDate = searchParams.get("endDate") ?? "";
   const pickupMethod = searchParams.get("pickupMethod") ?? "store_pickup";
   const deliveryAddressId = searchParams.get("deliveryAddressId") ?? "";
+  const shippingFeeParam = searchParams.get("shippingFee") ?? "0";
+  const shippingFee = parseInt(shippingFeeParam, 10) || 0;
 
   const [agreed, setAgreed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -49,7 +51,7 @@ function BookingReviewInner() {
   const days = startDate && endDate ? daysBetween(startDate, endDate) : 0;
   const rentalTotal = cartItems.reduce((sum, item) => sum + item.dailyPrice * days, 0);
   const depositTotal = cartItems.reduce((sum, item) => sum + item.depositAmount, 0);
-  const grandTotal = rentalTotal + depositTotal;
+  const grandTotal = rentalTotal + depositTotal + shippingFee;
 
   useEffect(() => {
     if (pickupMethod !== "delivery" || !deliveryAddressId) {
@@ -83,6 +85,7 @@ function BookingReviewInner() {
       endDate,
       pickupMethod,
       deliveryAddressId: pickupMethod === "delivery" ? deliveryAddressId : undefined,
+      shippingFee: pickupMethod === "delivery" && shippingFee > 0 ? shippingFee : undefined,
     });
     setSubmitting(false);
     if (res.success && res.data) {
@@ -95,6 +98,7 @@ function BookingReviewInner() {
 
   const backParams = new URLSearchParams({ startDate, endDate, pickupMethod });
   if (deliveryAddressId) backParams.set("deliveryAddressId", deliveryAddressId);
+  if (shippingFee > 0) backParams.set("shippingFee", String(shippingFee));
 
   if (cartItems.length === 0) {
     return (
@@ -212,6 +216,12 @@ function BookingReviewInner() {
                 <span className="text-stone-500">Làm sạch chuyên biệt</span>
                 <span className="font-medium text-jade">Đã bao gồm</span>
               </div>
+              {shippingFee > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-stone-500">Phí giao hàng</span>
+                  <span className="text-ink">{formatVND(shippingFee)}</span>
+                </div>
+              )}
             </div>
 
             <div className="mt-8 rounded-lg border border-antique/40 bg-antique/10 p-4">
@@ -224,7 +234,7 @@ function BookingReviewInner() {
 
             <div className="mt-8 border-t border-sand pt-6">
               <div className="mb-2 flex items-end justify-between gap-4"><span className="text-lg text-ink">Tổng thanh toán</span><span className="font-display text-4xl text-lotus">{formatVND(grandTotal)}</span></div>
-              <p className="text-right text-xs text-stone-500">Gồm tiền thuê và tiền cọc hoàn lại</p>
+              <p className="text-right text-xs text-stone-500">Gồm tiền thuê{shippingFee > 0 ? ", phí giao hàng" : ""} và tiền cọc hoàn lại</p>
             </div>
 
             <label className="mt-8 flex cursor-pointer items-start gap-3 text-sm leading-7 text-stone-600">

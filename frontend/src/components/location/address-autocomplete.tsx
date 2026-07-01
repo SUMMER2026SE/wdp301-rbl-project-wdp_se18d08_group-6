@@ -18,8 +18,8 @@ export type ResolvedAddress = {
   district?: string;
   province?: string;
   country?: string;
-  latitude?: number;
-  longitude?: number;
+  latitude?: number | null;
+  longitude?: number | null;
   provider: "gogoduk";
   providerPlaceId?: string;
 };
@@ -44,7 +44,9 @@ export function AddressAutocomplete({ value, onChange, disabled = false }: Addre
   const [loading, setLoading] = useState(false);
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pickedFromSuggest, setPickedFromSuggest] = useState(false);
   const requestIdRef = useRef(0);
+  const suppressSuggestRef = useRef(false);
 
   const canUseCurrentLocation = useMemo(() => typeof navigator !== "undefined" && "geolocation" in navigator, []);
 
@@ -56,6 +58,13 @@ export function AddressAutocomplete({ value, onChange, disabled = false }: Addre
     const trimmed = query.trim();
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
+
+    if (suppressSuggestRef.current) {
+      suppressSuggestRef.current = false;
+      setSuggestions([]);
+      setLoading(false);
+      return;
+    }
 
     if (trimmed.length < 2 || value?.fullAddress === trimmed) {
       setSuggestions([]);
@@ -86,9 +95,11 @@ export function AddressAutocomplete({ value, onChange, disabled = false }: Addre
   }, [query, value?.fullAddress]);
 
   async function handleSelect(suggestion: AddressSuggestion) {
+    suppressSuggestRef.current = true;
     setQuery(suggestion.label);
     setSuggestions([]);
     setError(null);
+    setPickedFromSuggest(true);
 
     const result = await apiRequest<ResolvedAddress>(`/locations/resolve?placeId=${encodeURIComponent(suggestion.placeId)}`);
     onChange(result.success && result.data ? result.data : suggestionToAddress(suggestion));
@@ -110,9 +121,11 @@ export function AddressAutocomplete({ value, onChange, disabled = false }: Addre
         setLocating(false);
 
         if (result.success && result.data) {
+          suppressSuggestRef.current = true;
           onChange(result.data);
           setQuery(result.data.fullAddress);
           setSuggestions([]);
+          setPickedFromSuggest(true);
         } else {
           setError(result.message ?? "Không thể đọc địa chỉ từ vị trí hiện tại.");
         }
@@ -141,6 +154,7 @@ export function AddressAutocomplete({ value, onChange, disabled = false }: Addre
           onChange={(event) => {
             setQuery(event.target.value);
             onChange(null);
+            setPickedFromSuggest(false);
           }}
           autoComplete="street-address"
         />
@@ -175,7 +189,20 @@ export function AddressAutocomplete({ value, onChange, disabled = false }: Addre
           <span className="material-symbols-outlined text-[16px]">my_location</span>
           {locating ? "Đang lấy vị trí..." : "Dùng vị trí hiện tại"}
         </button>
-        {value ? <span className="text-xs font-semibold text-jade">Đã chọn địa chỉ chuẩn hóa</span> : null}
+        {value && pickedFromSuggest ? (
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-semibold text-jade">Đã chọn địa chỉ chuẩn hóa</span>
+            {value.district || value.province ? (
+              <span className="text-xs text-stone-500">
+                {[value.district, value.province].filter(Boolean).join(", ")}
+              </span>
+            ) : null}
+          </div>
+        ) : value ? (
+          <span className="text-xs text-amber-600">
+            ⚠ Địa chỉ nhập tay, có thể không chính xác. Nên chọn từ gợi ý.
+          </span>
+        ) : null}
       </div>
 
       {error ? <p className="text-sm text-red-500">{error}</p> : null}

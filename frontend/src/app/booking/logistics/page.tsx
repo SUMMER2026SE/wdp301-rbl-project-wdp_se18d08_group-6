@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { BookingFlowShell } from "@/components/heritage/ui";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, getShippingFee, getStoreInfo, type ShippingFeeEstimate, type StoreInfo } from "@/lib/api";
 import { logisticsMethods } from "@/lib/heritage-mock-data";
+import { ShippingMap } from "@/components/location/shipping-map";
 
 export type CustomerAddress = {
   id: string;
@@ -15,6 +16,8 @@ export type CustomerAddress = {
   ward: string | null;
   district: string | null;
   city: string | null;
+  latitude: number | null;
+  longitude: number | null;
   isDefault: boolean;
   createdAt: string;
 };
@@ -43,6 +46,16 @@ function BookingLogisticsInner() {
   const [addressLoading, setAddressLoading] = useState(false);
   const [selectedAddressId, setSelectedAddressId] = useState<string>(searchParams.get("deliveryAddressId") ?? "");
 
+  const [shippingFee, setShippingFee] = useState<ShippingFeeEstimate | null>(null);
+  const [shippingFeeLoading, setShippingFeeLoading] = useState(false);
+  const [storeInfo, setStoreInfo] = useState<StoreInfo | null>(null);
+
+  useEffect(() => {
+    getStoreInfo().then((res) => {
+      if (res.success && res.data) setStoreInfo(res.data);
+    });
+  }, []);
+
   const loadAddresses = useCallback(async () => {
     setAddressLoading(true);
     const result = await apiRequest<CustomerAddress[]>("/users/me/addresses");
@@ -68,6 +81,30 @@ function BookingLogisticsInner() {
     }
   }, [loadAddresses, pickupMethod]);
 
+  useEffect(() => {
+    if (pickupMethod !== "delivery" || !selectedAddressId) {
+      setShippingFee(null);
+      return;
+    }
+    setShippingFeeLoading(true);
+    console.log("[shipping-fee] Fetching for address:", selectedAddressId);
+    getShippingFee(selectedAddressId)
+      .then((res) => {
+        console.log("[shipping-fee] Response:", res);
+        if (res.success && res.data) {
+          setShippingFee(res.data);
+        } else {
+          console.warn("[shipping-fee] Failed:", res.message ?? res.error);
+          setShippingFee(null);
+        }
+      })
+      .catch((err) => {
+        console.error("[shipping-fee] Network error:", err);
+        setShippingFee(null);
+      })
+      .finally(() => setShippingFeeLoading(false));
+  }, [pickupMethod, selectedAddressId]);
+
   function handleContinue() {
     if (pickupMethod === "delivery" && !selectedAddressId) {
       return;
@@ -77,6 +114,9 @@ function BookingLogisticsInner() {
     const params = new URLSearchParams({ startDate, endDate, pickupMethod });
     if (pickupMethod === "delivery" && selectedAddress) {
       params.set("deliveryAddressId", selectedAddress.id);
+    }
+    if (shippingFee) {
+      params.set("shippingFee", String(shippingFee.estimatedFee));
     }
     router.push(`/booking/review?${params.toString()}`);
   }
@@ -208,6 +248,33 @@ function BookingLogisticsInner() {
                     <span className="material-symbols-outlined text-[16px]">add</span>
                     Thêm địa chỉ khác
                   </Link>
+
+                  {shippingFeeLoading ? (
+                    <p className="mt-4 text-sm text-stone-500">Đang tính phí giao hàng...</p>
+                  ) : shippingFee ? (
+                    <div className="mt-4 space-y-3">
+                      <div className="rounded-lg border border-antique/40 bg-antique/10 p-4">
+                        <p className="text-sm font-semibold text-bronze">
+                          Phí giao hàng ước tính:{" "}
+                          {new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(shippingFee.estimatedFee)}
+                        </p>
+                        <p className="mt-1 text-xs text-stone-600">
+                          Khoảng cách: {shippingFee.distanceText} ({shippingFee.durationText})
+                        </p>
+                      </div>
+                      {shippingFee.storeLat && shippingFee.customerLat && (
+                        <ShippingMap
+                          storeLat={shippingFee.storeLat}
+                          storeLng={shippingFee.storeLng}
+                          customerLat={shippingFee.customerLat}
+                          customerLng={shippingFee.customerLng}
+                          distanceText={shippingFee.distanceText}
+                        />
+                      )}
+                    </div>
+                  ) : selectedAddressId ? (
+                    <p className="mt-4 text-sm text-red-500">Không thể tính phí giao hàng. Vui lòng thử lại sau.</p>
+                  ) : null}
                 </>
               )}
             </section>
@@ -219,11 +286,11 @@ function BookingLogisticsInner() {
             <div className="mt-5 flex items-start gap-4 rounded-lg border border-sand bg-white p-4">
               <span className="material-symbols-outlined mt-1 text-antique">location_on</span>
               <div>
-                <h3 className="font-semibold text-ink">Heritage Atelier</h3>
-                <p className="mt-1 text-sm leading-7 text-stone-600">123 Silk Road, Quận 1<br />TP. Hồ Chí Minh, Việt Nam</p>
+                <h3 className="font-semibold text-ink">{storeInfo?.name ?? "Heritage Atelier"}</h3>
+                <p className="mt-1 text-sm leading-7 text-stone-600">{storeInfo?.address ?? "123 Silk Road, Quận 1, TP. Hồ Chí Minh"}</p>
                 <div className="mt-3 flex flex-wrap gap-4 text-xs font-semibold uppercase tracking-[0.16em] text-bronze">
-                  <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[16px]">schedule</span>09:00 - 20:00</span>
-                  <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[16px]">call</span>+84 28 3822 0000</span>
+                  <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[16px]">schedule</span>{storeInfo?.businessHours ?? "09:00 - 20:00"}</span>
+                  <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[16px]">call</span>{storeInfo?.phone ?? "+84 28 3822 0000"}</span>
                 </div>
               </div>
             </div>

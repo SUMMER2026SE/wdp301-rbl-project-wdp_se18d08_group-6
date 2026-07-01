@@ -188,7 +188,14 @@ export class BookingsService {
         deliveryAddressId: dto.pickupMethod === "delivery" ? dto.deliveryAddressId : null,
         rentalTotal,
         depositTotal,
-        note: [dto.note, deliveryAddressSnapshot ? `Địa chỉ giao/nhận:\n${deliveryAddressSnapshot}` : null].filter(Boolean).join("\n\n") || null,
+        shippingFee: dto.shippingFee ?? 0,
+        note: [
+          dto.note,
+          deliveryAddressSnapshot ? `Địa chỉ giao/nhận:\n${deliveryAddressSnapshot}` : null,
+          dto.shippingFee ? `Phí giao hàng: ${dto.shippingFee.toLocaleString("vi-VN")} VND` : null,
+        ]
+          .filter(Boolean)
+          .join("\n\n") || null,
         items: { create: itemsData },
       },
       include: {
@@ -402,6 +409,120 @@ export class BookingsService {
     })));
   }
 
+  async getDeliveryMap() {
+    const bookings = await this.prisma.booking.findMany({
+      where: {
+        pickupMethod: "delivery",
+        status: { in: [BookingStatus.ready_for_pickup, BookingStatus.delivering, BookingStatus.renting] },
+      },
+      orderBy: { rentalStartDate: "asc" },
+      take: 100,
+      include: {
+        deliveryAddress: true,
+        customer: { select: { profile: { select: { fullName: true, phone: true } } } },
+        items: {
+          include: { garment_sizes: { include: { garments: true } } },
+        },
+      },
+    });
+
+    const points = bookings
+      .filter((b) => b.deliveryAddress?.latitude != null && b.deliveryAddress?.longitude != null)
+      .map((b) => ({
+        bookingId: b.id,
+        customerName: b.customer?.profile?.fullName ?? b.deliveryAddress?.receiverName ?? "—",
+        customerPhone: b.customer?.profile?.phone ?? b.deliveryAddress?.phone ?? "—",
+        status: b.status,
+        address: [
+          b.deliveryAddress?.line1,
+          b.deliveryAddress?.ward,
+          b.deliveryAddress?.district,
+          b.deliveryAddress?.city,
+        ]
+          .filter(Boolean)
+          .join(", "),
+        latitude: Number(b.deliveryAddress!.latitude),
+        longitude: Number(b.deliveryAddress!.longitude),
+        garmentNames: b.items.map((i) => i.garment_sizes?.garments?.name ?? "—").join(", "),
+        rentalStartDate: b.rentalStartDate.toISOString().slice(0, 10),
+        rentalEndDate: b.rentalEndDate.toISOString().slice(0, 10),
+      }));
+
+    return ok(points);
+  }
+
+  async getDeliveryTrack(customerId: string, id: string) {
+    const booking = await this.prisma.booking.findFirst({
+      where: { id, customerId },
+      include: { deliveryAddress: true },
+    });
+
+    if (!booking) throw new NotFoundException("Booking not found.");
+    if (booking.pickupMethod !== "delivery") {
+      throw new BadRequestException("Đơn này không sử dụng giao hàng.");
+    }
+    if (!booking.deliveryAddress?.latitude || !booking.deliveryAddress?.longitude) {
+      throw new BadRequestException("Địa chỉ giao hàng chưa có tọa độ.");
+    }
+
+    // Get store coords
+    const storeLatSetting = await this.prisma.systemSetting.findUnique({ where: { key: "store_lat" } });
+    const storeLngSetting = await this.prisma.systemSetting.findUnique({ where: { key: "store_lng" } });
+    const storeLat = Number((storeLatSetting?.value as any)?.value) || 10.7769;
+    const storeLng = Number((storeLngSetting?.value as any)?.value) || 106.7009;
+
+    const customerLat = Number(booking.deliveryAddress.latitude);
+    const customerLng = Number(booking.deliveryAddress.longitude);
+
+    // Simulate shipper position based on time since rental start
+    const now = Date.now();
+    const startMs = new Date(booking.rentalStartDate).getTime();
+    // Delivery window: 2 hours before rental start
+    const deliveryStartMs = startMs - 2 * 60 * 60 * 1000;
+    const deliveryEndMs = startMs;
+
+    let progress = 0;
+    let simulatedLat = storeLat;
+    let simulatedLng = storeLng;
+    let status: "preparing" | "in_transit" | "arrived" = "preparing";
+
+    if (now < deliveryStartMs) {
+      status = "preparing";
+    } else if (now >= deliveryEndMs) {
+      status = "arrived";
+      progress = 1;
+      simulatedLat = customerLat;
+      simulatedLng = customerLng;
+    } else {
+      status = "in_transit";
+      progress = (now - deliveryStartMs) / (deliveryEndMs - deliveryStartMs);
+      simulatedLat = storeLat + (customerLat - storeLat) * progress;
+      simulatedLng = storeLng + (customerLng - storeLng) * progress;
+    }
+
+    return ok({
+      bookingId: booking.id,
+      status,
+      progress: Math.round(progress * 100),
+      storeLat,
+      storeLng,
+      customerLat,
+      customerLng,
+      shipperLat: Math.round(simulatedLat * 1000000) / 1000000,
+      shipperLng: Math.round(simulatedLng * 1000000) / 1000000,
+      customerName: booking.deliveryAddress.receiverName,
+      customerAddress: [
+        booking.deliveryAddress.line1,
+        booking.deliveryAddress.ward,
+        booking.deliveryAddress.district,
+        booking.deliveryAddress.city,
+      ]
+        .filter(Boolean)
+        .join(", "),
+      estimatedDelivery: new Date(deliveryEndMs).toLocaleString("vi-VN"),
+    });
+  }
+
   async advanceStatus(id: string, dto: UpdateBookingStatusDto, changedBy?: string) {
     const booking = await this.prisma.booking.findUnique({
       where: { id },
@@ -587,7 +708,7 @@ export class BookingsService {
       garmentName: updated!.items[0]?.garment_sizes?.garments?.name ?? null,
       startDate: updated!.rentalStartDate.toISOString().slice(0, 10),
       endDate: updated!.rentalEndDate.toISOString().slice(0, 10),
-      amount: Number(booking.rentalTotal) + Number(booking.depositTotal),
+      amount: Number(booking.rentalTotal) + Number(booking.shippingFee ?? 0) + Number(booking.depositTotal),
     });
 
 
@@ -654,6 +775,7 @@ export class BookingsService {
       pickupMethod: booking.pickupMethod,
       rentalTotal: Number(booking.rentalTotal),
       depositTotal: Number(booking.depositTotal),
+      shippingFee: Number(booking.shippingFee ?? 0),
       penaltyTotal: Number(booking.penaltyTotal ?? 0),
       note: booking.note,
       deliveryAddressId: booking.deliveryAddressId ?? null,

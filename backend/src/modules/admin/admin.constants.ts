@@ -53,6 +53,27 @@ export const ADMIN_SETTING_DEFINITIONS: AdminSettingDefinition[] = [
     kind: "json",
     defaultValue: { open: "08:00", close: "20:00", days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] },
   },
+  {
+    key: "store_lat",
+    label: "Vĩ độ atelier",
+    description: "Tọa độ vĩ độ (latitude) của atelier, dùng để tính phí giao hàng.",
+    kind: "text",
+    defaultValue: { value: "10.7769" },
+  },
+  {
+    key: "store_lng",
+    label: "Kinh độ atelier",
+    description: "Tọa độ kinh độ (longitude) của atelier, dùng để tính phí giao hàng.",
+    kind: "text",
+    defaultValue: { value: "106.7009" },
+  },
+  {
+    key: "shipping_rate_per_km",
+    label: "Phí giao hàng mỗi km",
+    description: "Đơn giá (VND/km) để ước tính phí vận chuyển dựa trên khoảng cách.",
+    kind: "number",
+    defaultValue: { value: 5000 },
+  },
 ];
 
 export const ADMIN_ROLE_OPTIONS: AppRole[] = ["customer", "staff", "manager_owner", "admin"];

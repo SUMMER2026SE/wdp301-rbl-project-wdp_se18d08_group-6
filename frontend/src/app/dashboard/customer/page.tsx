@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getMyBookings, cancelBooking, getCustomerRefund } from "@/lib/api";
-import type { BookingResponse, CustomerRefundResponse } from "@/lib/api";
+import { getMyBookings, cancelBooking, getCustomerRefund, getDeliveryTrack } from "@/lib/api";
+import type { BookingResponse, CustomerRefundResponse, DeliveryTrackData } from "@/lib/api";
+import { DeliveryTracker } from "@/components/location/delivery-tracker";
 import { readStoredSession } from "@/lib/auth";
 import { customerWidgets } from "@/lib/heritage-mock-data";
 
@@ -50,6 +51,28 @@ export default function CustomerDashboardPage() {
   const [userName, setUserName] = useState("Khách hàng");
   // Refund status map: bookingId → refund
   const [refundMap, setRefundMap] = useState<Record<string, CustomerRefundResponse | null>>({});
+  // Delivery tracking
+  const [deliveryTrack, setDeliveryTrack] = useState<DeliveryTrackData | null>(null);
+  const [trackingPoll, setTrackingPoll] = useState(0);
+
+  // Poll delivery tracking every 10s
+  useEffect(() => {
+    const deliveryBooking = bookings.find(
+      (b) => b.pickupMethod === "delivery" && ["delivering", "ready_for_pickup", "renting"].includes(b.status)
+    );
+    if (!deliveryBooking) { setDeliveryTrack(null); return; }
+
+    getDeliveryTrack(deliveryBooking.id).then((res) => {
+      if (res.success && res.data) setDeliveryTrack(res.data);
+    });
+
+    const interval = setInterval(() => {
+      getDeliveryTrack(deliveryBooking.id).then((res) => {
+        if (res.success && res.data) setDeliveryTrack(res.data);
+      });
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [bookings]);
 
   useEffect(() => {
     const session = readStoredSession();
@@ -157,6 +180,17 @@ export default function CustomerDashboardPage() {
                 Khám phá bộ sưu tập
                 <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
               </Link>
+            </section>
+          )}
+
+          {/* Delivery tracking */}
+          {deliveryTrack && (
+            <section className="space-y-4">
+              <h2 className="font-display text-3xl text-ink flex items-center gap-2">
+                <span className="material-symbols-outlined text-antique">local_shipping</span>
+                Theo dõi giao hàng
+              </h2>
+              <DeliveryTracker data={deliveryTrack} />
             </section>
           )}
 

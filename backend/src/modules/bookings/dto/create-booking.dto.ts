@@ -1,4 +1,4 @@
-import { ArrayMinSize, IsArray, IsDateString, IsOptional, IsString, IsUUID, MaxLength } from "class-validator";
+import { ArrayMinSize, IsArray, IsDateString, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from "class-validator";
 
 export class CreateBookingDto {
   @IsArray()
@@ -24,4 +24,9 @@ export class CreateBookingDto {
   @IsString()
   @MaxLength(500)
   note?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  shippingFee?: number;
 }

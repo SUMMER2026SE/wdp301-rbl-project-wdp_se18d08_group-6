@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
 import { NotificationConfigPanel } from "@/components/admin/notification-config-panel";
 import { AdminPortalShell } from "@/components/heritage/ui";
+import { MapPreview } from "@/components/location/map-preview";
 import {
   getAdminOverview,
   getAdminUsers,
@@ -68,6 +69,9 @@ const DEFAULT_AI_SETTINGS = {
   late_penalty_per_day: 200000,
   store_address: "123 Lê Thánh Tôn, Bến Nghé, Quận 1, TP.HCM",
   store_phone: "0901999888",
+  store_lat: "10.7769",
+  store_lng: "106.7009",
+  shipping_rate_per_km: 5000,
 };
 
 export default function AdminOverviewPage() {
@@ -321,8 +325,11 @@ export default function AdminOverviewPage() {
           : null;
 
         if (originalVal !== val) {
-          // Send update call
-          await updateAdminSetting(key, typeof val === "number" || typeof val === "boolean" ? { value: val } : val);
+          // Send update call — always wrap in { value } for consistency with backend
+          await updateAdminSetting(
+            key,
+            typeof val === "number" || typeof val === "boolean" ? { value: val } : { value: val },
+          );
         }
       }
       
@@ -1022,6 +1029,52 @@ export default function AdminOverviewPage() {
                   />
                 </div>
               </div>
+
+              <div className="grid gap-6 md:grid-cols-3 mt-4">
+                <div>
+                  <label className="block text-xs uppercase font-bold text-stone-500 mb-1">Vĩ độ Atelier</label>
+                  <input
+                    type="text"
+                    value={aiSettings.store_lat}
+                    onChange={(e) => setAiSettings({ ...aiSettings, store_lat: e.target.value })}
+                    className="w-full border-0 border-b border-sand bg-transparent py-2 text-ink font-body-md focus:border-antique focus:ring-0 outline-none"
+                    placeholder="10.7769"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs uppercase font-bold text-stone-500 mb-1">Kinh độ Atelier</label>
+                  <input
+                    type="text"
+                    value={aiSettings.store_lng}
+                    onChange={(e) => setAiSettings({ ...aiSettings, store_lng: e.target.value })}
+                    className="w-full border-0 border-b border-sand bg-transparent py-2 text-ink font-body-md focus:border-antique focus:ring-0 outline-none"
+                    placeholder="106.7009"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs uppercase font-bold text-stone-500 mb-1">Phí giao hàng/km (VND)</label>
+                  <input
+                    type="number"
+                    value={aiSettings.shipping_rate_per_km}
+                    onChange={(e) => setAiSettings({ ...aiSettings, shipping_rate_per_km: parseInt(e.target.value) || 0 })}
+                    className="w-full border-0 border-b border-sand bg-transparent py-2 text-ink font-body-md focus:border-antique focus:ring-0 outline-none"
+                  />
+                </div>
+              </div>
+
+              {(() => {
+                const sl = parseFloat(aiSettings.store_lat);
+                const sln = parseFloat(aiSettings.store_lng);
+                if (!Number.isFinite(sl) || !Number.isFinite(sln)) return null;
+                return (
+                  <div className="mt-4">
+                    <label className="block text-xs uppercase font-bold text-stone-500 mb-2">Xem trước vị trí Atelier</label>
+                    <MapPreview lat={sl} lng={sln} />
+                  </div>
+                );
+              })()}
             </div>
           </div>
 

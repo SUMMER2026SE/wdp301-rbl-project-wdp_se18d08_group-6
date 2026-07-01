@@ -47,6 +47,19 @@ export class LocationsController {
     return ok(await this.locations.directions(origin, destination));
   }
 
+  @Get("shipping-fee")
+  async shippingFee(@Query("addressId") addressId = "") {
+    if (!addressId.trim()) {
+      throw new BadRequestException("Thiếu mã địa chỉ.");
+    }
+    return ok(await this.locations.estimateShippingFee(addressId.trim()));
+  }
+
+  @Get("store-info")
+  async storeInfo() {
+    return ok(await this.locations.getStoreInfo());
+  }
+
   private parseCoordinates(lat: string, lng: string) {
     const latitude = Number(lat);
     const longitude = Number(lng);
