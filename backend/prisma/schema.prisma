@@ -87,8 +87,6 @@ model Address {
   longitude    Float?
   isDefault    Boolean     @default(false) @map("is_default")
   createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
-  latitude     Float?
-  longitude    Float?
   customer     UserAccount @relation(fields: [customerId], references: [id])
   bookings     Booking[]   @relation("DeliveryAddress")
 
@@ -175,7 +173,6 @@ model Booking {
   updatedAt             DateTime               @default(now()) @map("updated_at") @db.Timestamptz(6)
   deliveryAddressId     String?                @map("delivery_address_id") @db.Uuid
   paymentDueAt          DateTime?              @map("payment_due_at") @db.Timestamptz(6)
-  shipping_fee          Decimal                @default(0) @db.Decimal(12, 2)
   items                 BookingItem[]
   statusHistory         BookingStatusHistory[]
   customer              UserAccount            @relation("BookingCustomer", fields: [customerId], references: [id])
