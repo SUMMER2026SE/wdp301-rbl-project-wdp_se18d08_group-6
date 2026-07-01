@@ -54,24 +54,35 @@ export default function CustomerDashboardPage() {
   const [refundMap, setRefundMap] = useState<Record<string, CustomerRefundResponse | null>>({});
   // Delivery tracking
   const [deliveryTrack, setDeliveryTrack] = useState<DeliveryTrackData | null>(null);
-  const [trackingPoll, setTrackingPoll] = useState(0);
 
-  // Poll delivery tracking every 10s
+  // Poll delivery tracking every 10s. Only track active delivery handoff, not already-renting/completed orders.
   useEffect(() => {
-    const deliveryBooking = bookings.find(
-      (b) => b.pickupMethod === "delivery" && ["delivering", "ready_for_pickup", "renting"].includes(b.status)
-    );
-    if (!deliveryBooking) { setDeliveryTrack(null); return; }
+    const deliveryBooking = bookings
+      .filter((b) => b.pickupMethod === "delivery" && ["delivering", "ready_for_pickup"].includes(b.status))
+      .sort((a, b) => {
+        const priority = (status: string) => (status === "delivering" ? 0 : 1);
+        const byPriority = priority(a.status) - priority(b.status);
+        if (byPriority !== 0) return byPriority;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      })[0];
 
-    getDeliveryTrack(deliveryBooking.id).then((res) => {
-      if (res.success && res.data) setDeliveryTrack(res.data);
-    });
+    if (!deliveryBooking) {
+      setDeliveryTrack(null);
+      return;
+    }
 
-    const interval = setInterval(() => {
+    const fetchTracking = () => {
       getDeliveryTrack(deliveryBooking.id).then((res) => {
-        if (res.success && res.data) setDeliveryTrack(res.data);
+        if (res.success && res.data) {
+          setDeliveryTrack(res.data);
+        } else {
+          setDeliveryTrack(null);
+        }
       });
-    }, 10000);
+    };
+
+    fetchTracking();
+    const interval = setInterval(fetchTracking, 10000);
     return () => clearInterval(interval);
   }, [bookings]);
   const [conversationId, setConversationId] = useState<string | null>(null);
