@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState, type RefObject } from "react";
 import type { ChatConversation, ChatMessage } from "@/lib/chat";
-import { isBookingCardContent, isProductCardContent, parseBookingCard, parseProductCard, uploadChatFile } from "@/lib/chat";
+import { getBookingCardData, getProductCardData, uploadChatFile } from "@/lib/chat";
 import type { AuthSession } from "@/lib/auth";
 import { BookingCard } from "@/components/chat/booking-card";
 import { ProductCard } from "@/components/chat/product-card";
@@ -170,11 +170,11 @@ export function CustomerChatBubble({
                       <div className={`${isMine ? "" : ""} max-w-[90%]`}>
                         {message.deleted_at ? (
                           <div className="italic text-stone-400 text-xs px-3 py-2">Tin nhắn đã bị xóa</div>
-                        ) : isBookingCardContent(message.content) ? (
+                        ) : message.message_type === "booking_card" ? (
                           (() => {
-                            const booking = parseBookingCard(message.content);
-                            return booking ? (
-                              <BookingCard booking={booking} />
+                            const data = getBookingCardData(message);
+                            return data?.booking ? (
+                              <BookingCard booking={data.booking} />
                             ) : (
                               <div className="text-xs text-stone-500">Không thể hiển thị đơn hàng</div>
                             );
@@ -182,7 +182,7 @@ export function CustomerChatBubble({
                         ) : message.message_type === "image" && message.metadata?.url ? (
                           <div className={`${isMine ? "" : ""} max-w-[240px]`}>
                             <img
-                              src={message.metadata.url}
+                              src={message.metadata.url as string}
                               alt=""
                               className="rounded-2xl border border-sand/70 shadow-sm w-full h-auto object-cover"
                               loading="lazy"
@@ -194,18 +194,18 @@ export function CustomerChatBubble({
                         ) : message.message_type === "video" && message.metadata?.url ? (
                           <div className={`${isMine ? "" : ""} max-w-[240px]`}>
                             <video
-                              src={message.metadata.url}
+                              src={message.metadata.url as string}
                               controls
-                              className="rounded-2xl border border-sand/70 shadow-sm w-full h-auto"
+                              className="rounded-2xl border border-sand/70 shadow-sm w-full h-auto max-h-[320px] object-contain bg-black"
                               preload="metadata"
                             />
                             <span className="block text-[10px] mt-1 opacity-70 text-right">
                               {new Date(message.created_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
                             </span>
                           </div>
-                        ) : isProductCardContent(message.content) ? (
+                        ) : message.message_type === "product_card" ? (
                           (() => {
-                            const product = parseProductCard(message.content);
+                            const product = getProductCardData(message);
                             return product ? (
                               <ProductCard product={product} />
                             ) : (

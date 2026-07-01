@@ -35,7 +35,6 @@ export class AiController {
   }
 
   @Post("product-advisor")
-  @UseGuards(JwtAuthGuard)
   productAdvisor(@Body() body: ProductAdvisorDto) {
     return this.aiService.productAdvisor(body);
   }

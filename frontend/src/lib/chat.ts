@@ -11,13 +11,7 @@ export type ChatMessage = {
   deleted_at?: string | null;
   deleted_by?: string | null;
   message_type?: string;
-  metadata?: {
-    bucket?: string;
-    path?: string;
-    mimetype?: string;
-    size?: number;
-    url?: string | null;
-  } | null;
+  metadata?: Record<string, unknown> | null;
   user_accounts?: {
     id: string;
     email: string;
@@ -82,52 +76,23 @@ export type BookingCardMessage = {
 
 const DEFAULT_PRODUCT_IMAGE = "https://dep.com.vn/wp-content/uploads/2020/11/ao-dai-9.jpg";
 
-/**
- * Detect if a message content is a product card.
- */
-export function isProductCardContent(content: string): boolean {
-  try {
-    const parsed = JSON.parse(content);
-    return parsed?.type === "product_card";
-  } catch {
-    return false;
+export function getProductCardData(msg: ChatMessage): ProductCardMessage["product"] | null {
+  if (msg.message_type === "product_card" && msg.metadata?.product && typeof msg.metadata.product === "object") {
+    return msg.metadata.product as ProductCardMessage["product"];
   }
+  return null;
 }
 
-/**
- * Parse product card data from message content.
- */
-export function parseProductCard(content: string): ProductCardMessage["product"] | null {
-  try {
-    const parsed = JSON.parse(content);
-    if (parsed?.type === "product_card" && parsed?.product) {
-      return parsed.product;
-    }
-    return null;
-  } catch {
-    return null;
+export function getBookingCardData(msg: ChatMessage): { booking: BookingCardMessage["booking"]; topic?: string } | null {
+  if (msg.message_type === "booking_card" && msg.metadata?.booking && typeof msg.metadata.booking === "object") {
+    return { booking: msg.metadata.booking as BookingCardMessage["booking"], topic: msg.metadata.topic as string | undefined };
   }
+  return null;
 }
 
-export function isBookingCardContent(content: string): boolean {
-  try {
-    const parsed = JSON.parse(content);
-    return parsed?.type === "booking_card";
-  } catch {
-    return false;
-  }
-}
-
-export function parseBookingCard(content: string): BookingCardMessage["booking"] | null {
-  try {
-    const parsed = JSON.parse(content);
-    if (parsed?.type === "booking_card" && parsed?.booking) {
-      return parsed.booking;
-    }
-    return null;
-  } catch {
-    return null;
-  }
+export function getBookingTopic(msg: ChatMessage): string | null {
+  const data = getBookingCardData(msg);
+  return data?.topic ?? null;
 }
 
 export async function sendBookingCardMessage(params: {
@@ -211,6 +176,7 @@ export type AIAdvisorProduct = {
   depositAmount: number;
   size: string;
   reason: string;
+  inStock: boolean;
 };
 
 export type AIAdvisorTopic = {
