@@ -15,6 +15,7 @@ import {
   type DeliveryPoint,
 } from "@/lib/api";
 import { DeliveryMap } from "@/components/location/delivery-map";
+import { STATUS_LABELS, statusBadgeClass } from "@/lib/status-labels";
 
 function formatDate(iso: string) {
   const [y, m, d] = iso.split("-");
@@ -24,24 +25,6 @@ function formatDate(iso: string) {
 function formatVND(amount: number) {
   return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
 }
-
-const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  draft:                { label: "Nháp",                color: "bg-stone-100 text-stone-600" },
-  pending_confirmation: { label: "Chờ xác nhận",        color: "bg-amber-100 text-amber-700" },
-  confirmed:            { label: "Đã xác nhận",         color: "bg-blue-100 text-blue-700" },
-  awaiting_payment:     { label: "Chờ thanh toán",      color: "bg-yellow-100 text-yellow-700" },
-  paid:                 { label: "Đã thanh toán",       color: "bg-green-100 text-green-700" },
-  preparing:            { label: "Đang chuẩn bị",       color: "bg-purple-100 text-purple-700" },
-  ready_for_pickup:     { label: "Sẵn sàng nhận",       color: "bg-teal-100 text-teal-700" },
-  delivering:           { label: "Đang giao",           color: "bg-indigo-100 text-indigo-700" },
-  renting:              { label: "Đang thuê",           color: "bg-lotus/10 text-lotus" },
-  returned:             { label: "Đã trả",              color: "bg-stone-100 text-stone-600" },
-  inspection_pending:   { label: "Chờ kiểm tra",        color: "bg-orange-100 text-orange-700" },
-  completed:            { label: "Hoàn thành",          color: "bg-jade/10 text-jade" },
-  cancelled:            { label: "Đã hủy",              color: "bg-red-100 text-red-600" },
-  rejected:             { label: "Từ chối",             color: "bg-red-100 text-red-700" },
-  overdue:              { label: "Quá hạn",             color: "bg-red-200 text-red-800" },
-};
 
 const NEXT_ACTIONS: Partial<Record<string, { status: string; label: string; style: string }[]>> = {
   pending_confirmation: [
@@ -405,12 +388,12 @@ export default function StaffDashboardPage() {
             return (
               <div
                 key={booking.id}
-                className="overflow-hidden rounded-xl border border-sand bg-white shadow-[0_4px_20px_rgba(0,0,0,0.04)]"
+                className="overflow-hidden rounded-xl border border-sand bg-white shadow-sm"
               >
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand bg-[#fff8f6] px-6 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand bg-parchment px-6 py-3">
                   <div className="flex items-center gap-3">
                     <span className="font-semibold text-ink">#{booking.id.slice(0, 8).toUpperCase()}</span>
-                    <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${s.color}`}>
+                    <span className={statusBadgeClass(s.color)}>
                       {s.label}
                     </span>
                     {tab === "refunds" && isRefunded && (
@@ -419,7 +402,7 @@ export default function StaffDashboardPage() {
                       </span>
                     )}
                     {tab === "refunds" && isPendingRefund && (
-                      <span className="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] bg-yellow-100 text-yellow-700">
+                      <span className="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] bg-amber-50 text-amber-700">
                         Chờ duyệt hoàn cọc
                       </span>
                     )}
@@ -504,7 +487,7 @@ export default function StaffDashboardPage() {
                   {tab === "refunds" ? (
                     !isRefunded && (
                       isPendingRefund ? (
-                        <div className="rounded-lg bg-yellow-50 border border-yellow-200 px-4 py-2 text-sm text-yellow-700">
+                        <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-2 text-sm text-yellow-700">
                           <span className="material-symbols-outlined text-base mr-1 align-middle">schedule</span>
                           {refund.refundMethod === "bank_transfer"
                             ? "Đã gửi yêu cầu hoàn cọc — chờ Quản lý duyệt chuyển khoản"
@@ -591,13 +574,13 @@ export default function StaffDashboardPage() {
       {/* ── Refund dialog (for bank_transfer) ── */}
       {refundDialog && refundDialog.pickupMethod === "delivery" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
-          <div className="mx-4 w-full max-w-md rounded-2xl border border-sand bg-white p-8 shadow-2xl">
+          <div className="mx-4 w-full max-w-md rounded-lg border border-sand bg-white p-8 shadow-2xl">
             <h3 className="font-display text-2xl text-ink">Yêu cầu hoàn cọc chuyển khoản</h3>
             <p className="mt-1 text-sm text-stone-500">
               Khách: <strong>{refundDialog.customerName ?? "—"}</strong>
             </p>
 
-            <div className="mt-6 rounded-xl bg-[#f9fff8] border border-jade/30 p-4">
+            <div className="mt-6 rounded-xl bg-jade/5 border border-jade/30 p-4">
               <div className="flex justify-between text-sm">
                 <span className="text-stone-600">Tiền cọc</span>
                 <span className="font-semibold text-ink">{formatVND(refundDialog.depositTotal)}</span>
@@ -666,13 +649,13 @@ export default function StaffDashboardPage() {
       {/* ── Payment method dialog ── */}
       {paymentDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
-          <div className="mx-4 w-full max-w-md rounded-2xl border border-sand bg-white p-8 shadow-2xl">
+          <div className="mx-4 w-full max-w-md rounded-lg border border-sand bg-white p-8 shadow-2xl">
             <h3 className="font-display text-2xl text-ink">Xác nhận thanh toán</h3>
             <p className="mt-1 text-sm text-stone-500">
               Khách: <strong>{paymentDialog.customerName ?? "—"}</strong>
             </p>
 
-            <div className="mt-6 rounded-xl bg-[#f9fff8] border border-jade/30 p-4">
+            <div className="mt-6 rounded-xl bg-jade/5 border border-jade/30 p-4">
               <div className="flex justify-between text-sm">
                 <span className="text-stone-600">Tiền thuê</span>
                 <span className="font-semibold text-ink">{formatVND(paymentDialog.rentalTotal)}</span>
@@ -701,8 +684,8 @@ export default function StaffDashboardPage() {
                     onClick={() => setSelectedPaymentMethod(pm.key)}
                     className={`flex items-center gap-3 rounded-xl border p-3 text-sm font-medium transition ${
                       selectedPaymentMethod === pm.key
-                        ? "border-lotus bg-[#fff0ee] text-lotus"
-                        : "border-sand bg-white text-stone-600 hover:bg-[#fff8f6]"
+                        ? "border-lotus bg-parchment text-lotus"
+                        : "border-sand bg-white text-stone-600 hover:bg-mist"
                     }`}
                   >
                     <span className="material-symbols-outlined text-xl">{pm.icon}</span>
@@ -736,7 +719,7 @@ export default function StaffDashboardPage() {
       {/* ── Error popup dialog ── */}
       {errorDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
-          <div className="mx-4 w-full max-w-md rounded-2xl border border-sand bg-white p-8 shadow-2xl">
+          <div className="mx-4 w-full max-w-md rounded-lg border border-sand bg-white p-8 shadow-2xl">
             <div className="flex flex-col items-center text-center">
               <span className="material-symbols-outlined text-5xl text-amber-500 mb-4">warning</span>
               <h3 className="font-display text-2xl text-ink">Không thể chuyển trạng thái</h3>

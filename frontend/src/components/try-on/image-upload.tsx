@@ -70,7 +70,7 @@ export function ImageUpload({ onUpload }: ImageUploadProps) {
 
       {previewUrl ? (
         <div className="space-y-3">
-          <div className="overflow-hidden rounded-xl border border-sand bg-[#fff8f6]">
+          <div className="overflow-hidden rounded-xl border border-sand bg-mist">
             <img src={previewUrl} alt={fileName ?? "Ảnh đã upload"} className="aspect-[3/4] w-full object-cover" />
           </div>
           {fileName && <p className="text-xs text-stone-500">Đã chọn: {fileName}</p>}
@@ -95,7 +95,7 @@ export function ImageUpload({ onUpload }: ImageUploadProps) {
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="flex w-full flex-col items-center justify-center rounded-xl border border-dashed border-antique/50 bg-[#fff8f6] px-6 py-10 text-center transition hover:border-lotus hover:bg-[#fff0ee]"
+          className="flex w-full flex-col items-center justify-center rounded-xl border border-dashed border-antique/50 bg-mist px-6 py-10 text-center transition hover:border-lotus hover:bg-parchment"
         >
           <span className="material-symbols-outlined text-5xl text-antique">upload</span>
           <span className="mt-3 text-sm font-semibold text-ink">Chọn ảnh từ thiết bị</span>

@@ -188,7 +188,7 @@ export default function CustomerNotificationsPage() {
       </header>
 
       {successMsg ? (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <div className="rounded-lg border border-jade/30 bg-jade/5 px-4 py-3 text-sm text-jade">
           {successMsg}
         </div>
       ) : null}
@@ -201,7 +201,7 @@ export default function CustomerNotificationsPage() {
 
       <div className="grid gap-8 lg:grid-cols-12">
         <div className="space-y-8 lg:col-span-8">
-          <section className="rounded-xl border border-sand bg-white p-6 shadow-[0_10px_30px_rgba(77,16,15,0.04)]">
+          <section className="rounded-xl border border-sand bg-white p-6 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h2 className="font-display text-3xl text-ink">Hộp thư thông báo</h2>
@@ -223,7 +223,7 @@ export default function CustomerNotificationsPage() {
                   key={item}
                   type="button"
                   onClick={() => setView(item)}
-                  className={`rounded-full px-4 py-2 text-sm font-semibold capitalize transition ${view === item ? "bg-lotus text-white" : "border border-sand bg-white text-stone-600 hover:bg-[#fff8f6]"}`}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold capitalize transition ${view === item ? "bg-lotus text-white" : "border border-sand bg-white text-stone-600 hover:bg-mist"}`}
                 >
                   {item === "all" ? "Tất cả" : item === "unread" ? "Chưa đọc" : "Đã đọc"}
                 </button>
@@ -237,7 +237,7 @@ export default function CustomerNotificationsPage() {
                 <div className="rounded-lg border border-dashed border-sand p-8 text-center text-stone-400">Chưa có thông báo phù hợp.</div>
               ) : (
                 filteredNotifications.map((item) => (
-                  <article key={item.id} className={`rounded-xl border p-4 transition ${item.isRead ? "border-sand bg-white" : "border-lotus/30 bg-[#fff8f6]"}`}>
+                  <article key={item.id} className={`rounded-xl border p-4 transition ${item.isRead ? "border-sand bg-white" : "border-lotus/30 bg-mist"}`}>
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
@@ -266,7 +266,7 @@ export default function CustomerNotificationsPage() {
         </div>
 
         <aside className="space-y-6 lg:col-span-4">
-          <section className="rounded-xl border border-sand bg-white p-6 shadow-[0_10px_30px_rgba(77,16,15,0.04)]">
+          <section className="rounded-xl border border-sand bg-white p-6 shadow-sm">
             <h2 className="font-display text-3xl text-ink">Tuỳ chọn</h2>
             <p className="mt-1 text-sm text-stone-500">Điều chỉnh những gì bạn muốn nhận.</p>
 
@@ -289,7 +289,7 @@ export default function CustomerNotificationsPage() {
             </button>
           </section>
 
-          <section className="rounded-xl border border-sand bg-[#fff8f6] p-6">
+          <section className="rounded-xl border border-sand bg-mist p-6">
             <h3 className="font-display text-2xl text-ink">Ghi chú</h3>
             <p className="mt-2 text-sm leading-7 text-stone-600">
               Những thông báo này được hệ thống tạo tự động từ các mốc đơn thuê, thanh toán và chăm sóc khách hàng. Nếu bạn không thấy gì mới, hãy kiểm tra lại tuỳ chọn email/in-app ở cột bên.

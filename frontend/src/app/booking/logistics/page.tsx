@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { BookingFlowShell } from "@/components/heritage/ui";
+import { CustomerNavbar } from "@/components/customer/navbar";
+import { CustomerFooter } from "@/components/customer/footer";
 import { apiRequest, getShippingFee, getStoreInfo, type ShippingFeeEstimate, type StoreInfo } from "@/lib/api";
 import { logisticsMethods } from "@/lib/heritage-mock-data";
 import { ShippingMap } from "@/components/location/shipping-map";
@@ -63,13 +65,11 @@ function BookingLogisticsInner() {
     setAddresses(list);
     setAddressLoading(false);
 
-    // Auto-select default address
     setSelectedAddressId((current) => {
       if (current) {
         const exists = list.some((a) => a.id === current);
         if (exists) return current;
       }
-
       const defaultAddress = list.find((a) => a.isDefault) ?? list[0];
       return defaultAddress?.id ?? "";
     });
@@ -87,29 +87,22 @@ function BookingLogisticsInner() {
       return;
     }
     setShippingFeeLoading(true);
-    console.log("[shipping-fee] Fetching for address:", selectedAddressId);
     getShippingFee(selectedAddressId)
       .then((res) => {
-        console.log("[shipping-fee] Response:", res);
         if (res.success && res.data) {
           setShippingFee(res.data);
         } else {
-          console.warn("[shipping-fee] Failed:", res.message ?? res.error);
           setShippingFee(null);
         }
       })
-      .catch((err) => {
-        console.error("[shipping-fee] Network error:", err);
+      .catch(() => {
         setShippingFee(null);
       })
       .finally(() => setShippingFeeLoading(false));
   }, [pickupMethod, selectedAddressId]);
 
   function handleContinue() {
-    if (pickupMethod === "delivery" && !selectedAddressId) {
-      return;
-    }
-
+    if (pickupMethod === "delivery" && !selectedAddressId) return;
     const selectedAddress = addresses.find((a) => a.id === selectedAddressId);
     const params = new URLSearchParams({ startDate, endDate, pickupMethod });
     if (pickupMethod === "delivery" && selectedAddress) {
@@ -141,7 +134,7 @@ function BookingLogisticsInner() {
     >
       <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.4fr_0.8fr]">
         <div className="space-y-8">
-          <section className="rounded-xl border border-sand bg-white p-6 shadow-[0_10px_40px_rgba(77,16,15,0.05)]">
+          <section className="rounded-xl border border-sand bg-white p-6 shadow-md">
             <div className="mb-4 flex items-start justify-between gap-4 border-b border-sand pb-4">
               <div>
                 <h2 className="flex items-center gap-2 font-display text-3xl text-ink">
@@ -168,9 +161,9 @@ function BookingLogisticsInner() {
                     type="radio"
                     onChange={() => setPickupMethod(item.key)}
                   />
-                  <div className="h-full rounded-xl border border-sand bg-white p-5 transition peer-checked:border-antique peer-checked:bg-[#fff0ee] hover:border-antique/60">
+                  <div className="h-full rounded-xl border border-sand bg-white p-5 transition peer-checked:border-antique peer-checked:bg-parchment hover:border-antique/60">
                     <div className="mb-3 flex items-start justify-between">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f9f5f0] text-bronze">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-mist text-bronze">
                         <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
                       </div>
                       <span className={`material-symbols-outlined ${pickupMethod === item.key ? "text-antique" : "text-stone-300"}`}>check_circle</span>
@@ -184,13 +177,12 @@ function BookingLogisticsInner() {
           </section>
 
           {pickupMethod === "delivery" ? (
-            <section className="rounded-xl border border-sand bg-white p-6 shadow-[0_10px_40px_rgba(77,16,15,0.05)]">
+            <section className="rounded-xl border border-sand bg-white p-6 shadow-md">
               <h2 className="mb-4 font-display text-3xl text-lotus">Địa chỉ giao nhận</h2>
-
               {addressLoading ? (
                 <p className="text-sm text-stone-500">Đang tải địa chỉ...</p>
               ) : addresses.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-sand p-8 text-center">
+                <div className="rounded-lg border border-dashed border-sand p-8 text-center">
                   <span className="material-symbols-outlined text-4xl text-stone-300">location_off</span>
                   <p className="mt-3 text-sm text-stone-500">Bạn chưa có địa chỉ nhận đồ nào.</p>
                   <Link
@@ -210,7 +202,7 @@ function BookingLogisticsInner() {
                         key={address.id}
                         className={`cursor-pointer block rounded-xl border p-4 transition ${
                           selectedAddressId === address.id
-                            ? "border-antique bg-[#fff0ee]"
+                            ? "border-antique bg-parchment"
                             : "border-sand bg-white hover:border-antique/60"
                         }`}
                       >
@@ -226,9 +218,7 @@ function BookingLogisticsInner() {
                             <div className="flex items-center gap-2">
                               <span className="text-sm font-semibold text-ink">{address.receiverName}</span>
                               {address.isDefault ? (
-                                <span className="rounded-full bg-[#ffe9e6] px-2 py-0.5 text-[10px] font-bold uppercase text-oxblood">
-                                  Mặc định
-                                </span>
+                                <span className="rounded-full bg-lotus/10 px-2 py-0.5 text-[10px] font-bold uppercase text-oxblood">Mặc định</span>
                               ) : null}
                             </div>
                             <p className="mt-1 text-sm text-stone-600">{address.phone}</p>
@@ -258,9 +248,7 @@ function BookingLogisticsInner() {
                           Phí giao hàng ước tính:{" "}
                           {new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(shippingFee.estimatedFee)}
                         </p>
-                        <p className="mt-1 text-xs text-stone-600">
-                          Khoảng cách: {shippingFee.distanceText} ({shippingFee.durationText})
-                        </p>
+                        <p className="mt-1 text-xs text-stone-600">Khoảng cách: {shippingFee.distanceText} ({shippingFee.durationText})</p>
                       </div>
                       {shippingFee.storeLat && shippingFee.customerLat && (
                         <ShippingMap
@@ -280,7 +268,7 @@ function BookingLogisticsInner() {
             </section>
           ) : null}
 
-          <section className="rounded-xl border border-sand bg-[#fff4ef] p-6">
+          <section className="rounded-xl border border-sand bg-parchment p-6">
             <h2 className="font-display text-3xl text-ink">Địa điểm nhận tại atelier</h2>
             <p className="mt-1 text-sm text-stone-600">Vui lòng đến trong khung giờ làm việc để thử và nhận bộ đồ.</p>
             <div className="mt-5 flex items-start gap-4 rounded-lg border border-sand bg-white p-4">
@@ -299,7 +287,7 @@ function BookingLogisticsInner() {
           <div className="flex flex-col gap-4 border-t border-sand pt-8 sm:flex-row sm:justify-between">
             <Link
               href={`/booking/date-selection?${backParams.toString()}`}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-bronze px-6 py-4 text-sm font-semibold uppercase tracking-[0.18em] text-bronze transition hover:bg-[#fff0ee]"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-bronze px-6 py-4 text-sm font-semibold uppercase tracking-[0.18em] text-bronze transition hover:bg-parchment"
             >
               <span className="material-symbols-outlined text-[18px]">arrow_back</span>
               Quay lại lịch thuê
@@ -317,7 +305,7 @@ function BookingLogisticsInner() {
         </div>
 
         <aside className="space-y-6 lg:sticky lg:top-28 lg:self-start">
-          <section className="rounded-xl border border-sand bg-white/90 p-6 shadow-[0_10px_40px_rgba(77,16,15,0.05)] backdrop-blur">
+          <section className="rounded-xl border border-sand bg-white/90 p-6 shadow-md backdrop-blur">
             <div className="mb-4 flex items-center gap-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-lotus/10 text-lotus">
                 <span className="material-symbols-outlined text-[18px]">diamond</span>
@@ -338,8 +326,12 @@ function BookingLogisticsInner() {
 
 export default function BookingLogisticsPage() {
   return (
-    <Suspense>
-      <BookingLogisticsInner />
-    </Suspense>
+    <div className="flex min-h-screen flex-col bg-mist text-ink">
+      <CustomerNavbar />
+      <Suspense>
+        <BookingLogisticsInner />
+      </Suspense>
+      <CustomerFooter />
+    </div>
   );
 }

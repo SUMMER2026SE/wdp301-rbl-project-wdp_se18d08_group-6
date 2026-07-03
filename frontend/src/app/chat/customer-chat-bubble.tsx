@@ -119,7 +119,7 @@ export function CustomerChatBubble({
     <div className="fixed bottom-4 right-4 z-50 flex flex-col">
       {/* Chat Widget */}
       {isOpen && (
-        <div className="mb-3 w-80 flex flex-col h-[600px] rounded-3xl border border-sand bg-white shadow-lg overflow-hidden">
+        <div className="mb-3 w-80 flex flex-col h-[600px] rounded-lg border border-sand bg-white shadow-lg overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-oxblood to-red-800 px-4 py-4 shrink-0">
             <div className="flex-1">
@@ -140,7 +140,7 @@ export function CustomerChatBubble({
           <div
             ref={messagesContainerRef}
             onScroll={handleMessagesScroll}
-            className="flex-1 overflow-y-auto p-3 space-y-3 bg-[#fff7f2]"
+            className="flex-1 overflow-y-auto p-3 space-y-3 bg-parchment"
           >
             {/* Loading older indicator */}
             {loadingOlderMessages && (
@@ -184,7 +184,7 @@ export function CustomerChatBubble({
                             <img
                               src={message.metadata.url as string}
                               alt=""
-                              className="rounded-2xl border border-sand/70 shadow-sm w-full h-auto object-cover"
+                              className="rounded-lg border border-sand/70 shadow-sm w-full h-auto object-cover"
                               loading="lazy"
                             />
                             <span className="block text-[10px] mt-1 opacity-70 text-right">
@@ -196,7 +196,7 @@ export function CustomerChatBubble({
                             <video
                               src={message.metadata.url as string}
                               controls
-                              className="rounded-2xl border border-sand/70 shadow-sm w-full h-auto max-h-[320px] object-contain bg-black"
+                              className="rounded-lg border border-sand/70 shadow-sm w-full h-auto max-h-[320px] object-contain bg-black"
                               preload="metadata"
                             />
                             <span className="block text-[10px] mt-1 opacity-70 text-right">
@@ -216,7 +216,7 @@ export function CustomerChatBubble({
                           <div
                             className={`${
                               isMine ? "bg-lotus text-white" : "bg-white border border-sand/70 text-stone-900"
-                            } rounded-2xl px-3 py-2 text-xs shadow-sm`}
+                            } rounded-lg px-3 py-2 text-xs shadow-sm`}
                           >
                             <p className="leading-5">{message.content}</p>
                             <span className="block text-[10px] mt-1 opacity-70">
@@ -245,7 +245,7 @@ export function CustomerChatBubble({
 
             {typingEntries.length > 0 && (
               <div className="flex justify-start">
-                <div className="bg-white border border-sand/70 rounded-2xl px-3 py-2 text-xs text-stone-600">
+                <div className="bg-white border border-sand/70 rounded-lg px-3 py-2 text-xs text-stone-600">
                   <span className="inline-block">Nhân viên đang nhập</span>
                   <span className="ml-1 inline-block">
                     <span className="animate-bounce">·</span>
@@ -286,7 +286,7 @@ export function CustomerChatBubble({
                 onChange={(event) => setMessageText(event.currentTarget.value)}
                 onFocus={() => onTyping(true)}
                 onBlur={() => onTyping(false)}
-                className="flex-1 rounded-2xl border border-sand bg-white px-3 py-2 text-xs outline-none focus:border-lotus resize-none"
+                className="flex-1 rounded-lg border border-sand bg-white px-3 py-2 text-xs outline-none focus:border-lotus resize-none"
                 placeholder="Nhập tin nhắn..."
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
@@ -312,7 +312,7 @@ export function CustomerChatBubble({
 
       {/* Toast */}
       {toast && (
-        <div className="mb-2 rounded-xl bg-rose-600 px-4 py-2 text-xs text-white shadow-lg">
+        <div className="mb-2 rounded-xl bg-oxblood px-4 py-2 text-xs text-white shadow-lg">
           {toast}
         </div>
       )}

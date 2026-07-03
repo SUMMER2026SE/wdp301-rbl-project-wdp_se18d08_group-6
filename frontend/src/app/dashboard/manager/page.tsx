@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ManagerPortalShell } from "@/components/heritage/ui";
 import { useAuth } from "@/components/auth/auth-provider";
+import { STATUS_LABELS, statusBadgeClass } from "@/lib/status-labels";
 import {
   getStaffAllBookings,
   getAvailableAssets,
@@ -54,23 +55,6 @@ function formatDate(iso: string) {
 function formatVND(amount: number) {
   return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
 }
-
-const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  pending_confirmation: { label: "Chờ xác nhận",        color: "bg-amber-100 text-amber-700" },
-  confirmed:            { label: "Đã xác nhận",         color: "bg-blue-100 text-blue-700" },
-  awaiting_payment:     { label: "Chờ thanh toán",      color: "bg-yellow-100 text-yellow-700" },
-  paid:                 { label: "Đã thanh toán",       color: "bg-green-100 text-green-700" },
-  preparing:            { label: "Đang chuẩn bị",       color: "bg-purple-100 text-purple-700" },
-  ready_for_pickup:     { label: "Sẵn sàng nhận",       color: "bg-teal-100 text-teal-700" },
-  delivering:           { label: "Đang giao",           color: "bg-indigo-100 text-indigo-700" },
-  renting:              { label: "Đang thuê",           color: "bg-lotus/10 text-lotus" },
-  returned:             { label: "Đã trả",              color: "bg-stone-100 text-stone-600" },
-  inspection_pending:   { label: "Chờ kiểm tra",        color: "bg-orange-100 text-orange-700" },
-  completed:            { label: "Hoàn thành",          color: "bg-jade/10 text-jade" },
-  cancelled:            { label: "Đã hủy",              color: "bg-red-100 text-red-600" },
-  rejected:             { label: "Từ chối",             color: "bg-red-100 text-red-700" },
-  overdue:              { label: "Quá hạn",             color: "bg-red-200 text-red-800" },
-};
 
 const ASSET_STATUS_META: Record<string, { label: string; color: string }> = {
   available:         { label: "Sẵn sàng",       color: "bg-state-available/10 text-state-available border border-state-available/20" },
@@ -765,8 +749,8 @@ function AssetsAssignTab({
           const s = STATUS_LABELS[booking.status] ?? { label: booking.status, color: "bg-stone-100 text-stone-600" };
           const unassignedItems = booking.items.filter((item) => !item.garmentAssetId);
           return (
-            <div key={booking.id} className="overflow-hidden rounded-xl border border-sand bg-white shadow-[0_4px_20px_rgba(0,0,0,0.04)]">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand bg-[#fff8f6] px-6 py-3">
+            <div key={booking.id} className="overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand bg-mist px-6 py-3">
                 <div className="flex items-center gap-3">
                   <span className="font-semibold text-ink">#{booking.id.slice(0, 8).toUpperCase()}</span>
                   <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${s.color}`}>{s.label}</span>
@@ -907,7 +891,7 @@ function OverviewTab({
           {["available", "reserved", "rented", "laundry", "maintenance", "damaged", "inspection_pending", "retired", "lost"].map((status) => {
             const meta = ASSET_STATUS_META[status] ?? { label: status, color: "bg-stone-100 text-stone-600" };
             return (
-              <button key={status} type="button" onClick={() => onGoToTab("inventory")} className="rounded-lg border border-sand bg-[#fff8f6] p-3 text-left transition hover:border-lotus/50 hover:bg-white">
+              <button key={status} type="button" onClick={() => onGoToTab("inventory")} className="rounded-lg border border-sand bg-mist p-3 text-left transition hover:border-lotus/50 hover:bg-white">
                 <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${meta.color}`}>{meta.label}</span>
                 <p className="mt-2 font-display text-2xl text-ink">{assetCounts[status] ?? 0}</p>
               </button>
@@ -917,7 +901,7 @@ function OverviewTab({
       </section>
 
       <div className="grid grid-cols-1 gap-gutter lg:grid-cols-3">
-        <div className="rounded-xl border border-sand bg-white p-6 shadow-[0_4px_12px_rgba(74,4,4,0.03)] lg:col-span-2">
+        <div className="rounded-xl border border-sand bg-white p-6 shadow-xs lg:col-span-2">
           <h2 className="mb-6 font-display text-2xl text-ink">Tình Trạng Vận Hành</h2>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
             <StatusCell label="Chờ xử lý" value={countBy(["pending_confirmation", "awaiting_payment"])} tone="amber" />
@@ -926,7 +910,7 @@ function OverviewTab({
             <StatusCell label="Chờ kiểm tra" value={countBy(["returned", "inspection_pending"])} tone="orange" />
             <StatusCell label="Hoàn thành" value={countBy(["completed"])} tone="jade" />
           </div>
-          <div className="mt-6 flex items-start gap-4 rounded-r-lg border-l-4 border-lotus bg-[#fff4ef] p-4">
+          <div className="mt-6 flex items-start gap-4 rounded-r-lg border-l-4 border-lotus bg-parchment p-4">
             <span className="material-symbols-outlined mt-0.5 text-lotus">warning</span>
             <div>
               <h3 className="text-sm font-semibold text-ink">Cảnh Báo Vận Hành</h3>
@@ -944,7 +928,7 @@ function OverviewTab({
           </div>
         </div>
 
-        <div className="flex flex-col rounded-xl border border-sand bg-white p-6 shadow-[0_4px_12px_rgba(74,4,4,0.03)]">
+        <div className="flex flex-col rounded-xl border border-sand bg-white p-6 shadow-xs">
           <h2 className="mb-6 font-display text-2xl text-ink">Truy Cập Nhanh</h2>
           <div className="flex flex-1 flex-col gap-3">
             <ShortcutButton icon="inventory_2" label="Kho trang phục" badge={bookingsNeedingAssets.length} tone="bronze" onClick={() => onGoToTab("assets")} />
@@ -1042,7 +1026,7 @@ function InventoryTab({
         <div className="border-b border-sand bg-white px-4 py-3">
           <div className="relative">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-stone-400">search</span>
-            <input value={garmentSearch} onChange={(e) => setGarmentSearch(e.target.value)} className="w-full rounded-lg border border-sand bg-[#fff8f6] py-2 pl-10 pr-3 text-sm outline-none focus:border-antique" placeholder="Tìm trang phục, danh mục, size..." />
+            <input value={garmentSearch} onChange={(e) => setGarmentSearch(e.target.value)} className="w-full rounded-lg border border-sand bg-mist py-2 pl-10 pr-3 text-sm outline-none focus:border-antique" placeholder="Tìm trang phục, danh mục, size..." />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4">
@@ -1130,7 +1114,7 @@ function InventoryTab({
           <div className="flex gap-2">
             <div className="relative flex-1">
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-stone-400">search</span>
-              <input value={assetSearch} onChange={(e) => setAssetSearch(e.target.value)} className="w-full rounded-lg border border-sand bg-[#fff8f6] py-2 pl-10 pr-3 text-sm outline-none focus:border-antique" placeholder="Tìm mã tài sản..." />
+              <input value={assetSearch} onChange={(e) => setAssetSearch(e.target.value)} className="w-full rounded-lg border border-sand bg-mist py-2 pl-10 pr-3 text-sm outline-none focus:border-antique" placeholder="Tìm mã tài sản..." />
             </div>
             <select value={assetStatusFilter} onChange={(e) => setAssetStatusFilter(e.target.value)} className="rounded-lg border border-sand bg-white px-3 py-2 text-sm outline-none focus:border-antique" aria-label="Lọc trạng thái tài sản">
               <option value="all">Tất cả</option>
@@ -1470,7 +1454,7 @@ function GarmentFormModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4">
-      <form onSubmit={handleSubmit} className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-sand bg-white p-6 shadow-2xl">
+      <form onSubmit={handleSubmit} className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-lg border border-sand bg-white p-6 shadow-2xl">
         <div className="mb-6 flex items-center justify-between">
           <h3 className="font-display text-2xl text-ink">{garment ? "Sửa trang phục" : "Thêm trang phục mới"}</h3>
           <button type="button" onClick={handleClose} className="text-stone-500 hover:text-lotus">
@@ -1573,7 +1557,7 @@ function GarmentFormModal({
           </div>
         </div>
 
-        <div className={`mt-6 rounded-xl border ${errors.images ? 'border-red-500 bg-red-50' : 'border-sand bg-[#fff8f6]'} p-4`}>
+        <div className={`mt-6 rounded-xl border ${errors.images ? 'border-red-500 bg-red-50' : 'border-sand bg-mist'} p-4`}>
           <div className="flex items-center justify-between gap-3 mb-3">
             <div>
               <h4 className="text-sm font-semibold text-ink">Ảnh trang phục *</h4>
@@ -1665,7 +1649,7 @@ function DeleteGarmentConfirmModal({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-sand bg-white p-6 shadow-2xl">
+      <div className="w-full max-w-sm rounded-lg border border-sand bg-white p-6 shadow-2xl">
         <div className="mb-4">
           <h3 className="font-display text-xl text-ink">Xóa trang phục</h3>
           <p className="mt-2 text-sm text-stone-500">
@@ -1714,7 +1698,7 @@ function AssetFormModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4">
-      <form onSubmit={handleSubmit} className="w-full max-w-md rounded-2xl border border-sand bg-white p-6 shadow-2xl">
+      <form onSubmit={handleSubmit} className="w-full max-w-md rounded-lg border border-sand bg-white p-6 shadow-2xl">
         <div className="mb-6 flex items-center justify-between">
           <h3 className="font-display text-2xl text-ink">Thêm tài sản mới</h3>
           <button type="button" onClick={onClose} className="text-stone-500 hover:text-lotus">
@@ -1764,7 +1748,7 @@ function InspectionLogTab({ log, loading }: { log: InspectionLogEntry[]; loading
       ) : (
         <div className="overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
           <table className="w-full text-left text-sm">
-            <thead className="bg-[#fff8f6] text-xs uppercase tracking-[0.14em] text-stone-500">
+            <thead className="bg-mist text-xs uppercase tracking-[0.14em] text-stone-500">
               <tr>
                 <th className="px-6 py-3">Mã tài sản</th>
                 <th className="px-6 py-3">Trang phục</th>
@@ -1777,7 +1761,7 @@ function InspectionLogTab({ log, loading }: { log: InspectionLogEntry[]; loading
             </thead>
             <tbody className="divide-y divide-sand">
               {log.map((entry) => (
-                <tr key={entry.id} className="transition hover:bg-[#fff8f6]">
+                <tr key={entry.id} className="transition hover:bg-mist">
                   <td className="px-6 py-4 font-semibold text-ink">{entry.assetCode}</td>
                   <td className="px-6 py-4 text-stone-600">{entry.garmentName}</td>
                   <td className="px-6 py-4">
@@ -1957,7 +1941,7 @@ function FinanceTab({
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-[#fff8f6] text-xs uppercase tracking-[0.14em] text-stone-500">
+            <thead className="bg-mist text-xs uppercase tracking-[0.14em] text-stone-500">
               <tr>
                 <th className="px-6 py-3">Mã đơn</th>
                 <th className="px-6 py-3">Khách hàng</th>
@@ -1976,7 +1960,7 @@ function FinanceTab({
                 bookings.slice().reverse().map((b) => {
                   const s = STATUS_LABELS[b.status] ?? { label: b.status, color: "bg-stone-100 text-stone-600" };
                   return (
-                    <tr key={b.id} className="transition hover:bg-[#fff8f6]">
+                    <tr key={b.id} className="transition hover:bg-mist">
                       <td className="px-6 py-4 font-semibold text-ink">#{b.id.slice(0, 8).toUpperCase()}</td>
                       <td className="px-6 py-4 text-stone-600">{b.customerName ?? "—"}</td>
                       <td className="px-6 py-4 text-ink">{formatVND(b.rentalTotal)}</td>
@@ -2002,10 +1986,10 @@ function FinanceTab({
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const TONE_CLASSES: Record<string, { text: string; bg: string; bar: string }> = {
-  lotus:   { text: "text-lotus",   bg: "bg-[#ffe9e6]", bar: "bg-lotus" },
-  antique: { text: "text-antique", bg: "bg-[#fdf5db]", bar: "bg-antique" },
-  jade:    { text: "text-jade",    bg: "bg-[#e6f0f0]", bar: "bg-jade" },
-  bronze:  { text: "text-bronze",  bg: "bg-[#f0ece6]", bar: "bg-bronze" },
+  lotus:   { text: "text-lotus",   bg: "bg-lotus/10", bar: "bg-lotus" },
+  antique: { text: "text-antique", bg: "bg-antique/10", bar: "bg-antique" },
+  jade:    { text: "text-jade",    bg: "bg-jade/10", bar: "bg-jade" },
+  bronze:  { text: "text-bronze",  bg: "bg-bronze/10", bar: "bg-bronze" },
 };
 
 function QuickWorkItem({ icon, label, value, tone, onClick }: { icon: string; label: string; value: number; tone: "amber" | "orange" | "blue" | "red"; onClick: () => void }) {
@@ -2035,14 +2019,14 @@ function SnapshotCard({
 }) {
   const t = TONE_CLASSES[tone];
   return (
-    <div className="relative overflow-hidden rounded-xl border border-sand bg-white p-6 shadow-[0_4px_12px_rgba(74,4,4,0.03)]">
+    <div className="relative overflow-hidden rounded-xl border border-sand bg-white p-6 shadow-xs">
       <div className="mb-4 flex items-start justify-between">
         <span className="text-sm font-semibold text-stone-500">{label}</span>
         <span className={`material-symbols-outlined rounded-lg p-2 ${t.text} ${t.bg}`}>{icon}</span>
       </div>
       <div className="mb-2 font-display text-3xl text-ink">{value}</div>
       {typeof progress === "number" ? (
-        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#fee2dd]">
+        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-lotus/20">
           <div className={`h-full rounded-full ${t.bar}`} style={{ width: `${progress}%` }} />
         </div>
       ) : (
@@ -2054,11 +2038,11 @@ function SnapshotCard({
 }
 
 const CELL_TONES: Record<string, { num: string; bg: string; border: string }> = {
-  amber:   { num: "text-amber-700",   bg: "bg-[#fff7ed]", border: "border-[#fde6c8]" },
-  purple:  { num: "text-purple-700",  bg: "bg-[#f5f3ff]", border: "border-[#e8e2ff]" },
-  lotus:   { num: "text-lotus",       bg: "bg-[#ffe9e6]", border: "border-[#f7d2cd]" },
-  orange:  { num: "text-orange-700",  bg: "bg-[#fff4ed]", border: "border-[#feddc6]" },
-  jade:    { num: "text-jade",        bg: "bg-[#eaf5f1]", border: "border-[#cfe7df]" },
+  amber:   { num: "text-amber-700",   bg: "bg-amber-50", border: "border-[#fde6c8]" },
+  purple:  { num: "text-purple-700",  bg: "bg-lotus/5", border: "border-[#e8e2ff]" },
+  lotus:   { num: "text-lotus",       bg: "bg-lotus/10", border: "border-[#f7d2cd]" },
+  orange:  { num: "text-orange-700",  bg: "bg-rose-50", border: "border-[#feddc6]" },
+  jade:    { num: "text-jade",        bg: "bg-jade/10", border: "border-[#cfe7df]" },
 };
 
 function StatusCell({ label, value, tone }: { label: string; value: number; tone: keyof typeof CELL_TONES }) {
@@ -2081,9 +2065,9 @@ function ShortcutButton({
   const hover = { bronze: "hover:border-bronze", jade: "hover:border-jade", antique: "hover:border-antique" }[tone];
   return (
     <button type="button" onClick={onClick}
-      className={`group flex w-full items-center justify-between rounded-lg border border-sand p-4 transition hover:bg-[#fff8f6] ${hover}`}>
+      className={`group flex w-full items-center justify-between rounded-lg border border-sand p-4 transition hover:bg-mist ${hover}`}>
       <div className="flex items-center gap-3">
-        <div className={`rounded-md bg-[#f4eee6] p-2 ${TONE_CLASSES[tone].text} transition group-hover:bg-current`}>
+        <div className={`rounded-md bg-bronze/10 p-2 ${TONE_CLASSES[tone].text} transition group-hover:bg-current`}>
           <span className="material-symbols-outlined text-[20px]">{icon}</span>
         </div>
         <span className="text-sm font-semibold text-ink">{label}</span>
@@ -2122,8 +2106,8 @@ function RefundCard({
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-sand bg-white shadow-[0_4px_20px_rgba(0,0,0,0.04)]">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand bg-[#fff8f6] px-6 py-3">
+    <div className="overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand bg-mist px-6 py-3">
         <div className="flex items-center gap-3">
           <span className="font-semibold text-ink">#{refund.bookingId.slice(0, 8).toUpperCase()}</span>
           <span className="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] bg-yellow-100 text-yellow-700">
@@ -2152,7 +2136,7 @@ function RefundCard({
         </div>
       </div>
 
-      <div className="border-t border-sand bg-[#fff8f6] px-6 py-4">
+      <div className="border-t border-sand bg-mist px-6 py-4">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500 mb-3">
           Thông tin chuyển khoản
         </p>

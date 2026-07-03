@@ -3,7 +3,8 @@
 import { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { PublicAtelierNav } from "@/components/heritage/ui";
+import { CustomerNavbar } from "@/components/customer/navbar";
+import { CustomerFooter } from "@/components/customer/footer";
 import { getGarmentsGrouped, type GarmentGrouped } from "@/lib/api";
 import { CameraCapture } from "@/components/try-on/camera-capture";
 import { ImageUpload } from "@/components/try-on/image-upload";
@@ -164,8 +165,8 @@ function TryOnInner() {
   }
 
   return (
-    <div className="min-h-screen bg-[#fff8f6] text-ink">
-      <PublicAtelierNav active="atelier" />
+    <div className="min-h-screen bg-mist text-ink">
+      <CustomerNavbar active="tryon" />
 
       <main className="mx-auto flex max-w-7xl flex-col gap-10 px-4 pb-24 pt-24 sm:px-6 lg:px-8 lg:pt-28">
         {/* Header */}
@@ -211,7 +212,7 @@ function TryOnInner() {
                           className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
                             selectedSizeId === s.garmentSizeId
                               ? "bg-lotus text-white"
-                              : "bg-[#fff0ee] text-stone-600 hover:bg-lotus/20"
+                              : "bg-parchment text-stone-600 hover:bg-lotus/20"
                           }`}
                         >
                           {s.sizeLabel ?? "—"}
@@ -246,7 +247,7 @@ function TryOnInner() {
                     onClick={() => setMode(opt.key)}
                     className={`rounded-xl border p-4 text-left transition ${
                       mode === opt.key
-                        ? "border-lotus bg-[#fff0ee]"
+                        ? "border-lotus bg-parchment"
                         : "border-sand bg-white hover:border-antique"
                     }`}
                   >
@@ -265,7 +266,7 @@ function TryOnInner() {
               <h2 className="mb-4 font-display text-2xl text-ink">3. Ảnh của bạn</h2>
 
               {/* Source toggle */}
-              <div className="mb-4 flex rounded-lg border border-sand bg-[#fff8f6] p-1">
+              <div className="mb-4 flex rounded-lg border border-sand bg-mist p-1">
                 {([
                   { key: "upload", label: "Upload ảnh", icon: "upload" },
                   { key: "camera", label: "Chụp ảnh", icon: "photo_camera" },
@@ -324,7 +325,7 @@ function TryOnInner() {
           </div>
 
           {/* RIGHT: Preview / Result */}
-          <section className="relative min-h-[600px] overflow-hidden rounded-xl border border-sand bg-[#ffe9e6]">
+          <section className="relative min-h-[600px] overflow-hidden rounded-xl border border-sand bg-lotus/10">
             {viewState === "setup" && !imageBase64 && (
               <div className="flex h-full flex-col items-center justify-center p-8 text-center">
                 <span className="material-symbols-outlined text-6xl text-stone-300">imagesmode</span>
@@ -361,7 +362,7 @@ function TryOnInner() {
               <div className="flex h-full flex-col items-center justify-center p-4">
                 <img
                   alt="Kết quả thử đồ AI"
-                  className="max-h-full w-full rounded-lg object-contain shadow-[0_20px_40px_rgba(0,0,0,0.16)]"
+                  className="max-h-full w-full rounded-lg object-contain shadow-xl"
                   src={resultImage}
                 />
                 <div className="mt-6 flex flex-wrap justify-center gap-3 rounded-full border border-sand bg-white/90 px-5 py-3 text-sm shadow">
@@ -418,8 +419,8 @@ function TryOnInner() {
           ) : historyItems.length > 0 ? (
             <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {historyItems.map((item) => (
-                <article key={item.id} className="overflow-hidden rounded-xl border border-sand bg-[#fff8f6]">
-                  <div className="aspect-[3/4] bg-[#ffe9e6]">
+                <article key={item.id} className="overflow-hidden rounded-xl border border-sand bg-mist">
+                  <div className="aspect-[3/4] bg-lotus/10">
                     {item.resultImageUrl ? (
                       <img src={item.resultImageUrl} alt={item.garmentName} className="h-full w-full object-cover" />
                     ) : (
@@ -463,6 +464,7 @@ function TryOnInner() {
           )}
         </section>
       </main>
+      <CustomerFooter />
     </div>
   );
 }

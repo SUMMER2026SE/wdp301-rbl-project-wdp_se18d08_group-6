@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { BookingFlowShell } from "@/components/heritage/ui";
+import { CustomerNavbar } from "@/components/customer/navbar";
+import { CustomerFooter } from "@/components/customer/footer";
 import { checkAvailability } from "@/lib/api";
 import { getCart, removeFromCart, getCartSummary, type CartItem } from "@/lib/cart";
 
@@ -141,7 +143,7 @@ function BookingDateSelectionInner() {
       <div className="grid gap-8 xl:grid-cols-12">
         {/* Cart items list */}
         <section className="xl:col-span-5">
-          <div className="rounded-xl border border-sand bg-white shadow-[0_10px_40px_rgba(77,16,15,0.05)]">
+          <div className="rounded-xl border border-sand bg-white shadow-md">
             <div className="border-b border-sand px-6 py-4 flex items-center justify-between">
               <h2 className="font-display text-xl text-ink">Giỏ thuê ({cartItems.length})</h2>
               <Link href="/catalog" className="text-xs text-lotus hover:underline">+ Thêm món</Link>
@@ -151,7 +153,7 @@ function BookingDateSelectionInner() {
                 const av = availMap[item.garmentSizeId];
                 return (
                   <div key={item.garmentSizeId} className="flex items-start gap-4 p-4">
-                    <div className="flex h-16 w-12 shrink-0 items-center justify-center rounded bg-[#ffe9e6]">
+                    <div className="flex h-16 w-12 shrink-0 items-center justify-center rounded bg-lotus/10">
                       <span className="material-symbols-outlined text-2xl text-antique/50">checkroom</span>
                     </div>
                     <div className="flex-1 min-w-0">
@@ -185,7 +187,7 @@ function BookingDateSelectionInner() {
 
         {/* Date picker + summary */}
         <section className="space-y-8 xl:col-span-7">
-          <div className="rounded-xl border border-sand bg-white p-6 shadow-[0_10px_40px_rgba(77,16,15,0.05)] sm:p-8">
+          <div className="rounded-xl border border-sand bg-white p-6 shadow-md sm:p-8">
             <h2 className="mb-6 font-display text-3xl text-lotus">Chọn khoảng ngày thuê</h2>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -239,7 +241,7 @@ function BookingDateSelectionInner() {
             )}
           </div>
 
-          <div className="rounded-xl border border-sand bg-white p-6 shadow-[0_10px_40px_rgba(77,16,15,0.05)] sm:p-8">
+          <div className="rounded-xl border border-sand bg-white p-6 shadow-md sm:p-8">
             <h3 className="font-display text-3xl text-ink">Tóm tắt chi phí</h3>
             <div className="mt-6 space-y-3 text-sm">
               {cartItems.map((item) => (
@@ -278,7 +280,7 @@ function BookingDateSelectionInner() {
             <div className="mt-8 flex flex-col gap-4 sm:flex-row">
               <Link
                 href="/catalog"
-                className="inline-flex flex-1 items-center justify-center rounded-lg border border-bronze px-6 py-4 text-sm font-semibold uppercase tracking-[0.18em] text-bronze transition hover:bg-[#fff0ee]"
+                className="inline-flex flex-1 items-center justify-center rounded-lg border border-bronze px-6 py-4 text-sm font-semibold uppercase tracking-[0.18em] text-bronze transition hover:bg-parchment"
               >
                 Thêm món khác
               </Link>
@@ -300,8 +302,12 @@ function BookingDateSelectionInner() {
 
 export default function BookingDateSelectionPage() {
   return (
-    <Suspense>
-      <BookingDateSelectionInner />
-    </Suspense>
+    <div className="flex min-h-screen flex-col bg-mist text-ink">
+      <CustomerNavbar />
+      <Suspense>
+        <BookingDateSelectionInner />
+      </Suspense>
+      <CustomerFooter />
+    </div>
   );
 }

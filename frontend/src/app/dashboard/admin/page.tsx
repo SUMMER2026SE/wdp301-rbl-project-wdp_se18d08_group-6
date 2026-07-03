@@ -393,7 +393,7 @@ export default function AdminOverviewPage() {
     >
       {/* Toast Alerts */}
       {successMsg && (
-        <div className="fixed right-6 top-20 z-50 flex items-center gap-2 rounded-lg bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 shadow-lg border border-emerald-200 animate-slide-in">
+        <div className="fixed right-6 top-20 z-50 flex items-center gap-2 rounded-lg bg-jade/5 px-4 py-3 text-sm font-semibold text-jade shadow-lg border border-jade/30 animate-slide-in">
           <span className="material-symbols-outlined text-[20px]">check_circle</span>
           <span>{successMsg}</span>
         </div>
@@ -416,7 +416,7 @@ export default function AdminOverviewPage() {
             {overviewData?.summary.map((card) => {
               const colors = {
                 rose: "border-rose-100 bg-rose-50/50 text-rose-700",
-                emerald: "border-emerald-100 bg-emerald-50/50 text-emerald-700",
+                emerald: "border-jade/20 bg-jade/5/50 text-jade",
                 amber: "border-amber-100 bg-amber-50/50 text-amber-700",
                 slate: "border-slate-200 bg-slate-100/50 text-slate-700",
               };
@@ -455,7 +455,7 @@ export default function AdminOverviewPage() {
                       <p className="text-sm font-semibold text-ink">{q.label}</p>
                       <p className="text-xs text-stone-500 mt-0.5">{q.hint}</p>
                     </div>
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#ffe9e6] font-display text-sm font-bold text-lotus">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-lotus/10 font-display text-sm font-bold text-lotus">
                       {q.value}
                     </span>
                   </div>
@@ -596,7 +596,7 @@ export default function AdminOverviewPage() {
                           <div className="text-xs text-stone-500 font-mono mt-0.5">{u.email}</div>
                         </td>
                         <td className="py-3.5 px-4">
-                          <span className="text-xs font-semibold px-2.5 py-1 rounded bg-[#ffe9e6] text-lotus">
+                          <span className="text-xs font-semibold px-2.5 py-1 rounded bg-lotus/10 text-lotus">
                             {roleLabelMap[u.role] || u.role}
                           </span>
                         </td>
@@ -604,11 +604,11 @@ export default function AdminOverviewPage() {
                           <span
                             className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${
                               u.isActive
-                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                ? "bg-jade/5 text-jade border-jade/30"
                                 : "bg-rose-50 text-rose-700 border-rose-200"
                             }`}
                           >
-                            <span className={`w-1.5 h-1.5 rounded-full ${u.isActive ? "bg-emerald-500" : "bg-rose-500"}`}></span>
+                            <span className={`w-1.5 h-1.5 rounded-full ${u.isActive ? "bg-jade/50" : "bg-rose-500"}`}></span>
                             {u.isActive ? "Hoạt động" : "Tạm khóa"}
                           </span>
                         </td>
@@ -732,7 +732,7 @@ export default function AdminOverviewPage() {
                               key={perm}
                               className={`py-1 rounded border flex items-center justify-center gap-1 ${
                                 hasPerm
-                                  ? "bg-emerald-50 border-emerald-200 text-emerald-800 font-semibold"
+                                  ? "bg-jade/5 border-jade/30 text-jade font-semibold"
                                   : "bg-stone-50 border-stone-200 text-stone-400 opacity-60"
                               }`}
                             >
@@ -869,8 +869,8 @@ export default function AdminOverviewPage() {
                     Cấu hình đường truyền mạng và khoá API cho mạng nơ-ron Heritage-V3.2.
                   </p>
                 </div>
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-semibold">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-jade/30 bg-jade/5 text-jade text-xs font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-jade/50"></span>
                   Đang hoạt động
                 </span>
               </header>
@@ -1259,7 +1259,7 @@ export default function AdminOverviewPage() {
                           {log.summary}
                         </td>
                         <td className="py-3 px-4 whitespace-nowrap">
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-jade/5 border border-jade/30 text-jade text-xs font-semibold">
                             <span className="material-symbols-outlined text-[14px]">check_circle</span>
                             Thành công
                           </span>

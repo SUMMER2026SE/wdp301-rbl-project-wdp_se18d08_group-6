@@ -213,12 +213,12 @@ export function StaffChatWorkspace({
   return (
     <div className="grid gap-6 xl:grid-cols-[320px_1fr]">
       {/* Sidebar */}
-      <aside className="rounded-3xl border border-sand bg-white p-6 shadow-sm">
+      <aside className="rounded-lg border border-sand bg-white p-6 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="font-semibold text-lg text-ink">Cuộc trò chuyện</h2>
         </div>
 
-        <div className="mb-5 flex flex-wrap items-center gap-2 rounded-3xl bg-[#fff7f2] p-3 text-sm text-stone-700">
+        <div className="mb-5 flex flex-wrap items-center gap-2 rounded-lg bg-parchment p-3 text-sm text-stone-700">
           <button
             type="button"
             onClick={() => setSidebarTab("assigned")}
@@ -279,7 +279,7 @@ export function StaffChatWorkspace({
           {loadingConversations ? (
             <div className="text-sm text-stone-500">Đang tải cuộc trò chuyện...</div>
           ) : displayedConversations.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-sand/70 bg-[#fffbf7] p-4 text-sm text-stone-500">
+            <div className="rounded-lg border border-dashed border-sand/70 bg-mist p-4 text-sm text-stone-500">
               Không có cuộc trò chuyện nào.
             </div>
           ) : (
@@ -288,7 +288,7 @@ export function StaffChatWorkspace({
                 key={conversation.id}
                 type="button"
                 onClick={() => void onJoinConversation(conversation.id)}
-                className={`w-full rounded-3xl border px-4 py-4 text-left transition ${conversation.id === selectedConversation?.id ? "border-lotus bg-[#fff1ef]" : "border-sand bg-white hover:border-lotus/80"}`}
+                className={`w-full rounded-lg border px-4 py-4 text-left transition ${conversation.id === selectedConversation?.id ? "border-lotus bg-lotus/10" : "border-sand bg-white hover:border-lotus/80"}`}
               >
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -298,25 +298,25 @@ export function StaffChatWorkspace({
                       <div className="mt-1.5 flex items-center gap-1.5">
                         {conversation.topic === "product_advice" && conversation.garmentName ? (
                           <>
-                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-700">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-jade/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-jade">
                               Tư vấn sản phẩm
                             </span>
-                            <span className="truncate text-[11px] text-emerald-600 max-w-[140px]">
+                            <span className="truncate text-[11px] text-jade max-w-[140px]">
                               {conversation.garmentName}
                             </span>
                           </>
                         ) : conversation.topic === "booking_support" && conversation.bookingId ? (
                           <>
-                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-700">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-lotus/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-lotus">
                               Hỗ trợ đơn hàng
                             </span>
-                            <span className="truncate text-[11px] text-blue-600 max-w-[140px]">
+                            <span className="truncate text-[11px] text-lotus max-w-[140px]">
                               #{conversation.bookingId.substring(0, 8).toUpperCase()}
                             </span>
                           </>
                         ) : conversation.topic === "complaint" && conversation.bookingId ? (
                           <>
-                            <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-700">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-red-700">
                               Khiếu nại
                             </span>
                             <span className="truncate text-[11px] text-rose-600 max-w-[140px]">
@@ -355,14 +355,14 @@ export function StaffChatWorkspace({
 
         {/* Notification Toast */}
         {notification && (
-          <div className="mt-4 rounded-3xl bg-lotus/10 border border-lotus px-4 py-3 text-sm font-semibold text-lotus animate-pulse">
+          <div className="mt-4 rounded-lg bg-lotus/10 border border-lotus px-4 py-3 text-sm font-semibold text-lotus animate-pulse">
             {notification}
           </div>
         )}
       </aside>
 
       {/* Main Chat Area */}
-      <section className="rounded-3xl border border-sand bg-white p-6 shadow-sm flex flex-col">
+      <section className="rounded-lg border border-sand bg-white p-6 shadow-sm flex flex-col">
         <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between shrink-0">
           <div>
             <h2 className="font-semibold text-lg text-ink">{selectedConversation ? `Chat với ${selectedConversation.customerName}` : "Chọn cuộc trò chuyện"}</h2>
@@ -370,21 +370,21 @@ export function StaffChatWorkspace({
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 {selectedConversation.topic === "product_advice" && selectedConversation.garmentName ? (
                   <>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-700">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-jade/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-jade">
                       Tư vấn sản phẩm
                     </span>
-                    <span className="text-sm text-emerald-600">{selectedConversation.garmentName}</span>
+                    <span className="text-sm text-jade">{selectedConversation.garmentName}</span>
                   </>
                 ) : selectedConversation.topic === "booking_support" && selectedConversation.bookingId ? (
                   <>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-700">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-lotus/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-lotus">
                       Hỗ trợ đơn hàng
                     </span>
-                    <span className="text-sm text-blue-600">Mã đơn: #{selectedConversation.bookingId.substring(0, 8).toUpperCase()}</span>
+                    <span className="text-sm text-lotus">Mã đơn: #{selectedConversation.bookingId.substring(0, 8).toUpperCase()}</span>
                   </>
                 ) : selectedConversation.topic === "complaint" && selectedConversation.bookingId ? (
                   <>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-700">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-red-700">
                       Khiếu nại
                     </span>
                     <span className="text-sm text-rose-600">Mã đơn: #{selectedConversation.bookingId.substring(0, 8).toUpperCase()}</span>
@@ -417,7 +417,7 @@ export function StaffChatWorkspace({
                 <button
                   type="button"
                   onClick={onOpenConversation}
-                  className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                  className="rounded-full bg-jade px-5 py-2 text-sm font-semibold text-white transition hover:bg-forest"
                 >
                   Tư vấn bổ sung
                 </button>
@@ -438,13 +438,13 @@ export function StaffChatWorkspace({
           <>
             {/* Preview Banner for unassigned conversations */}
             {isUnassignedPreview && (
-              <div className="mb-5 rounded-3xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800 shrink-0">
+              <div className="mb-5 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800 shrink-0">
                 🔍 Chế độ xem trước — Bạn đang xem tin nhắn. Nhấn <strong>"Tiếp nhận hỗ trợ"</strong> để nhận cuộc trò chuyện này.
               </div>
             )}
 
             <div className="mb-5 grid gap-3 sm:grid-cols-2 shrink-0">
-              <div className="rounded-3xl bg-[#fff7f2] p-4 text-sm text-stone-700">
+              <div className="rounded-lg bg-parchment p-4 text-sm text-stone-700">
                 <div className="font-semibold text-stone-900">Tình trạng</div>
                 <div className="mt-2">
                   {isUnassignedPreview ? (
@@ -459,15 +459,15 @@ export function StaffChatWorkspace({
                   )}
                 </div>
               </div>
-              <div className="rounded-3xl bg-[#fff7f2] p-4 text-sm text-stone-700">
+              <div className="rounded-lg bg-parchment p-4 text-sm text-stone-700">
                 <div className="font-semibold text-stone-900">Quyền gửi</div>
                 <div className="mt-2">
                   {isUnassignedPreview ? (
                     <p className="text-sm text-amber-700">Xem trước — chưa có quyền trả lời</p>
                   ) : staffCanReply ? (
-                    <p className="text-sm text-emerald-700">Bạn hiện có quyền trả lời</p>
+                    <p className="text-sm text-jade">Bạn hiện có quyền trả lời</p>
                   ) : (
-                    <p className="text-sm text-rose-700">{staffLockError ?? "Chưa mở khóa"}</p>
+                    <p className="text-sm text-red-700">{staffLockError ?? "Chưa mở khóa"}</p>
                   )}
                 </div>
               </div>
@@ -477,7 +477,7 @@ export function StaffChatWorkspace({
             <div
               ref={messagesContainerRef}
               onScroll={handleMessagesScroll}
-              className="mb-5 flex-1 min-h-0 overflow-y-auto rounded-3xl border border-sand/70 bg-[#fff7f2] p-4"
+              className="mb-5 flex-1 min-h-0 overflow-y-auto rounded-lg border border-sand/70 bg-parchment p-4"
               style={{ maxHeight: "400px" }}
             >
               {/* Loading older indicator */}
@@ -503,7 +503,7 @@ export function StaffChatWorkspace({
                         onMouseEnter={() => setHoveredMessageId(message.id)}
                         onMouseLeave={() => setHoveredMessageId(null)}
                       >
-                        <div className={`${isMine ? "bg-lotus/10 text-ink" : "bg-white text-stone-900"} rounded-3xl border border-sand/70 px-4 py-3 shadow-sm`}>
+                        <div className={`${isMine ? "bg-lotus/10 text-ink" : "bg-white text-stone-900"} rounded-lg border border-sand/70 px-4 py-3 shadow-sm`}>
                           <div className="mb-2 flex items-center justify-between gap-3 text-xs uppercase tracking-[0.18em] text-stone-400">
                             <span>{isMine ? "Bạn" : message.user_accounts?.profile?.fullName ?? message.user_accounts?.email ?? message.sender_id}</span>
                             <span>{new Date(message.created_at).toLocaleTimeString("vi-VN")}</span>
@@ -567,18 +567,18 @@ export function StaffChatWorkspace({
 
             {/* Upload Error Toast */}
             {uploadToast && (
-              <div className="rounded-3xl bg-rose-600 px-4 py-3 text-sm text-white shadow-lg shrink-0">
+              <div className="rounded-lg bg-oxblood px-4 py-3 text-sm text-white shadow-lg shrink-0">
                 {uploadToast}
               </div>
             )}
 
             {/* AI Suggestion Panel */}
             {(aiSuggestion.loading || aiSuggestion.topics.length > 0 || aiSuggestion.error) && !isUnassignedPreview && !isResolved && (
-              <div className="rounded-3xl border border-sand/70 bg-white shadow-sm shrink-0 overflow-hidden">
+              <div className="rounded-lg border border-sand/70 bg-white shadow-sm shrink-0 overflow-hidden">
                 <button
                   type="button"
                   onClick={() => setAiPanelOpen(!aiPanelOpen)}
-                  className="flex w-full items-center justify-between px-4 py-3 text-sm font-semibold text-ink transition hover:bg-[#fff7f2]"
+                  className="flex w-full items-center justify-between px-4 py-3 text-sm font-semibold text-ink transition hover:bg-parchment"
                 >
                   <span className="flex items-center gap-2">
                     🤖 Gợi ý AI
@@ -608,7 +608,7 @@ export function StaffChatWorkspace({
                         {aiSuggestion.topics.map((topic, i) => (
                           <div
                             key={i}
-                            className="rounded-xl border border-sand/70 bg-[#fff7f2] p-4 space-y-3"
+                            className="rounded-xl border border-sand/70 bg-parchment p-4 space-y-3"
                           >
                             {/* Title + reason */}
                             <div>
@@ -641,7 +641,7 @@ export function StaffChatWorkspace({
                                       <button
                                         type="button"
                                         onClick={() => void handleInsertProductCard(p.garmentId)}
-                                        className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 transition hover:bg-emerald-200 mt-1"
+                                        className="inline-flex items-center gap-1 rounded-full bg-jade/10 px-2 py-0.5 text-[10px] font-semibold text-jade transition hover:bg-jade/20 mt-1"
                                       >
                                         Gửi sản phẩm
                                       </button>
@@ -682,7 +682,7 @@ export function StaffChatWorkspace({
 
             {/* AI Toast */}
             {aiToast && (
-              <div className="rounded-3xl bg-emerald-600 px-4 py-3 text-sm text-white shadow-lg shrink-0">
+              <div className="rounded-lg bg-jade px-4 py-3 text-sm text-white shadow-lg shrink-0">
                 {aiToast}
               </div>
             )}
@@ -710,7 +710,7 @@ export function StaffChatWorkspace({
                     }
                   }}
                   disabled={isUnassignedPreview || !staffCanReply}
-                  className="min-h-[140px] w-full rounded-3xl border border-sand bg-white px-4 py-3 pb-10 text-sm outline-none focus:border-lotus disabled:bg-stone-100 disabled:text-stone-400 disabled:cursor-not-allowed"
+                  className="min-h-[140px] w-full rounded-lg border border-sand bg-white px-4 py-3 pb-10 text-sm outline-none focus:border-lotus disabled:bg-stone-100 disabled:text-stone-400 disabled:cursor-not-allowed"
                   placeholder={isUnassignedPreview ? "Tiếp nhận cuộc trò chuyện để trả lời..." : "Nhập tin nhắn..."}
                 />
                 <div className="absolute bottom-2 left-3 flex items-center gap-1">
@@ -737,7 +737,7 @@ export function StaffChatWorkspace({
                   type="button"
                   onClick={onSendMessage}
                   disabled={isUnassignedPreview || !staffCanReply}
-                  className={`inline-flex items-center justify-center rounded-3xl px-5 py-3 text-sm font-semibold text-white transition ${
+                  className={`inline-flex items-center justify-center rounded-lg px-5 py-3 text-sm font-semibold text-white transition ${
                     isUnassignedPreview || !staffCanReply ? "bg-sand/70 cursor-not-allowed" : "bg-oxblood hover:bg-red-950"
                   }`}
                 >
@@ -747,7 +747,7 @@ export function StaffChatWorkspace({
                   <button
                     type="button"
                     onClick={onMarkRead}
-                    className="inline-flex items-center justify-center rounded-3xl border border-lotus px-5 py-3 text-sm font-semibold text-lotus hover:bg-lotus/10"
+                    className="inline-flex items-center justify-center rounded-lg border border-lotus px-5 py-3 text-sm font-semibold text-lotus hover:bg-lotus/10"
                   >
                     Đánh dấu đã tư vấn
                   </button>
@@ -756,13 +756,13 @@ export function StaffChatWorkspace({
             </div>
 
             {typingEntries.length > 0 && (
-              <div className="mt-4 rounded-3xl bg-[#fffaf4] px-4 py-3 text-sm text-stone-600 shrink-0">
+              <div className="mt-4 rounded-lg bg-mist px-4 py-3 text-sm text-stone-600 shrink-0">
                 {typingEntries.some((id) => id !== session?.user.id) ? "... Khách hàng đang nhập..." : "Bạn đang nhập..."}
               </div>
             )}
           </>
         ) : (
-          <div className="rounded-3xl border border-dashed border-sand/70 bg-[#fffdfb] p-8 text-center text-sm text-stone-600">
+          <div className="rounded-lg border border-dashed border-sand/70 bg-mist p-8 text-center text-sm text-stone-600">
             Chọn một cuộc trò chuyện để xem tin nhắn và khóa chat.
           </div>
         )}

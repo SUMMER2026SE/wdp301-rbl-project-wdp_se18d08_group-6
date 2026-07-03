@@ -124,7 +124,7 @@ function LoginPageContent() {
     <main className="flex min-h-screen w-full bg-white">
       <div className="flex min-h-screen w-full flex-col md:flex-row">
         {/* Cột trái: Ảnh di sản đẹp mắt */}
-        <section className="relative hidden overflow-hidden bg-[#fee2dd] md:flex md:w-1/2">
+        <section className="relative hidden overflow-hidden bg-lotus/10 md:flex md:w-1/2">
           <img
             alt="Cổ Phục Rental"
             className="absolute inset-0 h-full w-full object-cover object-center"

@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { notFound, useRouter } from "next/navigation";
 import { use, useEffect, useState } from "react";
-import { PublicAtelierNav } from "@/components/heritage/ui";
+import { CustomerNavbar } from "@/components/customer/navbar";
+import { CustomerFooter } from "@/components/customer/footer";
 import { useAuth } from "@/components/auth/auth-provider";
 import { getGarmentsGrouped, type GarmentGrouped } from "@/lib/api";
 import { addToCart, cartCount } from "@/lib/cart";
@@ -134,8 +135,8 @@ async function handleConsult() {
   }
 
   return (
-    <div className="min-h-screen bg-[#fff8f6] text-ink">
-      <PublicAtelierNav active="collection" />
+    <div className="min-h-screen bg-mist text-ink">
+      <CustomerNavbar active="collection" />
 
       <main className="mx-auto max-w-7xl px-4 pb-24 pt-24 sm:px-6 lg:px-8 lg:pt-28">
         <nav className="mb-8 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
@@ -153,7 +154,7 @@ async function handleConsult() {
             {/* Gallery */}
             <div className="space-y-4 lg:sticky lg:top-28 lg:self-start">
               {/* Main viewer */}
-              <div className="relative flex aspect-[3/4] items-center justify-center overflow-hidden rounded-lg border border-sand bg-[#ffe9e6]">
+              <div className="relative flex aspect-[3/4] items-center justify-center overflow-hidden rounded-lg border border-sand bg-lotus/10">
                 {group.images && group.images.length > 0 ? (
                   <>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -277,7 +278,7 @@ async function handleConsult() {
                           onClick={() => setSelectedGarmentId(s.garmentSizeId)}
                           className={
                             active
-                              ? "flex h-12 min-w-[3rem] items-center justify-center rounded border border-lotus bg-[#fff0ee] px-3 text-sm font-semibold text-lotus"
+                              ? "flex h-12 min-w-[3rem] items-center justify-center rounded border border-lotus bg-parchment px-3 text-sm font-semibold text-lotus"
                               : "flex h-12 min-w-[3rem] items-center justify-center rounded border border-sand bg-white px-3 text-sm text-ink transition hover:border-antique"
                           }
                         >
@@ -312,7 +313,7 @@ async function handleConsult() {
                 <button
                   type="button"
                   onClick={handleAddToCart}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-lotus px-6 py-4 text-sm font-semibold uppercase tracking-[0.18em] text-lotus transition hover:bg-[#fff0ee]"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-lotus px-6 py-4 text-sm font-semibold uppercase tracking-[0.18em] text-lotus transition hover:bg-parchment"
                 >
                   Thêm vào giỏ
                   <span className="material-symbols-outlined text-[18px]">shopping_bag</span>
@@ -321,14 +322,14 @@ async function handleConsult() {
                   <button
                     type="button"
                     onClick={handleConsult}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-600 px-6 py-4 text-sm font-semibold uppercase tracking-[0.18em] text-emerald-600 transition hover:bg-emerald-50"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-lotus px-6 py-4 text-sm font-semibold uppercase tracking-[0.18em] text-jade transition hover:bg-jade/5"
                   >
                     Tư vấn
                     <span className="material-symbols-outlined text-[18px]">support_agent</span>
                   </button>
                 )}
                 {addedMsg && <p className="text-center text-sm font-medium text-jade">{addedMsg}</p>}
-                {consultMsg && <p className="text-center text-sm font-medium text-emerald-600">{consultMsg}</p>}
+                {consultMsg && <p className="text-center text-sm font-medium text-jade">{consultMsg}</p>}
                 <p className="text-center text-sm text-stone-500">Đã bao gồm công là ủi, làm sạch và hỗ trợ chỉnh sửa cơ bản.</p>
               </div>
 
@@ -349,7 +350,7 @@ async function handleConsult() {
 
         {/* Pairing accessories */}
         {group && (
-          <section className="mt-24 rounded-lg border border-sand bg-[#f9f5f0] px-6 py-12 lg:px-12">
+          <section className="mt-24 rounded-lg border border-sand bg-mist px-6 py-12 lg:px-12">
             <div className="grid items-center gap-10 lg:grid-cols-[0.95fr_1.05fr]">
               <div>
                 <h2 className="font-display text-5xl text-ink">Phối hợp phụ kiện</h2>
@@ -374,6 +375,7 @@ async function handleConsult() {
           </section>
         )}
       </main>
+      <CustomerFooter />
     </div>
   );
 }

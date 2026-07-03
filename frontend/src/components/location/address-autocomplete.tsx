@@ -166,7 +166,7 @@ export function AddressAutocomplete({ value, onChange, disabled = false }: Addre
               <button
                 key={`${suggestion.placeId}-${suggestion.label}`}
                 type="button"
-                className="block w-full rounded-lg px-3 py-2 text-left text-sm transition hover:bg-[#fff0ee]"
+                className="block w-full rounded-lg px-3 py-2 text-left text-sm transition hover:bg-parchment"
                 onClick={() => void handleSelect(suggestion)}
               >
                 <span className="block font-medium text-ink">{suggestion.label}</span>
@@ -182,7 +182,7 @@ export function AddressAutocomplete({ value, onChange, disabled = false }: Addre
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
-          className="inline-flex items-center gap-2 rounded-lg border border-bronze px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-bronze transition hover:bg-[#fff0ee] disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-lg border border-bronze px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-bronze transition hover:bg-parchment disabled:cursor-not-allowed disabled:opacity-50"
           disabled={disabled || locating}
           onClick={handleUseCurrentLocation}
         >

@@ -31,8 +31,8 @@ type ItemInspectionState = "missing_asset" | "not_started" | "in_progress" | "co
 
 const ITEM_STATE_META: Record<ItemInspectionState, { label: string; color: string; icon: string }> = {
   missing_asset: { label: "Chưa gán asset", color: "bg-red-100 text-red-700", icon: "warning" },
-  not_started: { label: "Chưa kiểm tra", color: "bg-amber-100 text-amber-700", icon: "radio_button_unchecked" },
-  in_progress: { label: "Đang kiểm tra", color: "bg-blue-100 text-blue-700", icon: "pending" },
+  not_started: { label: "Chưa kiểm tra", color: "bg-stone-100 text-stone-600", icon: "radio_button_unchecked" },
+  in_progress: { label: "Đang kiểm tra", color: "bg-lotus/10 text-lotus", icon: "pending" },
   completed: { label: "Đã kiểm tra", color: "bg-jade/10 text-jade", icon: "check_circle" },
   processed_without_session: { label: "Đã xử lý", color: "bg-stone-100 text-stone-600", icon: "done_all" },
 };
@@ -46,7 +46,7 @@ const FINAL_ACTIONS = [
   {
     key: "laundry",
     label: "Chuyển giặt sấy",
-    style: "border border-bronze text-bronze hover:bg-[#fff0ee]",
+    style: "border border-bronze text-bronze hover:bg-parchment",
   },
   {
     key: "maintenance",
@@ -359,8 +359,8 @@ export default function StaffInspectionPage() {
                       onClick={() => setSelectedBookingId(b.id)}
                       className={`w-full rounded-lg border p-3 text-left text-sm transition ${
                         isActive
-                          ? "border-lotus bg-[#fff0ee]"
-                          : "border-sand bg-white hover:bg-[#fff8f6]"
+                          ? "border-lotus bg-parchment"
+                          : "border-sand bg-white hover:bg-mist"
                       }`}
                     >
                       <div className="flex items-center justify-between">
@@ -437,8 +437,8 @@ export default function StaffInspectionPage() {
                         onClick={() => selectItem(item.id)}
                         className={`w-full rounded-lg border p-3 text-left transition ${
                           isActive
-                            ? "border-lotus bg-[#fff0ee]"
-                            : "border-sand bg-white hover:bg-[#fff8f6]"
+                            ? "border-lotus bg-parchment"
+                            : "border-sand bg-white hover:bg-mist"
                         }`}
                       >
                         <div className="flex items-start justify-between gap-3">
@@ -466,7 +466,7 @@ export default function StaffInspectionPage() {
             {selectedItem && (
               <section className="rounded-xl border border-sand bg-white p-6 shadow-sm">
                 <div className="flex gap-4">
-                  <div className="flex h-40 w-28 items-center justify-center rounded bg-[#fff0ee] text-stone-400">
+                  <div className="flex h-40 w-28 items-center justify-center rounded bg-parchment text-stone-400">
                     <span className="material-symbols-outlined text-4xl">checkroom</span>
                   </div>
                   <div>
@@ -492,7 +492,7 @@ export default function StaffInspectionPage() {
                       </span>
                     )}
                     {selectedItem.sizeLabel && (
-                      <span className="ml-2 mt-3 inline-flex rounded-full bg-[#fff0ee] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-ink">
+                      <span className="ml-2 mt-3 inline-flex rounded-full bg-parchment px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-ink">
                         Cỡ {selectedItem.sizeLabel}
                       </span>
                     )}
@@ -607,7 +607,7 @@ export default function StaffInspectionPage() {
                         key: "ok",
                         icon: "check_circle",
                         color: "text-jade",
-                        bg: "bg-[#f9fff8]",
+                        bg: "bg-jade/5",
                         border: "border-jade",
                         title: "Không vấn đề",
                         desc: "Sẵn sàng cho làm sạch tiêu chuẩn",
@@ -616,7 +616,7 @@ export default function StaffInspectionPage() {
                         key: "low",
                         icon: "build_circle",
                         color: "text-orange-700",
-                        bg: "bg-[#fff8f2]",
+                        bg: "bg-lotus/5",
                         border: "border-orange-600",
                         title: "Mòn nhẹ",
                         desc: "Cần vá nhỏ hoặc xử lý điểm bẩn",
@@ -625,7 +625,7 @@ export default function StaffInspectionPage() {
                         key: "high",
                         icon: "error",
                         color: "text-red-700",
-                        bg: "bg-[#fff4f4]",
+                        bg: "bg-red-50",
                         border: "border-red-700",
                         title: "Hư hỏng nặng",
                         desc: "Cần chuyển phục hồi ngay",
@@ -663,7 +663,7 @@ export default function StaffInspectionPage() {
                       Ghi chú chi tiết
                     </label>
                     <textarea
-                      className="h-32 w-full rounded-lg border border-sand bg-[#fff8f6] p-4 text-sm text-ink outline-none transition focus:border-antique"
+                      className="h-32 w-full rounded-lg border border-sand bg-mist p-4 text-sm text-ink outline-none transition focus:border-antique"
                       placeholder="Mô tả vị trí sờn, vết bẩn hoặc phụ kiện thiếu..."
                       value={currentNote}
                       onChange={(e) => setCurrentNote(e.target.value)}
@@ -680,7 +680,7 @@ export default function StaffInspectionPage() {
                         {activeSession.findings.map((f) => (
                           <div
                             key={f.id}
-                            className="flex items-center justify-between rounded-lg border border-sand bg-[#fff8f6] px-4 py-2 text-sm"
+                            className="flex items-center justify-between rounded-lg border border-sand bg-mist px-4 py-2 text-sm"
                           >
                             <div>
                               <span className="font-medium text-ink">{f.findingType}</span>
@@ -703,7 +703,7 @@ export default function StaffInspectionPage() {
                   )}
 
                   {/* Quick add finding */}
-                  <div className="mt-4 flex flex-wrap gap-3 rounded-lg border border-dashed border-sand bg-[#fff8f6] p-4">
+                  <div className="mt-4 flex flex-wrap gap-3 rounded-lg border border-dashed border-sand bg-mist p-4">
                     <input
                       className="min-w-[200px] flex-1 rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique"
                       placeholder="Loại lỗi / ghi nhận..."
@@ -751,7 +751,7 @@ export default function StaffInspectionPage() {
                     {activeSession.photos.map((p) => (
                       <div
                         key={p.id}
-                        className="overflow-hidden rounded-lg border border-sand bg-[#fff0ee]"
+                        className="overflow-hidden rounded-lg border border-sand bg-parchment"
                       >
                         <img
                           alt="Ảnh kiểm tra"
@@ -761,7 +761,7 @@ export default function StaffInspectionPage() {
                       </div>
                     ))}
                     {/* Add photo slot */}
-                    <div className="flex flex-col gap-2 rounded-lg border border-dashed border-sand bg-[#fff8f6] p-3 text-center">
+                    <div className="flex flex-col gap-2 rounded-lg border border-dashed border-sand bg-mist p-3 text-center">
                       <input
                         className="w-full rounded border border-sand px-2 py-1 text-xs outline-none focus:border-antique"
                         placeholder="Dán URL ảnh..."
@@ -785,7 +785,7 @@ export default function StaffInspectionPage() {
                 </section>
 
                 {/* Actions bar */}
-                <div className="sticky bottom-0 flex flex-wrap justify-end gap-3 rounded-xl border border-sand bg-white/95 p-4 shadow-[0_-10px_30px_rgba(0,0,0,0.04)] backdrop-blur">
+                <div className="sticky bottom-0 flex flex-wrap justify-end gap-3 rounded-xl border border-sand bg-white/95 p-4 shadow-sm backdrop-blur">
                   {FINAL_ACTIONS.map((action) => (
                     <button
                       key={action.key}

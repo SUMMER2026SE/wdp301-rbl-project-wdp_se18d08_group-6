@@ -11,6 +11,7 @@ import {
   createRefund,
   type StaffBookingResponse,
 } from "@/lib/api";
+import { STATUS_LABELS, statusBadgeClass } from "@/lib/status-labels";
 
 function formatDate(iso: string) {
   const [y, m, d] = iso.split("-");
@@ -25,24 +26,6 @@ function formatDateTime(iso: string) {
 function formatVND(amount: number) {
   return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
 }
-
-const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  draft:                { label: "Nháp",                color: "bg-stone-100 text-stone-600" },
-  pending_confirmation: { label: "Chờ xác nhận",        color: "bg-amber-100 text-amber-700" },
-  confirmed:            { label: "Đã xác nhận",         color: "bg-blue-100 text-blue-700" },
-  awaiting_payment:     { label: "Chờ thanh toán",      color: "bg-yellow-100 text-yellow-700" },
-  paid:                 { label: "Đã thanh toán",       color: "bg-green-100 text-green-700" },
-  preparing:            { label: "Đang chuẩn bị",       color: "bg-purple-100 text-purple-700" },
-  ready_for_pickup:     { label: "Sẵn sàng nhận",       color: "bg-teal-100 text-teal-700" },
-  delivering:           { label: "Đang giao",           color: "bg-indigo-100 text-indigo-700" },
-  renting:              { label: "Đang thuê",           color: "bg-lotus/10 text-lotus" },
-  returned:             { label: "Đã trả",              color: "bg-stone-100 text-stone-600" },
-  inspection_pending:   { label: "Chờ kiểm tra",        color: "bg-orange-100 text-orange-700" },
-  completed:            { label: "Hoàn thành",          color: "bg-jade/10 text-jade" },
-  cancelled:            { label: "Đã hủy",              color: "bg-red-100 text-red-600" },
-  rejected:             { label: "Từ chối",             color: "bg-red-100 text-red-700" },
-  overdue:              { label: "Quá hạn",             color: "bg-red-200 text-red-800" },
-};
 
 const NEXT_ACTIONS: Partial<Record<string, { status: string; label: string; style: string }[]>> = {
   pending_confirmation: [
@@ -241,8 +224,8 @@ export default function StaffBookingDetailPage() {
       )}
 
       {/* Header card */}
-      <div className="mb-6 overflow-hidden rounded-xl border border-sand bg-white shadow-[0_4px_20px_rgba(0,0,0,0.04)]">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand bg-[#fff8f6] px-6 py-4">
+      <div className="mb-6 overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand bg-mist px-6 py-4">
           <div className="flex items-center gap-3">
             <span className="text-lg font-bold text-ink">#{booking.id.slice(0, 8).toUpperCase()}</span>
             <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${s.color}`}>
@@ -283,7 +266,7 @@ export default function StaffBookingDetailPage() {
       </div>
 
       {/* Items table */}
-      <div className="mb-6 overflow-hidden rounded-xl border border-sand bg-white shadow-[0_4px_20px_rgba(0,0,0,0.04)]">
+      <div className="mb-6 overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
         <div className="border-b border-sand bg-stone-50 px-6 py-3">
           <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-stone-600">Trang phục trong đơn</h3>
         </div>
@@ -322,7 +305,7 @@ export default function StaffBookingDetailPage() {
       </div>
 
       {/* Financial summary */}
-      <div className="mb-6 overflow-hidden rounded-xl border border-sand bg-white shadow-[0_4px_20px_rgba(0,0,0,0.04)]">
+      <div className="mb-6 overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
         <div className="border-b border-sand bg-stone-50 px-6 py-3">
           <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-stone-600">Thông tin tài chính</h3>
         </div>
@@ -350,7 +333,7 @@ export default function StaffBookingDetailPage() {
 
       {/* Delivery address */}
       {booking.deliveryAddress && (
-        <div className="mb-6 overflow-hidden rounded-xl border border-sand bg-white shadow-[0_4px_20px_rgba(0,0,0,0.04)]">
+        <div className="mb-6 overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
           <div className="border-b border-sand bg-stone-50 px-6 py-3">
             <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-stone-600">Địa chỉ giao nhận</h3>
           </div>
@@ -365,7 +348,7 @@ export default function StaffBookingDetailPage() {
 
       {/* Notes */}
       {booking.note && (
-        <div className="mb-6 overflow-hidden rounded-xl border border-sand bg-white shadow-[0_4px_20px_rgba(0,0,0,0.04)]">
+        <div className="mb-6 overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
           <div className="border-b border-sand bg-stone-50 px-6 py-3">
             <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-stone-600">Ghi chú</h3>
           </div>
@@ -416,12 +399,12 @@ export default function StaffBookingDetailPage() {
       {/* Payment dialog */}
       {paymentDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
-          <div className="mx-4 w-full max-w-md rounded-2xl border border-sand bg-white p-8 shadow-2xl">
+          <div className="mx-4 w-full max-w-md rounded-lg border border-sand bg-white p-8 shadow-2xl">
             <h3 className="font-display text-2xl text-ink">Xác nhận thanh toán</h3>
             <p className="mt-1 text-sm text-stone-500">
               Khách: <strong>{booking.customerName ?? "—"}</strong>
             </p>
-            <div className="mt-6 rounded-xl bg-[#f9fff8] border border-jade/30 p-4">
+            <div className="mt-6 rounded-xl bg-jade/5 border border-jade/30 p-4">
               <div className="flex justify-between text-sm">
                 <span className="text-stone-600">Tiền thuê</span>
                 <span className="font-semibold text-ink">{formatVND(booking.rentalTotal)}</span>
@@ -447,8 +430,8 @@ export default function StaffBookingDetailPage() {
                     onClick={() => setSelectedPaymentMethod(pm.key)}
                     className={`flex items-center gap-3 rounded-xl border p-3 text-sm font-medium transition ${
                       selectedPaymentMethod === pm.key
-                        ? "border-lotus bg-[#fff0ee] text-lotus"
-                        : "border-sand bg-white text-stone-600 hover:bg-[#fff8f6]"
+                        ? "border-lotus bg-parchment text-lotus"
+                        : "border-sand bg-white text-stone-600 hover:bg-mist"
                     }`}
                   >
                     <span className="material-symbols-outlined text-xl">{pm.icon}</span>

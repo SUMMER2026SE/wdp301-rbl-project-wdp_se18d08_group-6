@@ -556,7 +556,7 @@ export default function ChatPage() {
   setSidebarTab(tab);
   }
   if (!isHydrated || status === "loading") {
-  return <div className="min-h-screen bg-[#fff8f6]" />;
+  return <div className="min-h-screen bg-mist" />;
   }
 
   if (!isStaff) {
@@ -570,7 +570,7 @@ return (
   >
     {/* HEADER STATUS (giữ lại nếu muốn) */}
     <div className="mb-4 flex justify-end">
-      <div className="rounded-3xl bg-white px-5 py-2 text-sm text-stone-700 shadow-sm border border-sand">
+      <div className="rounded-lg bg-white px-5 py-2 text-sm text-stone-700 shadow-sm border border-sand">
         Socket:{" "}
         <span className="font-semibold">
           {connected ? "Đã nối" : "Chưa nối"}

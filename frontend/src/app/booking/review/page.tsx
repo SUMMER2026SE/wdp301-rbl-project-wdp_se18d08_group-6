@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { BookingFlowShell } from "@/components/heritage/ui";
+import { CustomerNavbar } from "@/components/customer/navbar";
+import { CustomerFooter } from "@/components/customer/footer";
 import { createBooking, getMyAddresses, type CustomerAddress } from "@/lib/api";
 import { getCart, clearCart } from "@/lib/cart";
 
@@ -136,7 +138,7 @@ function BookingReviewInner() {
             <div className="divide-y divide-sand">
               {cartItems.map((item) => (
                 <div key={item.garmentSizeId} className="flex items-start gap-4 py-4 first:pt-0 last:pb-0">
-                  <div className="flex h-16 w-12 shrink-0 items-center justify-center rounded bg-[#ffe9e6]">
+                  <div className="flex h-16 w-12 shrink-0 items-center justify-center rounded bg-lotus/10">
                     <span className="material-symbols-outlined text-2xl text-antique/50">checkroom</span>
                   </div>
                   <div className="flex-1">
@@ -199,7 +201,7 @@ function BookingReviewInner() {
         </div>
 
         <aside className="xl:col-span-5 xl:sticky xl:top-28">
-          <section className="rounded-xl border border-sand bg-white p-8 shadow-[0_20px_40px_rgba(0,0,0,0.05)]">
+          <section className="rounded-xl border border-sand bg-white p-8 shadow-md">
             <h2 className="border-b border-sand pb-4 font-display text-3xl text-ink">Tóm tắt thanh toán</h2>
             <div className="mt-6 space-y-3 text-sm">
               {cartItems.map((item) => (
@@ -247,7 +249,7 @@ function BookingReviewInner() {
             <div className="mt-6 flex flex-col gap-3">
               <Link
                 href={`/booking/logistics?${backParams.toString()}`}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-bronze px-6 py-3 text-sm font-semibold uppercase tracking-[0.18em] text-bronze transition hover:bg-[#fff0ee]"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-bronze px-6 py-3 text-sm font-semibold uppercase tracking-[0.18em] text-bronze transition hover:bg-parchment"
               >
                 <span className="material-symbols-outlined text-[18px]">arrow_back</span>
                 Quay lại vận chuyển
@@ -271,8 +273,12 @@ function BookingReviewInner() {
 
 export default function BookingReviewPage() {
   return (
-    <Suspense>
-      <BookingReviewInner />
-    </Suspense>
+    <div className="flex min-h-screen flex-col bg-mist text-ink">
+      <CustomerNavbar />
+      <Suspense>
+        <BookingReviewInner />
+      </Suspense>
+      <CustomerFooter />
+    </div>
   );
 }

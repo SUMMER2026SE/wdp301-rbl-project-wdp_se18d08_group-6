@@ -248,7 +248,7 @@ export function NotificationConfigPanel() {
   return (
     <section className="space-y-8 rounded-xl border border-sand bg-white p-6 shadow-sm">
       {successMsg ? (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <div className="rounded-lg border border-jade/30 bg-jade/5 px-4 py-3 text-sm text-jade">
           {successMsg}
         </div>
       ) : null}
@@ -264,7 +264,7 @@ export function NotificationConfigPanel() {
       ) : (
         <div className="space-y-8">
           <form onSubmit={handleSaveSettings} className="grid gap-6 lg:grid-cols-2">
-            <div className="space-y-4 rounded-xl border border-sand bg-[#fff8f6] p-5">
+            <div className="space-y-4 rounded-xl border border-sand bg-mist p-5">
               <h4 className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">Kênh gửi</h4>
               <div>
                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-stone-500">Provider</label>
@@ -330,7 +330,7 @@ export function NotificationConfigPanel() {
             </div>
           </form>
 
-          <div className="space-y-4 rounded-xl border border-sand bg-[#fff8f6] p-5">
+          <div className="space-y-4 rounded-xl border border-sand bg-mist p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h4 className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">Mẫu thông báo</h4>
@@ -369,7 +369,7 @@ export function NotificationConfigPanel() {
                       <textarea rows={4} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" value={template.body} onChange={(e) => updateTemplate(key, { body: e.target.value })} />
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-4 rounded-lg border border-sand bg-[#fffdfc] px-3 py-2 text-sm">
+                    <div className="flex flex-wrap items-center gap-4 rounded-lg border border-sand bg-mist px-3 py-2 text-sm">
                       <label className="flex items-center gap-2 text-stone-600">
                         <input
                           type="checkbox"
@@ -433,7 +433,7 @@ export function NotificationConfigPanel() {
               ) : (
                 <div className="space-y-3">
                   {logs.map((entry) => (
-                    <article key={entry.id} className="rounded-lg border border-sand bg-[#fffdfc] p-4">
+                    <article key={entry.id} className="rounded-lg border border-sand bg-mist p-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <p className="font-semibold text-ink">{entry.action}</p>

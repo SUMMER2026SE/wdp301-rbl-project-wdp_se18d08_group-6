@@ -105,7 +105,7 @@ function ForgotPasswordContent() {
       className="flex min-h-screen items-center justify-center bg-cover bg-center bg-no-repeat p-4"
       style={{ backgroundImage: "url('/images/bg-ao-dai.png')" }}
     >
-      <div className="w-full max-w-md overflow-hidden rounded-3xl border border-white/40 bg-white/60 p-8 shadow-[0_8px_32px_0_rgba(31,41,51,0.15)] backdrop-blur-xl">
+      <div className="w-full max-w-md overflow-hidden rounded-lg border border-white/40 bg-white/60 p-8 shadow-lg backdrop-blur-xl">
         <div className="mb-6 flex justify-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-lotus/10 text-3xl">
             🔒
