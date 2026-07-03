@@ -22,7 +22,7 @@ export function ProductCard({ product }: ProductCardProps) {
       className="block max-w-[180px] rounded-xl border border-sand/70 bg-white shadow-sm transition hover:shadow-md hover:border-antique overflow-hidden"
     >
       {/* Thumbnail */}
-      <div className="aspect-[4/3] w-full overflow-hidden bg-[#fff7f2]">
+      <div className="aspect-[4/3] w-full overflow-hidden bg-parchment">
         <img
           src={product.image}
           alt={product.name}

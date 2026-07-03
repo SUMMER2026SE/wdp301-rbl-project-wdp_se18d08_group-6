@@ -56,8 +56,8 @@ export default function ManagerProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f9f5f0] text-ink">
-      <header className="border-b border-sand bg-[#fff8f6] px-6 py-4">
+    <div className="min-h-screen bg-mist text-ink">
+      <header className="border-b border-sand bg-mist px-6 py-4">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
           <div>
             <h1 className="font-display text-3xl text-lotus">Hồ sơ quản lý</h1>
@@ -78,7 +78,7 @@ export default function ManagerProfilePage() {
         <div className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
           <section className="rounded-xl border border-sand bg-white p-6 shadow-sm">
             <div className="flex items-center gap-4">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#ffe9e6] font-display text-2xl text-lotus">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-lotus/10 font-display text-2xl text-lotus">
                 {(user.fullName ?? user.email).slice(0, 2).toUpperCase()}
               </div>
               <div className="min-w-0">

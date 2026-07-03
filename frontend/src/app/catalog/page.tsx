@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { PublicAtelierNav } from "@/components/heritage/ui";
+import { CustomerNavbar } from "@/components/customer/navbar";
+import { CustomerFooter } from "@/components/customer/footer";
 import { getGarmentsGrouped, type GarmentGrouped } from "@/lib/api";
 import { addToCart, cartCount, removeFromCart, getCart } from "@/lib/cart";
 import { getProductAdvisor, type AIAdvisorTopic, type AIAdvisorProduct } from "@/lib/chat";
@@ -144,8 +145,8 @@ export default function CatalogPage() {
   const cartItems = getCart();
 
   return (
-    <div className="min-h-screen bg-[#fff8f6] text-ink">
-      <PublicAtelierNav active="collection" />
+    <div className="min-h-screen bg-mist text-ink">
+      <CustomerNavbar active="collection" />
 
       {/* Cart icon floating */}
       <div className="fixed right-4 top-24 z-30 sm:right-8">
@@ -246,7 +247,7 @@ export default function CatalogPage() {
         </section>
 
         {/* AI Product Advisor */}
-        <section className="mb-12 rounded-2xl border border-sand/70 bg-white p-6 shadow-sm">
+        <section className="mb-12 rounded-lg border border-sand/70 bg-white p-6 shadow-sm">
           <h2 className="font-display text-2xl text-ink mb-2">Bạn cần tìm trang phục gì?</h2>
           <p className="text-sm text-stone-500 mb-4">
             Mô tả nhu cầu của bạn, AI sẽ gợi ý sản phẩm phù hợp.
@@ -258,13 +259,13 @@ export default function CatalogPage() {
               onChange={(e) => setAiQuery(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleAiConsult(); }}
               placeholder="VD: Tôi cần áo dài hồng pastel size M cho tiệc cưới..."
-              className="flex-1 rounded-xl border border-sand bg-[#fff8f6] px-4 py-3 text-sm outline-none focus:border-lotus"
+              className="flex-1 rounded-xl border border-sand bg-mist px-4 py-3 text-sm outline-none focus:border-lotus"
             />
             <button
               type="button"
               onClick={handleAiConsult}
               disabled={aiLoading || !aiQuery.trim()}
-              className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-lotus px-6 py-3 text-sm font-semibold text-white transition hover:bg-oxblood disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {aiLoading ? (
                 <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -289,7 +290,7 @@ export default function CatalogPage() {
                         return (
                           <div
                             key={p.garmentId}
-                            className="flex flex-col rounded-xl border border-sand/70 bg-[#fff8f6] p-2"
+                            className="flex flex-col rounded-xl border border-sand/70 bg-mist p-2"
                           >
                             <div className="w-full aspect-[1/1] rounded-lg border border-sand/70 mb-2 overflow-hidden bg-stone-100 flex items-center justify-center">
                               {p.imageUrl ? (
@@ -321,7 +322,7 @@ export default function CatalogPage() {
                               {sizeId && (
                                 <Link
                                   href={`/try-on?garmentSizeId=${sizeId}`}
-                                  className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 px-2 py-1 text-[10px] font-semibold text-emerald-600 transition hover:bg-emerald-50"
+                                  className="inline-flex items-center gap-1 rounded-full border border-jade/30 px-2 py-1 text-[10px] font-semibold text-jade transition hover:bg-jade/5"
                                 >
                                   Thử đồ AI
                                 </Link>
@@ -359,7 +360,7 @@ export default function CatalogPage() {
         {/* Featured */}
         {featured && (
           <section className="mb-20 grid items-center gap-10 lg:grid-cols-[1.25fr_0.9fr] lg:gap-20">
-            <div className="relative overflow-hidden rounded-sm border border-sand/70 bg-[#f8dcd8] shadow-[0_20px_40px_rgba(77,16,15,0.08)]">
+            <div className="relative overflow-hidden rounded-sm border border-sand/70 bg-[#f8dcd8] shadow-lg">
               <div className="flex aspect-[4/5] items-center justify-center">
                 {featured.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -385,7 +386,7 @@ export default function CatalogPage() {
                         onClick={() => handleSelectSize(featured.slug, s.garmentSizeId)}
                         className={`rounded-full px-3 py-1 text-xs font-semibold transition ${(selectedSizes[featured.slug] ?? featured.sizes[0]?.garmentSizeId) === s.garmentSizeId
                             ? "bg-lotus text-white"
-                            : "bg-[#fff0ee] text-stone-600 hover:bg-lotus/20"
+                            : "bg-parchment text-stone-600 hover:bg-lotus/20"
                           }`}
                       >
                         {s.sizeLabel ?? "—"}
@@ -432,7 +433,7 @@ export default function CatalogPage() {
               return (
                 <article
                   key={group.slug}
-                  className="group flex flex-col border border-antique/20 bg-white/80 p-4 backdrop-blur-sm transition duration-500 hover:border-antique/60 hover:shadow-[0_18px_40px_rgba(77,16,15,0.08)]"
+                  className="group flex flex-col border border-antique/20 bg-white/80 p-4 backdrop-blur-sm transition duration-500 hover:border-antique/60 hover:shadow-lg"
                 >
                   <Link href={`/catalog/${selectedGarmentId}`} className="relative flex aspect-[3/4] items-center justify-center overflow-hidden bg-[#f8dcd8] cursor-pointer">
                     {group.imageUrl ? (
@@ -460,7 +461,7 @@ export default function CatalogPage() {
                           onClick={() => handleSelectSize(group.slug, s.garmentSizeId)}
                           className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase transition ${selectedGarmentId === s.garmentSizeId
                               ? "bg-lotus text-white"
-                              : "bg-[#fff0ee] text-stone-500 hover:bg-lotus/20"
+                              : "bg-parchment text-stone-500 hover:bg-lotus/20"
                             }`}
                         >
                           {s.sizeLabel ?? "—"}
@@ -510,6 +511,7 @@ export default function CatalogPage() {
           </div>
         )}
       </main>
+      <CustomerFooter />
     </div>
   );
 }

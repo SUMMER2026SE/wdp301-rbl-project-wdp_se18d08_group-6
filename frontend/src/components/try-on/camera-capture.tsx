@@ -230,7 +230,7 @@ export function CameraCapture({ onCapture }: CameraCaptureProps) {
 
   return (
     <div className="space-y-4">
-      <div className="relative overflow-hidden rounded-xl border border-sand bg-[#fff8f6]">
+      <div className="relative overflow-hidden rounded-xl border border-sand bg-mist">
         {previewUrl ? (
           <img src={previewUrl} alt="Ảnh vừa chụp" className="aspect-[3/4] w-full object-cover" />
         ) : (

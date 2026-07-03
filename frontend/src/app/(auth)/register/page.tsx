@@ -173,7 +173,7 @@ function RegisterPageContent() {
   }
 
   return (
-    <main className="flex min-h-screen bg-[#fff8f6]">
+    <main className="flex min-h-screen bg-mist">
       {/* Cột trái: Ảnh di sản đẹp mắt */}
       <section className="relative hidden min-h-screen overflow-hidden md:block md:w-1/2 lg:w-3/5">
         <img
@@ -189,7 +189,7 @@ function RegisterPageContent() {
       </section>
 
       {/* Cột phải: Form đăng ký */}
-      <section className="flex min-h-screen w-full items-center justify-center overflow-y-auto bg-[#fff8f6] px-4 py-16 md:w-1/2 md:px-12 lg:w-2/5">
+      <section className="flex min-h-screen w-full items-center justify-center overflow-y-auto bg-mist px-4 py-16 md:w-1/2 md:px-12 lg:w-2/5">
         <div className="w-full max-w-md space-y-10">
           <div className="mb-8 text-center md:hidden">
             <h1 className="font-display text-4xl text-lotus">Cổ Phục Rental</h1>
@@ -347,7 +347,7 @@ function RegisterPageContent() {
             {error ? <p className="text-sm text-red-700">{error}</p> : null}
 
             <button
-              className="w-full rounded-sm bg-lotus py-4 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-[#920703] disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded-lg bg-lotus py-4 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-oxblood disabled:cursor-not-allowed disabled:opacity-60"
               type="submit"
               disabled={isBusy}
             >
@@ -383,7 +383,7 @@ function RegisterPageContent() {
 
 export default function RegisterPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#fff8f6]" />}>
+    <Suspense fallback={<div className="min-h-screen bg-mist" />}>
       <RegisterPageContent />
     </Suspense>
   );

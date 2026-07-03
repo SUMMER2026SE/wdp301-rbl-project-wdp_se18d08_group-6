@@ -38,9 +38,9 @@ type DeliveryMapProps = {
 
 function statusBadge(status: string) {
   const map: Record<string, string> = {
-    ready_for_pickup: "bg-blue-500",
-    delivering: "bg-amber-500",
-    renting: "bg-green-500",
+    ready_for_pickup: "bg-jade",
+    delivering: "bg-lotus",
+    renting: "bg-jade",
   };
   return map[status] ?? "bg-stone-400";
 }
@@ -149,7 +149,7 @@ export function DeliveryMap({ points, storeLat = 10.7769, storeLng = 106.7009, s
               type="button"
               className={`text-left rounded-lg border p-3 text-sm transition ${
                 selectedPoint?.bookingId === point.bookingId
-                  ? "border-antique bg-[#fff0ee]"
+                  ? "border-antique bg-parchment"
                   : "border-sand bg-white hover:border-antique/50"
               }`}
               onClick={() => setSelectedPoint(point)}

@@ -31,9 +31,9 @@ function injectCss() {
 }
 
 const STATUS_MAP = {
-  preparing: { label: "Đang chuẩn bị", color: "bg-amber-500", icon: "📦" },
-  in_transit: { label: "Đang giao", color: "bg-blue-500", icon: "🛵" },
-  arrived: { label: "Đã đến", color: "bg-green-500", icon: "✅" },
+  preparing: { label: "Đang chuẩn bị", color: "bg-lotus/10 text-lotus", icon: "📦" },
+  in_transit: { label: "Đang giao", color: "bg-amber-50 text-amber-700", icon: "🛵" },
+  arrived: { label: "Đã đến", color: "bg-jade/10 text-jade", icon: "check_circle" },
 } as const;
 
 export function DeliveryTracker({ data }: { data: DeliveryTrackData }) {

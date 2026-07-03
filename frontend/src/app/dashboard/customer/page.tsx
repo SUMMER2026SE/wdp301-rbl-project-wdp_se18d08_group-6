@@ -8,33 +8,7 @@ import { DeliveryTracker } from "@/components/location/delivery-tracker";
 import { readStoredSession } from "@/lib/auth";
 import { getMyChatConversation, sendBookingCardMessage } from "@/lib/chat";
 import { customerWidgets } from "@/lib/heritage-mock-data";
-
-const STATUS_LABEL: Record<string, { label: string; color: string }> = {
-  draft:                { label: "Nháp",           color: "bg-stone-100 text-stone-600" },
-  pending_confirmation: { label: "Chờ xác nhận",   color: "bg-[#ffe9e6] text-lotus" },
-  confirmed:            { label: "Đã xác nhận",    color: "bg-jade/10 text-jade" },
-  awaiting_payment:     { label: "Chờ thanh toán", color: "bg-amber-50 text-amber-700" },
-  paid:                 { label: "Đã thanh toán",  color: "bg-jade/10 text-jade" },
-  preparing:            { label: "Đang chuẩn bị",  color: "bg-[#ffe9e6] text-lotus" },
-  ready_for_pickup:     { label: "Sẵn sàng nhận",  color: "bg-jade/10 text-jade" },
-  delivering:           { label: "Đang giao",       color: "bg-amber-50 text-amber-700" },
-  renting:              { label: "Đang thuê",       color: "bg-jade/10 text-jade" },
-  returned:             { label: "Đã trả",          color: "bg-stone-100 text-stone-600" },
-  inspection_pending:   { label: "Chờ kiểm tra",   color: "bg-amber-50 text-amber-700" },
-  completed:            { label: "Hoàn tất",        color: "bg-jade/10 text-jade" },
-  cancelled:            { label: "Đã hủy",          color: "bg-stone-100 text-stone-500" },
-  rejected:             { label: "Bị từ chối",      color: "bg-red-50 text-red-600" },
-  overdue:              { label: "Quá hạn",         color: "bg-red-50 text-red-600" },
-};
-
-const ACTIVE_STATUSES = new Set([
-  "pending_confirmation", "confirmed", "awaiting_payment",
-  "paid", "preparing", "ready_for_pickup", "delivering", "renting",
-]);
-
-const CANCELLABLE_STATUSES = new Set([
-  "draft", "pending_confirmation", "confirmed", "awaiting_payment",
-]);
+import { STATUS_LABELS, statusBadgeClass, statusOf, ACTIVE_BOOKING_STATUSES, CANCELLABLE_STATUSES } from "@/lib/status-labels";
 
 function formatVND(n: number) {
   return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(n);
@@ -142,9 +116,8 @@ export default function CustomerDashboardPage() {
     }
   }
 
-  const activeBooking = bookings.find((b) => ACTIVE_STATUSES.has(b.status));
-  const history = bookings.filter((b) => !ACTIVE_STATUSES.has(b.status));
-  const statusOf = (s: string) => STATUS_LABEL[s] ?? { label: s, color: "bg-stone-100 text-stone-600" };
+  const activeBooking = bookings.find((b) => ACTIVE_BOOKING_STATUSES.has(b.status));
+  const history = bookings.filter((b) => !ACTIVE_BOOKING_STATUSES.has(b.status));
 
   return (
     <div className="space-y-10">
@@ -163,7 +136,7 @@ export default function CustomerDashboardPage() {
           {loading ? (
             <div className="rounded-xl border border-sand bg-white p-8 text-stone-400">Đang tải đơn thuê...</div>
           ) : activeBooking ? (
-            <section className="overflow-hidden rounded-xl border border-sand bg-white p-8 shadow-[0_10px_40px_rgba(77,16,15,0.05)]">
+            <section className="overflow-hidden rounded-xl border border-sand bg-white p-8 shadow-md">
               <div className="flex flex-col gap-6">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -179,7 +152,7 @@ export default function CustomerDashboardPage() {
                       {" "}· Cọc: <span className="font-medium text-ink">{formatVND(activeBooking.depositTotal)}</span>
                     </p>
                   </div>
-                  <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${statusOf(activeBooking.status).color}`}>
+                  <span className={statusBadgeClass(statusOf(activeBooking.status).color)}>
                     {statusOf(activeBooking.status).label}
                   </span>
                 </div>
@@ -204,7 +177,7 @@ export default function CustomerDashboardPage() {
                     type="button"
                     disabled={sendingBookingId === activeBooking.id}
                     onClick={() => void handleSendBookingCard(activeBooking.id, "booking_support")}
-                    className="rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-40"
+                    className="rounded-lg bg-jade px-5 py-3 text-sm font-semibold text-white transition hover:bg-forest disabled:opacity-40"
                   >
                     {sendingBookingId === activeBooking.id ? "Đang gửi..." : "Hỗ trợ đơn hàng"}
                   </button>
@@ -212,7 +185,7 @@ export default function CustomerDashboardPage() {
                     type="button"
                     disabled={sendingBookingId === activeBooking.id}
                     onClick={() => void handleSendBookingCard(activeBooking.id, "complaint")}
-                    className="rounded-lg bg-rose-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-40"
+                    className="rounded-lg bg-oxblood px-5 py-3 text-sm font-semibold text-white transition hover:bg-red-950 disabled:opacity-40"
                   >
                     {sendingBookingId === activeBooking.id ? "Đang gửi..." : "Khiếu nại"}
                   </button>
@@ -252,7 +225,7 @@ export default function CustomerDashboardPage() {
               <div className="overflow-hidden rounded-xl border border-sand bg-white">
                 <table className="w-full border-collapse text-left text-sm">
                   <thead>
-                    <tr className="bg-[#fff4ef] text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                    <tr className="bg-parchment text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
                       <th className="px-6 py-4">Trang phục</th>
                       <th className="px-6 py-4">Thời gian</th>
                       <th className="px-6 py-4">Trạng thái</th>
@@ -266,13 +239,13 @@ export default function CustomerDashboardPage() {
                       const st = statusOf(b.status);
                       const refund = refundMap[b.id];
                       return (
-                        <tr key={b.id} className="border-t border-sand transition hover:bg-[#fff8f6]">
+                        <tr key={b.id} className="border-t border-sand transition hover:bg-mist">
                           <td className="px-6 py-4 font-medium text-ink">{b.items[0]?.garmentName ?? "—"}</td>
                           <td className="px-6 py-4 text-stone-600">
                             {formatDate(b.rentalStartDate)} - {formatDate(b.rentalEndDate)}
                           </td>
                           <td className="px-6 py-4">
-                            <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${st.color}`}>
+                            <span className={statusBadgeClass(st.color)}>
                               {st.label}
                             </span>
                           </td>
@@ -306,7 +279,7 @@ export default function CustomerDashboardPage() {
                                 type="button"
                                 disabled={sendingBookingId === b.id}
                                 onClick={() => void handleSendBookingCard(b.id, "booking_support")}
-                                className="rounded-lg bg-blue-600 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-blue-700 disabled:opacity-40"
+                                className="rounded-lg bg-jade px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-forest disabled:opacity-40"
                               >
                                 {sendingBookingId === b.id ? "..." : "Hỗ trợ"}
                               </button>
@@ -314,7 +287,7 @@ export default function CustomerDashboardPage() {
                                 type="button"
                                 disabled={sendingBookingId === b.id}
                                 onClick={() => void handleSendBookingCard(b.id, "complaint")}
-                                className="rounded-lg bg-rose-600 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-rose-700 disabled:opacity-40"
+                                className="rounded-lg bg-oxblood px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-red-950 disabled:opacity-40"
                               >
                                 {sendingBookingId === b.id ? "..." : "Khiếu nại"}
                               </button>
@@ -335,7 +308,7 @@ export default function CustomerDashboardPage() {
             <Link
               key={item.title}
               href={item.href || "/dashboard/customer"}
-              className="block rounded-xl border border-sand bg-white p-6 shadow-[0_10px_30px_rgba(77,16,15,0.04)] transition-all duration-200 hover:border-lotus/40 hover:shadow-[0_10px_35px_rgba(77,16,15,0.08)] hover:-translate-y-0.5 group"
+              className="block rounded-xl border border-sand bg-white p-6 shadow-sm transition-all duration-200 hover:border-lotus/40 hover:shadow-md hover:-translate-y-0.5 group"
             >
               <div className="mb-4 flex items-start justify-between gap-4">
                 <div className={`flex h-10 w-10 items-center justify-center rounded-full ${item.accent}`}>
