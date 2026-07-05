@@ -34,6 +34,11 @@ export class PaymentsService {
     });
     if (existingPayment) throw new BadRequestException("Booking is already paid.");
 
+    await this.prisma.payment.updateMany({
+      where: { bookingId, provider: "payos", status: PaymentStatus.pending },
+      data: { status: PaymentStatus.cancelled },
+    });
+
     const totalAmount = Number(booking.rentalTotal) + Number(booking.depositTotal);
     const orderCode = Date.now();
 
@@ -115,37 +120,27 @@ export class PaymentsService {
       return ok({ message: "Already processed." });
     }
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.payment.update({
-        where: { id: payment.id },
-        data: { status: PaymentStatus.paid, paidAt: new Date() },
-      });
-      await tx.booking.update({
-        where: { id: payment.bookingId },
-        data: { status: BookingStatus.pending_confirmation, paymentDueAt: null },
-      });
-      await tx.bookingStatusHistory.create({
-        data: {
-          bookingId: payment.bookingId,
-          fromStatus: payment.booking.status,
-          toStatus: BookingStatus.pending_confirmation,
-          note: "Thanh toán qua PayOS thành công",
-        },
-      });
-    });
+    await this.markAsPaid(payment.id, payment.bookingId, payment.booking.status, "Thanh toán qua PayOS thành công");
 
     this.logger.log(`Payment ${payment.id} marked as paid via PayOS webhook`);
     return ok({ message: "Payment processed successfully." });
   }
 
   async getPaymentStatus(bookingId: string) {
-    const payment = await this.prisma.payment.findFirst({
+    let payment = await this.prisma.payment.findFirst({
       where: { bookingId, provider: "payos" },
       orderBy: { createdAt: "desc" },
+      include: { booking: true },
     });
 
     if (!payment) {
       return ok({ status: "none", paid: false });
+    }
+
+    // Webhooks cannot reach a local dev server, so when the payment is still
+    // pending we reconcile against PayOS directly before answering the poll.
+    if (payment.status === PaymentStatus.pending) {
+      payment = await this.reconcileWithPayos(payment);
     }
 
     return ok({
@@ -153,6 +148,62 @@ export class PaymentsService {
       paid: payment.status === PaymentStatus.paid,
       paidAt: payment.paidAt,
       orderCode: payment.providerTransactionId,
+    });
+  }
+
+  private async reconcileWithPayos<T extends { id: string; bookingId: string; providerTransactionId: string | null; booking: { status: BookingStatus } }>(
+    payment: T & { status: PaymentStatus; paidAt: Date | null },
+  ) {
+    if (!payment.providerTransactionId) return payment;
+
+    try {
+      const info = await this.payos.paymentRequests.get(Number(payment.providerTransactionId));
+
+      if (info.status === "PAID") {
+        await this.markAsPaid(payment.id, payment.bookingId, payment.booking.status, "Thanh toán qua PayOS thành công (đối soát trực tiếp)");
+        return { ...payment, status: PaymentStatus.paid, paidAt: new Date() };
+      }
+
+      if (info.status === "CANCELLED") {
+        await this.prisma.payment.update({
+          where: { id: payment.id },
+          data: { status: PaymentStatus.cancelled },
+        });
+        return { ...payment, status: PaymentStatus.cancelled };
+      }
+
+      if (info.status === "EXPIRED") {
+        await this.prisma.payment.update({
+          where: { id: payment.id },
+          data: { status: PaymentStatus.failed },
+        });
+        return { ...payment, status: PaymentStatus.failed };
+      }
+    } catch (error) {
+      this.logger.warn(`Could not reconcile payment ${payment.id} with PayOS: ${error instanceof Error ? error.message : error}`);
+    }
+
+    return payment;
+  }
+
+  private async markAsPaid(paymentId: string, bookingId: string, fromStatus: BookingStatus, note: string) {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.payment.update({
+        where: { id: paymentId },
+        data: { status: PaymentStatus.paid, paidAt: new Date() },
+      });
+      await tx.booking.update({
+        where: { id: bookingId },
+        data: { status: BookingStatus.pending_confirmation, paymentDueAt: null },
+      });
+      await tx.bookingStatusHistory.create({
+        data: {
+          bookingId,
+          fromStatus,
+          toStatus: BookingStatus.pending_confirmation,
+          note,
+        },
+      });
     });
   }
 }
