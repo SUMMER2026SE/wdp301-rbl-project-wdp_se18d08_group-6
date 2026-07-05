@@ -1,4 +1,4 @@
-import { BadRequestException } from "@nestjs/common";
+﻿import { BadRequestException } from "@nestjs/common";
 import { describe, expect, it, vi } from "vitest";
 import { UsersService } from "./users.service";
 
@@ -22,7 +22,7 @@ describe("UsersService", () => {
       },
     };
 
-    const service = new UsersService(prisma as never);
+    const service = new UsersService(prisma as never, {} as never);
     const result = await service.updateProfile("user-1", { fullName: "Nguyen Van B", phone: "0909000000" });
 
     expect(prisma.profile.upsert).toHaveBeenCalledWith({
@@ -44,7 +44,7 @@ describe("UsersService", () => {
   });
 
   it("rejects empty profile updates", async () => {
-    const service = new UsersService({} as never);
+    const service = new UsersService({} as never, {} as never);
 
     await expect(service.updateProfile("user-1", {})).rejects.toBeInstanceOf(BadRequestException);
   });
@@ -65,7 +65,7 @@ describe("UsersService", () => {
       },
     };
 
-    const service = new UsersService(prisma as never);
+    const service = new UsersService(prisma as never, {} as never);
     const result = await service.getMeasurements("user-1");
 
     expect(prisma.customerMeasurement.findFirst).toHaveBeenCalledWith({
@@ -92,7 +92,7 @@ describe("UsersService", () => {
       },
     };
 
-    const service = new UsersService(prisma as never);
+    const service = new UsersService(prisma as never, {} as never);
     const result = await service.updateMeasurements("user-1", { heightCm: 165.5, usualSize: "M" });
 
     expect(prisma.customerMeasurement.create).toHaveBeenCalledWith({
@@ -130,7 +130,7 @@ describe("UsersService", () => {
       },
     };
 
-    const service = new UsersService(prisma as never);
+    const service = new UsersService(prisma as never, {} as never);
     await service.updateMeasurements("user-1", { heightCm: 170, weightKg: null });
 
     expect(prisma.customerMeasurement.update).toHaveBeenCalledWith({
@@ -163,7 +163,7 @@ describe("UsersService", () => {
       $transaction: vi.fn(async (callback: (inner: typeof tx) => Promise<unknown>) => callback(tx)),
     };
 
-    const service = new UsersService(prisma as never);
+    const service = new UsersService(prisma as never, {} as never);
     const result = await service.createAddress("user-1", {
       receiverName: "Nguyen Van A",
       phone: "0909000000",
@@ -186,6 +186,8 @@ describe("UsersService", () => {
         ward: null,
         district: "District 1",
         city: "Ho Chi Minh City",
+        latitude: null,
+        longitude: null,
         isDefault: true,
       },
     });
@@ -199,6 +201,8 @@ describe("UsersService", () => {
         ward: null,
         district: "District 1",
         city: "Ho Chi Minh City",
+        latitude: null,
+        longitude: null,
         isDefault: true,
         createdAt: new Date("2026-06-12T00:00:00.000Z"),
       },
@@ -224,7 +228,7 @@ describe("UsersService", () => {
       },
     };
 
-    const service = new UsersService(prisma as never);
+    const service = new UsersService(prisma as never, {} as never);
     const result = await service.listAddresses("user-1");
 
     expect(prisma.address.findMany).toHaveBeenCalledWith({
@@ -242,6 +246,8 @@ describe("UsersService", () => {
           ward: "Ben Nghe",
           district: "District 1",
           city: "Ho Chi Minh City",
+          latitude: null,
+          longitude: null,
           isDefault: true,
           createdAt: new Date("2026-06-12T00:00:00.000Z"),
         },
