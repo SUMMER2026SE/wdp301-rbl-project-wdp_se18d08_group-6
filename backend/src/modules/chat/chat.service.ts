@@ -295,6 +295,18 @@ export class ChatService {
       throw new ForbiddenException("Message content exceeds maximum length of 2000 characters.");
     }
 
+    if (trimmed.startsWith("{")) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch {
+        parsed = null;
+      }
+      if (parsed && typeof parsed === "object" && (parsed as { type?: unknown }).type === "product_card") {
+        throw new ForbiddenException("Product cards must be created by server");
+      }
+    }
+
     let conversation;
 
     if (role === "customer") {

@@ -126,6 +126,8 @@ describe("CustomerAddressesPage", () => {
         ward: null,
         district: null,
         city: "Ho Chi Minh City",
+        latitude: null,
+        longitude: null,
         isDefault: false,
       }),
     }));
