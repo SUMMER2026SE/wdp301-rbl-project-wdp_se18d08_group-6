@@ -101,11 +101,11 @@ describe("ChatPage", () => {
 
     await waitFor(() => expect(mockGetChatConversations).toHaveBeenCalled());
 
-    expect(screen.getByText("Đang hỗ trợ")).toBeInTheDocument();
+    expect(screen.getByText("Cần trả lời")).toBeInTheDocument();
     expect(screen.getByText("Chờ tiếp nhận")).toBeInTheDocument();
 
     // Verify count badges are displayed
-    expect(screen.getAllByText("0")).toHaveLength(2); // assigned + resolved
+    expect(screen.getAllByText("0")).toHaveLength(3); // needs_reply + awaiting_reply + resolved
     expect(screen.getByText("1")).toBeInTheDocument(); // unassigned count
 
     await userEvent.click(screen.getByText("Chờ tiếp nhận"));
