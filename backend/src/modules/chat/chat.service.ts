@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
+import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import type { AppRole, messages } from "@prisma/client";
 import { createClient } from "@supabase/supabase-js";
 import { PrismaService } from "../../prisma/prisma.service";
