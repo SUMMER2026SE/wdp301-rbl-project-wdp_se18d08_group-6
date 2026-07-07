@@ -59,7 +59,7 @@ describe("Chat E2E - in-memory simulation", () => {
 
   beforeEach(() => {
     fakePrisma = createFakePrisma();
-    chatService = new ChatService(fakePrisma as any);
+    chatService = new ChatService(fakePrisma as any, { productAdvisor: vi.fn() } as any);
     gateway = new ChatGateway(chatService as any, {} as any, fakePrisma as any);
 
     // Fake server that records emits by room
@@ -99,7 +99,8 @@ describe("Chat E2E - in-memory simulation", () => {
     expect(lockStatus.lockedBy?.name).toBe("Staff One");
 
     // staff sends message
-    await gateway.handleSendMessage({ conversationId: conv.id, content: "Hello customer" }, staffSocket);
+    const sendResult = await gateway.handleSendMessage({ conversationId: conv.id, content: "Hello customer" }, staffSocket);
+    expect(sendResult).toEqual({ success: true });
 
     // check that message was emitted to room
     const found = fakeServer._emits.find((e: any) => e.room === conv.id && e.event === "message_received");

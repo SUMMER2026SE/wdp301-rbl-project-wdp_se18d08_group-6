@@ -1,6 +1,8 @@
 export interface AdvisorProduct {
   garmentId: string;
   name: string;
+  category: string;
+  color: string;
   imageUrl: string;
   dailyPrice: number;
   depositAmount: number;

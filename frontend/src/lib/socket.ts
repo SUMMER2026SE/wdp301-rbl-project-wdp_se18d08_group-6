@@ -6,15 +6,30 @@ const chatSocketUrl = `${apiBaseUrl}/chat`;
 let socket: Socket | null = null;
 
 export function createChatSocket(accessToken: string) {
-  if (socket && socket.connected) {
+  const token = `Bearer ${accessToken}`;
+
+  if (socket) {
+    if (socket.connected) {
+      const currentAuth = socket.auth;
+      if (
+        currentAuth &&
+        typeof currentAuth === "object" &&
+        currentAuth.token !== token
+      ) {
+        socket.auth = { token };
+        socket.disconnect().connect();
+      }
+    } else {
+      socket.auth = { token };
+      socket.connect();
+    }
     return socket;
   }
 
   socket = io(chatSocketUrl, {
-    auth: {
-      token: `Bearer ${accessToken}`,
-    },
-    transports: ["websocket"],
+    auth: { token },
+    reconnectionDelayMax: 30000,
+    timeout: 30000,
   });
 
   return socket;

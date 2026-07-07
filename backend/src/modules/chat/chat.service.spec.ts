@@ -5,6 +5,7 @@ import { ChatService } from "./chat.service";
 describe("ChatService", () => {
   let service: ChatService;
   let prisma: any;
+  let aiService: any;
 
   beforeEach(() => {
     prisma = {
@@ -18,7 +19,8 @@ describe("ChatService", () => {
         findUnique: vi.fn(),
       },
     };
-    service = new ChatService(prisma as never);
+    aiService = { productAdvisor: vi.fn() };
+    service = new ChatService(prisma as never, aiService as never);
   });
 
   describe("sendProductCardMessage", () => {
@@ -242,7 +244,7 @@ describe("ChatService", () => {
       },
     };
 
-    const service = new ChatService(prisma as never);
+    const service = new ChatService(prisma as never, aiService as never);
     await service.resolveConversation("conv-resolve", "staff-1");
 
     expect(prisma.conversations.update).toHaveBeenCalledOnce();
@@ -269,7 +271,7 @@ describe("ChatService", () => {
       },
     };
 
-    const service = new ChatService(prisma as never);
+    const service = new ChatService(prisma as never, aiService as never);
     await service.markConversationRead("customer-2", "customer", "conversation-2");
 
     expect(prisma.conversations.update).toHaveBeenCalledOnce();
@@ -291,7 +293,7 @@ describe("ChatService", () => {
       },
     };
 
-    const service = new ChatService(prisma as never);
+    const service = new ChatService(prisma as never, aiService as never);
     const messages = await service.getMessages(
       {
         id: "customer-3",
@@ -454,7 +456,7 @@ describe("ChatService", () => {
       },
     };
 
-    const service = new ChatService(prisma as never);
+    const service = new ChatService(prisma as never, aiService as never);
     const conversations = await service.listConversations({
       id: "customer-4",
       email: "customer4@example.com",

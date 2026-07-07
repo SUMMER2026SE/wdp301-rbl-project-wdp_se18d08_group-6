@@ -25,6 +25,8 @@ interface CustomerChatBubbleProps {
   onLoadOlderMessages: () => void;
   messagesContainerRef: RefObject<HTMLDivElement | null>;
   onDeleteMessage: (messageId: string) => void;
+  failedMessages?: Set<string>;
+  onRetryMessage?: (content: string) => void;
 }
 
 export function CustomerChatBubble({
@@ -42,6 +44,8 @@ export function CustomerChatBubble({
   onLoadOlderMessages,
   messagesContainerRef,
   onDeleteMessage,
+  failedMessages,
+  onRetryMessage,
 }: CustomerChatBubbleProps) {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   // const [isOpen, setIsOpen] = useState(() => {
@@ -212,6 +216,14 @@ export function CustomerChatBubble({
                               <div className="text-xs text-stone-500">Không thể hiển thị sản phẩm</div>
                             );
                           })()
+                          ) : message.sender_type === "ai" ? (
+                          <div className="rounded-lg border border-sand/70 bg-stone-50 px-3 py-2 text-xs shadow-sm max-w-[90%]">
+                            <p className="text-[10px] font-semibold text-stone-500 mb-1">🤖 Trợ lý AI</p>
+                            <p className="leading-5 text-stone-800">{message.content}</p>
+                            <span className="block text-[10px] mt-1 opacity-70 text-stone-500">
+                              {new Date(message.created_at).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          </div>
                         ) : (
                           <div
                             className={`${
@@ -234,6 +246,17 @@ export function CustomerChatBubble({
                           title="Xoá tin nhắn"
                         >
                           ✕
+                        </button>
+                      )}
+                      {/* Retry button for failed messages */}
+                      {isMine && message.id.startsWith("temp-") && failedMessages?.has(message.id) && (
+                        <button
+                          type="button"
+                          onClick={() => onRetryMessage?.(message.content)}
+                          className="absolute -bottom-2 -right-2 inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] shadow-sm hover:bg-amber-600 transition"
+                          title="Gửi lại"
+                        >
+                          ↻
                         </button>
                       )}
                     </div>

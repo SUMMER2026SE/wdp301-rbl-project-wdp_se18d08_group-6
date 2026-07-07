@@ -11,6 +11,7 @@ export type ChatMessage = {
   deleted_at?: string | null;
   deleted_by?: string | null;
   message_type?: string;
+  sender_type?: string;
   metadata?: Record<string, unknown> | null;
   user_accounts?: {
     id: string;
@@ -206,6 +207,52 @@ export async function getProductAdvisor(params: {
       rentalEndDate: params.rentalEndDate,
     }),
   });
+}
+
+/**
+ * Shared send-message emit logic extracted from 4 duplicated copies.
+ * Caller must add the optimistic message to `setMessages` before calling.
+ */
+export function emitChatMessage(params: {
+  socket: { connected: boolean; on: (event: string, fn: (...args: unknown[]) => void) => unknown; once: (event: string, fn: (...args: unknown[]) => void) => unknown; emit: (event: string, ...args: unknown[]) => unknown; connect: () => unknown };
+  conversationId: string;
+  content: string;
+  tempId: string;
+  sendTimeoutRef: { current: Map<string, ReturnType<typeof setTimeout>> };
+  setMessages: (updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => void;
+  setFailedMessages: (updater: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
+}) {
+  const { socket, conversationId, content, tempId, sendTimeoutRef, setMessages, setFailedMessages } = params;
+
+  const doEmit = () => {
+    socket.emit("send_message", { conversationId, content, tempId }, (ack: { success?: boolean; error?: string; tempId?: string } | undefined) => {
+      const t = sendTimeoutRef.current.get(tempId);
+      if (t) { clearTimeout(t); sendTimeoutRef.current.delete(tempId); }
+      if (ack && ack.success && ack.tempId) {
+        setMessages((prev) => prev.filter((m) => m.id !== ack.tempId));
+        setFailedMessages((prev) => {
+          const next = new Set(prev);
+          next.delete(ack.tempId!);
+          return next;
+        });
+      } else if (!ack || !ack.success) {
+        setFailedMessages((prev) => new Set(prev).add(tempId));
+      }
+    });
+
+    const timeout = setTimeout(() => {
+      sendTimeoutRef.current.delete(tempId);
+      setFailedMessages((prev) => new Set(prev).add(tempId));
+    }, 5000);
+    sendTimeoutRef.current.set(tempId, timeout);
+  };
+
+  if (!socket.connected) {
+    socket.connect();
+    socket.once("connect", doEmit);
+  } else {
+    doEmit();
+  }
 }
 
 export async function uploadChatFile(conversationId: string, file: File) {
