@@ -8,7 +8,7 @@ export class ProductAdvisorDto {
 
   @IsArray()
   @IsOptional()
-  history?: Array<{ role: "customer" | "staff"; content: string; createdAt: string }>;
+  history?: Array<{ role: "customer" | "staff" | "ai"; content: string; createdAt: string }>;
 
   @IsDateString()
   @IsOptional()

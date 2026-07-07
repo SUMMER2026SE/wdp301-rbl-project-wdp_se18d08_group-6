@@ -11,6 +11,7 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
 import { createChatSocket } from "@/lib/socket";
 import {
+  emitChatMessage,
   getConversationMessages,
   getMyChatConversation,
   markConversationRead,
@@ -51,9 +52,11 @@ export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
+  const [failedMessages, setFailedMessages] = useState<Set<string>>(new Set());
 
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const selectedConversationRef = useRef<ChatConversation | null>(null);
+  const sendTimeoutRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const socketRef =
     useRef<ReturnType<typeof createChatSocket> | null>(null);
@@ -64,9 +67,7 @@ export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
   useEffect(() => {
     if (!session?.accessToken || !isCustomer || !enabled) return;
 
-    if (!socketRef.current) {
-      socketRef.current = createChatSocket(session.accessToken);
-    }
+    socketRef.current = createChatSocket(session.accessToken);
 
     const socket = socketRef.current;
 
@@ -82,6 +83,21 @@ export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
       conversationId: string;
       message: ChatMessage;
     }) => {
+      // If the message is from current user, remove only the first matching optimistic message (fallback)
+      if (payload.message.sender_id === session?.user.id) {
+        setMessages((prev) => {
+          const idx = prev.findIndex((m) => m.id.startsWith("temp-") && m.content === payload.message.content);
+          if (idx === -1) return prev;
+          return prev.filter((_, i) => i !== idx);
+        });
+        setFailedMessages((prev) => {
+          const next = new Set(prev);
+          for (const id of prev) {
+            if (id.startsWith("temp-")) next.delete(id);
+          }
+          return next;
+        });
+      }
       if (payload.conversationId === selectedConversationRef.current?.id) {
         setMessages((prev) => [...prev, payload.message]);
         // Mark read via REST when receiving message from staff
@@ -134,22 +150,20 @@ export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
 
     socket.on("connect", onConnect);
     socket.on("message_received", onMessageReceived);
-    socket.on("new_message", onMessageReceived);
     socket.on("message_deleted", onMessageDeleted);
     socket.on("typing", onTyping);
     socket.on("user_typing", onTyping);
-    // window.addEventListener("chat:message_received", onCustomMessageReceived as EventListener);
 
     if (socket.connected) onConnect();
 
     return () => {
       socket.off("connect", onConnect);
       socket.off("message_received", onMessageReceived);
-      socket.off("new_message", onMessageReceived);
       socket.off("message_deleted", onMessageDeleted);
       socket.off("typing", onTyping);
       socket.off("user_typing", onTyping);
-      // window.removeEventListener("chat:message_received", onCustomMessageReceived as EventListener);
+      socket.disconnect();
+      socketRef.current = null;
     };
   }, [session?.accessToken, isCustomer, enabled]);
 
@@ -158,6 +172,8 @@ export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
   // =============================
   useEffect(() => {
     return () => {
+      for (const t of sendTimeoutRef.current.values()) clearTimeout(t);
+      sendTimeoutRef.current.clear();
       socketRef.current?.disconnect();
       socketRef.current = null;
     };
@@ -250,12 +266,50 @@ export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
     if (!socketRef.current || !conversation || !messageText.trim())
       return;
 
-    socketRef.current.emit("send_message", {
-      conversationId: conversation.id,
-      content: messageText.trim(),
-    });
-
+    const convId = conversation.id;
+    const content = messageText.trim();
     setMessageText("");
+
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const optimistic: ChatMessage = {
+      id: tempId,
+      conversation_id: convId,
+      sender_id: session?.user.id ?? "",
+      sender_type: "customer",
+      content,
+      message_type: "text",
+      metadata: null,
+      created_at: new Date().toISOString(),
+      deleted_at: null,
+      deleted_by: null,
+    };
+    setMessages((prev) => [...prev, optimistic]);
+
+    emitChatMessage({ socket: socketRef.current, conversationId: convId, content, tempId, sendTimeoutRef, setMessages, setFailedMessages });
+  }
+
+  function retrySendMessage(messageContent: string) {
+    if (!socketRef.current || !conversation) return;
+
+    const convId = conversation.id;
+    const content = messageContent;
+
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const optimistic: ChatMessage = {
+      id: tempId,
+      conversation_id: convId,
+      sender_id: session?.user.id ?? "",
+      sender_type: "customer",
+      content,
+      message_type: "text",
+      metadata: null,
+      created_at: new Date().toISOString(),
+      deleted_at: null,
+      deleted_by: null,
+    };
+    setMessages((prev) => [...prev, optimistic]);
+
+    emitChatMessage({ socket: socketRef.current, conversationId: convId, content, tempId, sendTimeoutRef, setMessages, setFailedMessages });
   }
 
   function deleteMessage(messageId: string) {
@@ -302,6 +356,8 @@ export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
         onLoadOlderMessages={loadOlderMessages}
         messagesContainerRef={messagesContainerRef}
         onDeleteMessage={deleteMessage}
+        failedMessages={failedMessages}
+        onRetryMessage={retrySendMessage}
       />
     </>
   );

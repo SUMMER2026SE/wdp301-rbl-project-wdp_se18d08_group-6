@@ -24,6 +24,10 @@ vi.mock("@/lib/socket", () => ({
   disconnectChatSocket: () => mockDisconnectChatSocket(),
 }));
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: vi.fn() }),
+}));
+
 vi.mock("@/lib/chat", () => ({
   getChatConversations: () => mockGetChatConversations(),
   getConversationMessages: (conversationId: string) => mockGetConversationMessages(conversationId),
@@ -101,7 +105,7 @@ describe("ChatPage", () => {
     expect(screen.getByText("Chờ tiếp nhận")).toBeInTheDocument();
 
     // Verify count badges are displayed
-    expect(screen.getByText("0")).toBeInTheDocument(); // assigned count
+    expect(screen.getAllByText("0")).toHaveLength(2); // assigned + resolved
     expect(screen.getByText("1")).toBeInTheDocument(); // unassigned count
 
     await userEvent.click(screen.getByText("Chờ tiếp nhận"));

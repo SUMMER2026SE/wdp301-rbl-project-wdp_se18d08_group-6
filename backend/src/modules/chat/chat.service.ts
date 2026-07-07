@@ -1,12 +1,22 @@
 import { ForbiddenException, Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
-import type { AppRole } from "@prisma/client";
+import type { AppRole, messages } from "@prisma/client";
 import { createClient } from "@supabase/supabase-js";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { AuthenticatedUser } from "../auth/auth-user";
+import { AiService } from "../ai/ai.service";
+
+const AI_USER_ID = "00000000-0000-0000-0000-000000000000";
+const QUESTION_KEYWORDS = /[?？]|\b(gì|nào|ko|không|bao nhiêu|có|sao|thế nào|khi nào|mấy|à|nhỉ|hả)\b/i;
+const AI_DEBOUNCE_MS = 3000;
 
 @Injectable()
 export class ChatService {
-  constructor(private readonly prisma: PrismaService) { }
+  private readonly aiDebounceMap = new Map<string, NodeJS.Timeout>();
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly aiService: AiService,
+  ) { }
 
   async sendProductCardMessage(
     userId: string,
@@ -79,19 +89,22 @@ export class ChatService {
     });
 
     // Update conversation timestamps and topic context
-    const updateData = role === "customer"
-      ? {
-          customer_last_read_at: now,
-          topic: "product_advice",
-          garment_id: garmentId,
-          ...(conversation.status === "resolved" ? { status: "open", staff_id: null } : {}),
-        }
-      : { staff_last_read_at: now };
-
-    await this.prisma.conversations.update({
-      where: { id: conversationId },
-      data: { ...updateData, updated_at: now },
-    });
+    if (role === "customer" && conversation.status === "resolved") {
+      await this.prisma.conversations.updateMany({
+        where: { id: conversationId, status: "resolved" },
+        data: { status: "open", staff_id: null, topic: "product_advice", garment_id: garmentId, customer_last_read_at: now, updated_at: now },
+      });
+    } else {
+      await this.prisma.conversations.update({
+        where: { id: conversationId },
+        data: {
+          ...(role === "customer"
+            ? { customer_last_read_at: now, topic: "product_advice", garment_id: garmentId }
+            : { staff_last_read_at: now }),
+          updated_at: now,
+        },
+      });
+    }
 
     // Return with user_accounts for real-time display
     if (typeof this.prisma.messages.findUnique === "function") {
@@ -203,25 +216,29 @@ export class ChatService {
       },
     });
 
-    const updateData: Record<string, unknown> = {
-      topic,
-      booking_id: bookingId,
-      garment_id: null,
-      updated_at: now,
-    };
-    if (role === "customer") {
-      updateData.customer_last_read_at = now;
-      if (conversation.status === "resolved") {
-        updateData.status = "open";
-      }
+    if (role === "customer" && conversation.status === "resolved") {
+      await this.prisma.conversations.updateMany({
+        where: { id: conversationId, status: "resolved" },
+        data: { status: "open", topic, booking_id: bookingId, garment_id: null, customer_last_read_at: now, updated_at: now },
+      });
     } else {
-      updateData.staff_last_read_at = now;
-    }
+      const updateData: Record<string, unknown> = {
+        topic,
+        booking_id: bookingId,
+        garment_id: null,
+        updated_at: now,
+      };
+      if (role === "customer") {
+        updateData.customer_last_read_at = now;
+      } else {
+        updateData.staff_last_read_at = now;
+      }
 
-    await this.prisma.conversations.update({
-      where: { id: conversationId },
-      data: updateData,
-    });
+      await this.prisma.conversations.update({
+        where: { id: conversationId },
+        data: updateData,
+      });
+    }
 
     if (typeof this.prisma.messages.findUnique === "function") {
       return this.prisma.messages.findUnique({
@@ -311,20 +328,20 @@ export class ChatService {
       },
     });
 
-    const updateData = role === "customer"
-      ? {
-          customer_last_read_at: now,
-          ...(conversation.status === "resolved" ? { status: "open", staff_id: null } : {}),
-        }
-      : { staff_last_read_at: now };
-
-    await this.prisma.conversations.update({
-      where: { id: conversationId },
-      data: {
-        ...updateData,
-        updated_at: now,
-      },
-    });
+    if (role === "customer" && conversation.status === "resolved") {
+      await this.prisma.conversations.updateMany({
+        where: { id: conversationId, status: "resolved" },
+        data: { status: "open", staff_id: null, customer_last_read_at: now, updated_at: now },
+      });
+    } else {
+      await this.prisma.conversations.update({
+        where: { id: conversationId },
+        data: {
+          ...(role === "customer" ? { customer_last_read_at: now } : { staff_last_read_at: now }),
+          updated_at: now,
+        },
+      });
+    }
 
     // Return message with user_accounts for real-time display
     // some tests/mocks provide findFirst instead of findUnique – tolerate both
@@ -348,6 +365,165 @@ export class ChatService {
 
     // Fallback for tests: just return the created message  
     return message;
+  }
+
+  async maybeAutoReply(
+    conversationId: string,
+    messageContent: string,
+    hasOnlineStaff: boolean,
+    messageType?: string,
+  ): Promise<messages[]> {
+    if (hasOnlineStaff) return [];
+    if (messageType !== "product_card" && messageType !== "booking_card") {
+      if (!QUESTION_KEYWORDS.test(messageContent)) return [];
+    }
+
+    const conversation = await this.prisma.conversations.findUnique({
+      where: { id: conversationId },
+    });
+    if (!conversation || conversation.staff_id !== null) return [];
+
+    // Debounce: reset timer each time customer sends, only fire after AI_DEBOUNCE_MS of silence
+    return new Promise<messages[]>((resolve) => {
+      const existing = this.aiDebounceMap.get(conversationId);
+      if (existing) clearTimeout(existing);
+
+      const timeout = setTimeout(async () => {
+        this.aiDebounceMap.delete(conversationId);
+        const result = await this.performAutoReply(conversationId, messageContent, conversation);
+        resolve(result);
+      }, AI_DEBOUNCE_MS);
+
+      this.aiDebounceMap.set(conversationId, timeout);
+    });
+  }
+
+  private async performAutoReply(
+    conversationId: string,
+    messageContent: string,
+    conversation: { customer_id: string; staff_id: string | null },
+  ): Promise<messages[]> {
+    const recentMessages = await this.prisma.messages.findMany({
+      where: {
+        conversation_id: conversationId,
+        deleted_at: null,
+        message_type: { in: ["text", "product_card"] },
+      },
+      orderBy: { created_at: "desc" },
+      take: 10,
+    });
+
+    const history = recentMessages.map((m) => {
+      let content = m.content;
+      if (m.message_type === "product_card" && m.metadata && typeof m.metadata === "object") {
+        const product = (m.metadata as Record<string, unknown>).product as Record<string, unknown> | undefined;
+        if (product) {
+          const price = typeof product.price === "number" ? product.price.toLocaleString() : "";
+          content = `[Đã gửi sản phẩm] ${product.name ?? ""} | Size: ${product.size ?? "N/A"} | Giá: ${price}đ/ngày`;
+        }
+      }
+      return {
+        role: (m.sender_id === conversation.customer_id ? "customer" : m.sender_type === "ai" ? "ai" : "staff") as "customer" | "staff" | "ai",
+        content,
+        createdAt: m.created_at.toISOString(),
+      };
+    });
+
+    let result;
+    try {
+      result = await this.aiService.productAdvisor({ message: messageContent, history }, true);
+    } catch {
+      return [];
+    }
+
+    const data = result.data;
+    if (!data || !Array.isArray(data.topics) || data.topics.length === 0) return [];
+
+    const reply = data.topics[0]?.assistantReply;
+    if (!reply) return [];
+
+    const now = new Date();
+    const conversationAgain = await this.prisma.conversations.findUnique({
+      where: { id: conversationId },
+      select: { staff_id: true },
+    });
+    if (conversationAgain?.staff_id !== null) return [];
+
+    const createdMessages: messages[] = [];
+
+    // Create text reply
+    const textMsg = await this.prisma.messages.create({
+      data: {
+        conversation_id: conversationId,
+        sender_id: AI_USER_ID,
+        content: reply,
+        message_type: "text",
+        sender_type: "ai",
+      },
+    });
+    createdMessages.push(textMsg);
+
+    // Create product cards for recommended products (max 3)
+    const productIds = data.topics[0]?.recommendedProductIds ?? [];
+    const cardIds = productIds.slice(0, 3);
+    if (cardIds.length > 0) {
+      const garments = await this.prisma.garment.findMany({
+        where: { id: { in: cardIds } },
+        include: {
+          images: { orderBy: { sortOrder: "asc" }, take: 1 },
+          garment_sizes: { where: { is_active: true }, take: 1 },
+        },
+      });
+
+      for (const g of garments) {
+        const DEFAULT_IMAGE = "https://dep.com.vn/wp-content/uploads/2020/11/ao-dai-9.jpg";
+        const imageUrl = g.images[0]?.imageUrl || DEFAULT_IMAGE;
+        const sizeLabel = g.garment_sizes[0]?.size_label ?? null;
+        const dailyPrice = g.garment_sizes[0]?.daily_price ?? 0;
+        const detailUrl = `/catalog/${g.garment_sizes[0]?.id ?? g.id}`;
+
+        const card = await this.prisma.messages.create({
+          data: {
+            conversation_id: conversationId,
+            sender_id: AI_USER_ID,
+            content: "",
+            message_type: "product_card",
+            sender_type: "ai",
+            metadata: {
+              product: {
+                id: g.id,
+                name: g.name,
+                image: imageUrl,
+                size: sizeLabel,
+                price: Number(dailyPrice),
+                detailUrl,
+              },
+            },
+          },
+        });
+        createdMessages.push(card);
+      }
+    }
+
+    await this.prisma.conversations.update({
+      where: { id: conversationId },
+      data: { updated_at: now },
+    });
+
+    return this.prisma.messages.findMany({
+      where: { id: { in: createdMessages.map((m) => m.id) } },
+      orderBy: { created_at: "asc" },
+      include: {
+        user_accounts: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            profile: { select: { fullName: true } },
+          },
+        },
+      },
+    });
   }
 
   async deleteMessage(userId: string, role: AppRole, messageId: string) {
@@ -535,9 +711,11 @@ export class ChatService {
             id: true,
             content: true,
             sender_id: true,
+            sender_type: true,
             created_at: true,
             message_type: true,
             metadata: true,
+            deleted_at: true,
           },
         },
         user_accounts_conversations_customer_idTouser_accounts: {

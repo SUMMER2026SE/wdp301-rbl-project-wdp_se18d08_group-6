@@ -473,14 +473,14 @@ export class AiService {
     return ok({ id: result.id, hidden: true });
   }
 
-  async productAdvisor(dto: ProductAdvisorDto) {
+  async productAdvisor(dto: ProductAdvisorDto, isAutoReply = false) {
     const catalog = await this.queryCatalog();
 
     if (catalog.length === 0) {
       return ok({ topics: [] });
     }
 
-    const systemPrompt = this.buildAdvisorPrompt(catalog);
+    const systemPrompt = this.buildAdvisorPrompt(catalog, isAutoReply);
     const userContent = this.buildUserMessage(dto.message, dto.history, dto.rentalStartDate, dto.rentalEndDate);
     const raw = await this.callOpenRouter(systemPrompt, userContent);
     return ok(this.parseAdvisorResponse(raw, catalog));
@@ -493,7 +493,7 @@ export class AiService {
       include: {
         category: true,
         images: { orderBy: { sortOrder: "asc" }, take: 1 },
-        garment_sizes: { where: { is_active: true }, take: 1 },
+        garment_sizes: { where: { is_active: true } },
         assets: {
           where: { status: "available" },
           select: { id: true },
@@ -505,21 +505,33 @@ export class AiService {
     return garments.map((g) => ({
       garmentId: g.id,
       name: g.name,
+      category: g.category?.name ?? "",
+      color: g.color ?? "",
       imageUrl: g.images[0]?.imageUrl ?? "",
       dailyPrice: g.garment_sizes[0]?.daily_price ? Number(g.garment_sizes[0].daily_price) : 0,
       depositAmount: g.garment_sizes[0]?.deposit_amount ? Number(g.garment_sizes[0].deposit_amount) : 0,
-      size: g.garment_sizes[0]?.size_label ?? "",
+      size: g.garment_sizes.map((s) => s.size_label).filter(Boolean).join(", "),
       reason: "",
       inStock: g.assets.length > 0,
     }));
   }
 
-  private buildAdvisorPrompt(catalog: AdvisorProduct[]): string {
+  private buildAdvisorPrompt(catalog: AdvisorProduct[], isAutoReply = false): string {
     const productLines = catalog.map((p, i) =>
-      `${i + 1}. ID: ${p.garmentId} | Tên: ${p.name} | Giá: ${p.dailyPrice.toLocaleString()}đ/ngày | Cọc: ${p.depositAmount.toLocaleString()}đ`,
+      `${i + 1}. ID: ${p.garmentId} | Tên: ${p.name} | Loại: ${p.category} | Màu: ${p.color} | Size: ${p.size} | Giá: ${p.dailyPrice.toLocaleString()}đ/ngày | Cọc: ${p.depositAmount.toLocaleString()}đ | Còn hàng: ${p.inStock ? "Có" : "Không"}`,
     ).join("\n");
 
-    return `Bạn là trợ lý AI tư vấn sản phẩm cho cửa hàng cho thuê áo dài và trang phục truyền thống Việt Nam. Bạn phân tích lịch sử chat và catalogue để tư vấn.
+    const autoReplySection = isAutoReply
+      ? `\n### CHẾ ĐỘ TỰ ĐỘNG TRẢ LỜI
+Bạn đang tự động trả lời khách hàng khi staff offline.
+- Trả lời NGẮN GỌN, chỉ tập trung vào câu hỏi sản phẩm.
+- Không hỏi lại khách, không đề xuất thêm nếu khách không yêu cầu.
+- Không hứa giảm giá, không tạo booking, không xử lý hoàn tiền.
+- Nếu khách hỏi về đơn hàng/giao dịch/cuộc hẹn → bảo họ đợi staff trả lời.
+- Không thêm thông tin ngoài danh sách sản phẩm.`
+      : "";
+
+    return `Bạn là trợ lý AI tư vấn sản phẩm cho cửa hàng cho thuê áo dài và trang phục truyền thống Việt Nam. Bạn phân tích lịch sử chat và catalogue để tư vấn.${autoReplySection}
 
 Dưới đây là danh sách sản phẩm hiện có trong cửa hàng:
 
@@ -570,7 +582,8 @@ Tối đa 3 topics.`;
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       );
       for (const msg of sorted) {
-        parts.push(`[${msg.role === "customer" ? "Khách" : "Staff"}]: ${msg.content}`);
+        const roleLabel = msg.role === "customer" ? "Khách" : msg.role === "ai" ? "AI" : "Staff";
+        parts.push(`[${roleLabel}]: ${msg.content}`);
       }
     }
 

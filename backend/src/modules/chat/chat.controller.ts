@@ -98,6 +98,30 @@ export class ChatController {
           content: message?.content ?? "",
         });
       }
+
+      // Trigger AI auto-reply for product card clicks (C6)
+      const productName =
+        (message?.metadata as Record<string, { name?: string }> | null)
+          ?.product?.name ?? "";
+      void this.chatService
+        .maybeAutoReply(
+          conversationId,
+          `[Đã gửi sản phẩm] ${productName}`,
+          this.chatGateway.hasOnlineStaff(),
+          "product_card",
+        )
+        .then((aiMsgs) => {
+          for (const aiMsg of aiMsgs) {
+            this.chatGateway.server
+              ?.to(conversationId)
+              .emit("message_received", {
+                conversationId,
+                message: aiMsg,
+                staffId: null,
+                status: "open",
+              });
+          }
+        });
     }
 
     return ok(message);

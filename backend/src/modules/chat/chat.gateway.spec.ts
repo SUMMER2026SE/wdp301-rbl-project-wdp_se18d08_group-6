@@ -8,6 +8,7 @@ describe("ChatGateway (unit)", () => {
     assignStaffToConversationIfEmpty: vi.fn(),
     releaseStaffAssignment: vi.fn(),
     releaseConversationLock: vi.fn(),
+    maybeAutoReply: vi.fn().mockResolvedValue([]),
   } as any;
 
   const mockJwtService = {} as any;
@@ -82,7 +83,7 @@ describe("ChatGateway (unit)", () => {
       const client = makeClient("user-1");
       const longContent = "x".repeat(2001);
 
-      await gateway.handleSendMessage(
+      const result = await gateway.handleSendMessage(
         { conversationId: "conv-3", content: longContent },
         client,
       );
@@ -91,6 +92,7 @@ describe("ChatGateway (unit)", () => {
         conversationId: "conv-3",
         reason: "message_too_long",
       });
+      expect(result).toEqual({ success: false, error: "message_too_long" });
     });
 
     it("allows message of exactly 2000 characters", async () => {
@@ -98,19 +100,20 @@ describe("ChatGateway (unit)", () => {
       mockChatService.getConversationById.mockResolvedValue({ id: "conv-3", customer_id: "user-1", staff_id: null, status: "open" });
       mockChatService.sendMessage = vi.fn().mockResolvedValue({ id: "msg-1", content: "x".repeat(2000) });
 
-      await gateway.handleSendMessage(
+      const result = await gateway.handleSendMessage(
         { conversationId: "conv-3", content: "x".repeat(2000) },
         client,
       );
 
       expect(client.emit).not.toHaveBeenCalledWith("send_error", expect.objectContaining({ reason: "message_too_long" }));
+      expect(result).toEqual({ success: true });
     });
 
     it("rejects product_card payload from client", async () => {
       const client = makeClient("user-2");
       const productCard = JSON.stringify({ type: "product_card", productId: "prod-1" });
 
-      await gateway.handleSendMessage(
+      const result = await gateway.handleSendMessage(
         { conversationId: "conv-4", content: productCard },
         client,
       );
@@ -119,6 +122,7 @@ describe("ChatGateway (unit)", () => {
         conversationId: "conv-4",
         reason: "forbidden_payload",
       });
+      expect(result).toEqual({ success: false, error: "forbidden_payload" });
     });
 
     it("rejects rate-limited user after 5 messages in 10 seconds", async () => {
@@ -128,14 +132,15 @@ describe("ChatGateway (unit)", () => {
 
       // Send 5 valid messages
       for (let i = 0; i < 5; i++) {
-        await gateway.handleSendMessage(
+        const res = await gateway.handleSendMessage(
           { conversationId: "conv-5", content: `Message ${i + 1}` },
           client,
         );
+        expect(res).toEqual({ success: true });
       }
 
       // 6th message should be rate limited
-      await gateway.handleSendMessage(
+      const result = await gateway.handleSendMessage(
         { conversationId: "conv-5", content: "Message 6" },
         client,
       );
@@ -144,6 +149,7 @@ describe("ChatGateway (unit)", () => {
         conversationId: "conv-5",
         reason: "rate_limited",
       });
+      expect(result).toEqual({ success: false, error: "rate_limited" });
     });
 
     it("allows messages again after rate limit window expires", async () => {
@@ -154,10 +160,11 @@ describe("ChatGateway (unit)", () => {
 
       // Send 5 messages
       for (let i = 0; i < 5; i++) {
-        await gateway.handleSendMessage(
+        const res = await gateway.handleSendMessage(
           { conversationId: "conv-6", content: `Message ${i + 1}` },
           client,
         );
+        expect(res).toEqual({ success: true });
       }
 
       // Advance time by 10 seconds
@@ -165,15 +172,16 @@ describe("ChatGateway (unit)", () => {
 
       // 6th message should now be allowed
       client.emit.mockClear();
-      await gateway.handleSendMessage(
+      const result = await gateway.handleSendMessage(
         { conversationId: "conv-6", content: "Message 6 after window" },
         client,
       );
 
       expect(client.emit).not.toHaveBeenCalledWith("send_error", expect.objectContaining({ reason: "rate_limited" }));
+      expect(result).toEqual({ success: true });
     });
 
-    it("returns early when user is not authenticated", async () => {
+    it("returns { success: false, error: \"invalid_payload\" } when user is not authenticated", async () => {
       const client = {
         id: "sock-anon",
         data: {},
@@ -182,12 +190,13 @@ describe("ChatGateway (unit)", () => {
         join: vi.fn(),
       } as any;
 
-      await gateway.handleSendMessage(
+      const result = await gateway.handleSendMessage(
         { conversationId: "conv-7", content: "Hello" },
         client,
       );
 
       expect(client.emit).not.toHaveBeenCalled();
+      expect(result).toEqual({ success: false, error: "invalid_payload" });
     });
   });
 });

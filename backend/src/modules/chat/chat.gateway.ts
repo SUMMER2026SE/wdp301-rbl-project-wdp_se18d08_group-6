@@ -134,11 +134,24 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
     };
 
     this.onlineUsers.set(user.id, client.id);
+    this.trackOnlineStaffCount(dbRole, "add");
     if (dbRole === "staff") {
       client.join("staff");
     } else {
       client.join("customers");
     }
+  }
+
+  private onlineStaffCount = 0;
+
+  private trackOnlineStaffCount(role: AppRole, action: "add" | "remove") {
+    if (role === "staff") {
+      this.onlineStaffCount += action === "add" ? 1 : -1;
+    }
+  }
+
+  hasOnlineStaff(): boolean {
+    return this.onlineStaffCount > 0;
   }
 
   handleDisconnect(client: AuthSocket) {
@@ -150,6 +163,7 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
     const currentSocket = this.onlineUsers.get(user.userId);
     if (currentSocket === client.id) {
       this.onlineUsers.delete(user.userId);
+      this.trackOnlineStaffCount(user.role, "remove");
     }
 
     if (user.role === "staff") {
@@ -285,12 +299,12 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
 
   @SubscribeMessage("send_message")
   async handleSendMessage(
-    @MessageBody() body: { conversationId: string; content: string },
+    @MessageBody() body: { conversationId: string; content: string; tempId?: string },
     @ConnectedSocket() client: AuthSocket,
-  ) {
+  ): Promise<{ success: boolean; error?: string; tempId?: string }> {
     const user = client.data.user;
     if (!user || !body?.conversationId || !body?.content?.trim()) {
-      return;
+      return { success: false, error: "invalid_payload" };
     }
 
     const content = body.content.trim();
@@ -300,8 +314,9 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
       client.emit("send_error", {
         conversationId: body.conversationId,
         reason: "message_too_long",
+        tempId: body.tempId,
       });
-      return;
+      return { success: false, error: "message_too_long" };
     }
 
     // Reject direct client attempts to send product_card payloads
@@ -309,8 +324,9 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
       client.emit("send_error", {
         conversationId: body.conversationId,
         reason: "forbidden_payload",
+        tempId: body.tempId,
       });
-      return;
+      return { success: false, error: "forbidden_payload" };
     }
 
     // Rate limiting: max 5 messages per 10 seconds per user
@@ -318,15 +334,16 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
       client.emit("send_error", {
         conversationId: body.conversationId,
         reason: "rate_limited",
+        tempId: body.tempId,
       });
-      return;
+      return { success: false, error: "rate_limited" };
     }
 
     if (user.role === "staff") {
       const conversation = await this.chatService.getConversationById(body.conversationId);
       if (conversation.staff_id !== user.userId) {
-        client.emit("send_error", { conversationId: body.conversationId, reason: "conversation_locked" });
-        return;
+        client.emit("send_error", { conversationId: body.conversationId, reason: "conversation_locked", tempId: body.tempId });
+        return { success: false, error: "conversation_locked" };
       }
 
       this.activeReplier.set(body.conversationId, {
@@ -355,7 +372,20 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
           content: body.content,
         });
       }
+
+      void this.chatService.maybeAutoReply(body.conversationId, body.content, this.hasOnlineStaff()).then((aiMsgs) => {
+        for (const aiMsg of aiMsgs) {
+          this.server.to(body.conversationId).emit("message_received", {
+            conversationId: body.conversationId,
+            message: aiMsg,
+            staffId: null,
+            status: "open",
+          });
+        }
+      });
     }
+
+    return { success: true, tempId: body.tempId };
   }
 
   @SubscribeMessage("resolve_conversation")
@@ -405,7 +435,7 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
       return;
     }
 
-    this.server.to(body.conversationId).emit("typing", {
+    client.to(body.conversationId).emit("typing", {
       conversationId: body.conversationId,
       isTyping: body.isTyping,
       userId: user.userId,

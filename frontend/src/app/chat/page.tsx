@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { createChatSocket, disconnectChatSocket } from "@/lib/socket";
 import {
+  emitChatMessage,
   getChatConversations,
   getConversationLockStatus,
   getConversationMessages,
@@ -32,10 +33,11 @@ export default function ChatPage() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [lockStatus, setLockStatus] = useState<ConversationLockStatus | null>(null);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [failedMessages, setFailedMessages] = useState<Set<string>>(new Set());
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [staffCanReply, setStaffCanReply] = useState(false);
   const [staffLockError, setStaffLockError] = useState<string | null>(null);
-  const [sidebarTab, setSidebarTab] = useState<"assigned" | "unassigned" | "resolved">("assigned");
+  const [sidebarTab, setSidebarTab] = useState<"needs_reply" | "awaiting_reply" | "unassigned" | "resolved">("needs_reply");
   const [notification, setNotification] = useState<string | null>(null);
 
 
@@ -43,9 +45,9 @@ export default function ChatPage() {
   const currentConversationIdRef = useRef<string | null>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const selectedConversationRef = useRef<ChatConversation | null>(null);
+  const messagesConversationIdRef = useRef<string | null>(null);
   // Track if we've already restored the staff workspace after socket connect.
   const autoOpenedRef = useRef(false); 
   const isAcceptingConversationRef = useRef(false);
@@ -55,10 +57,6 @@ export default function ChatPage() {
   const assignedConversations = isStaff
     ? conversations.filter((conversation) => conversation.staffId === session?.user.id && conversation.status !== "resolved")
     : conversations;
-
-  const unassignedConversations = isStaff
-    ? conversations.filter((conversation) => conversation.staffId === null && conversation.status === "open" && !conversation.reopenedFromResolved && conversation.lastMessage?.sender_id === conversation.customerId)
-    : [];
 
   const socket = useMemo(() => {
     if (!session?.accessToken) {
@@ -91,9 +89,26 @@ export default function ChatPage() {
   useEffect(() => {
     if (!socket) return;
 
+    const conv = () => selectedConversationRef.current;
+
     const onMessageReceived = (payload: { conversationId: string; message: ChatMessage; staffId?: string | null; status?: string }) => {
+      // If the message is from current user, remove only the first matching optimistic message (fallback)
+      if (payload.message.sender_id === session?.user.id) {
+        setMessages((prev) => {
+          const idx = prev.findIndex((m) => m.id.startsWith("temp-") && m.content === payload.message.content);
+          if (idx === -1) return prev;
+          return prev.filter((_, i) => i !== idx);
+        });
+        setFailedMessages((prev) => {
+          const next = new Set(prev);
+          for (const id of prev) {
+            if (id.startsWith("temp-")) next.delete(id);
+          }
+          return next;
+        });
+      }
       // Always update messages if this conversation is selected
-      if (payload.conversationId === selectedConversation?.id) {
+      if (payload.conversationId === conv()?.id) {
         setMessages((prev) => [...prev, payload.message]);
         // Mark read via REST when receiving message in active conversation
         if (payload.message.sender_id !== session?.user.id) {
@@ -130,7 +145,7 @@ export default function ChatPage() {
             ...(payload.status !== undefined ? { status: payload.status } : {}),
             ...(payload.message.sender_id === c.customerId ? topicExtras : {}),
           };
-          if (payload.conversationId === selectedConversation?.id && Object.keys(topicExtras).length > 0) {
+          if (payload.conversationId === conv()?.id && Object.keys(topicExtras).length > 0) {
             updatedTopicFields = topicExtras;
           }
           return updated;
@@ -138,7 +153,7 @@ export default function ChatPage() {
       );
 
       // Also update selectedConversation for real-time header update
-      if (payload.conversationId === selectedConversation?.id) {
+      if (payload.conversationId === conv()?.id) {
         setSelectedConversation((prev) => {
           if (!prev) return prev;
           const updates: Record<string, unknown> = {};
@@ -150,7 +165,7 @@ export default function ChatPage() {
       }
     };
     const onMessageDeleted = (payload: { conversationId: string; messageId: string; deletedBy: string; deletedAt: string }) => {
-      if (payload.conversationId === selectedConversation?.id) {
+      if (payload.conversationId === conv()?.id) {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === payload.messageId
@@ -169,15 +184,15 @@ export default function ChatPage() {
       );
     };
     const onConversationRead = (payload: { conversationId: string; readerId: string }) => {
-      if (payload.conversationId !== selectedConversation?.id) return;
+      if (payload.conversationId !== conv()?.id) return;
       setTypingUsers((prev) => ({ ...prev, [payload.readerId]: false }));
     };
     const onTyping = (payload: { conversationId: string; isTyping: boolean; userId: string }) => {
-      if (payload.conversationId !== selectedConversation?.id) return;
+      if (payload.conversationId !== conv()?.id) return;
       setTypingUsers((prev) => ({ ...prev, [payload.userId]: payload.isTyping }));
     };
     const onOpenResult = (payload: { conversationId?: string; canReply: boolean; lockedBy?: string; staffId?: string; staffName?: string; status?: string }) => {
-      const conversationId = payload.conversationId ?? selectedConversation?.id;
+      const conversationId = payload.conversationId ?? conv()?.id;
       setStaffCanReply(payload.canReply);
       setStaffLockError(payload.canReply ? null : `Bị khoá bởi ${payload.lockedBy ?? "người khác"}`);
 
@@ -194,7 +209,9 @@ export default function ChatPage() {
           prev?.id === conversationId ? { ...prev, staffId: session.user.id, staffName, status: payload.status ?? prev.status } : prev,
         );
           if (isAcceptingConversationRef.current) {
-            setSidebarTab("assigned");
+            // Determine correct tab based on who sent the last message
+            const lastFromStaff = selectedConversation?.lastMessage?.sender_id === session.user.id;
+            setSidebarTab(lastFromStaff ? "awaiting_reply" : "needs_reply");
             isAcceptingConversationRef.current = false;
           }
       }
@@ -208,7 +225,7 @@ export default function ChatPage() {
         ),
       );
 
-      if (payload.conversationId === selectedConversation?.id) {
+      if (payload.conversationId === conv()?.id) {
         void refreshLockStatus();
       }
     };
@@ -221,7 +238,7 @@ export default function ChatPage() {
             : conversation,
         ),
       );
-      if (payload.conversationId === selectedConversation?.id) {
+      if (payload.conversationId === conv()?.id) {
         setSelectedConversation((prev) => prev ? { ...prev, ...(isRevertingToResolved ? {} : { staffId: null, staffName: null }), status: payload.status ?? prev.status } : prev);
         setStaffCanReply(false);
         setStaffLockError(null);
@@ -229,7 +246,7 @@ export default function ChatPage() {
       }
     };
     const onLockExpired = (payload: { conversationId: string }) => {
-      if (payload.conversationId !== selectedConversation?.id) return;
+      if (payload.conversationId !== conv()?.id) return;
       setStaffCanReply(false);
       setStaffLockError("Phiên trả lời đã hết hạn.");
       void refreshLockStatus();
@@ -242,7 +259,7 @@ export default function ChatPage() {
             : conversation,
         ),
       );
-      if (payload.conversationId === selectedConversation?.id) {
+      if (payload.conversationId === conv()?.id) {
         setSelectedConversation((prev) => prev ? { ...prev, status: payload.status ?? "resolved", topic: "general", garmentId: null, garmentName: null } : prev);
         setStaffCanReply(false);
         setStaffLockError("Cuộc trò chuyện đã được đánh dấu đã tư vấn.");
@@ -280,13 +297,35 @@ export default function ChatPage() {
         return [newConv, ...prev];
       });
     };
-    const onSendError = (payload: { conversationId: string; reason: string }) => {
-      if (payload.conversationId !== selectedConversation?.id) return;
-      setStaffLockError("Không thể gửi tin nhắn: cuộc trò chuyện chưa được mở khóa.");
+    const onSendError = (payload: { conversationId: string; reason: string; tempId?: string }) => {
+      if (payload.conversationId !== conv()?.id) return;
+      if (payload.tempId) {
+        setFailedMessages((prev) => new Set(prev).add(payload.tempId!));
+      }
+      switch (payload.reason) {
+        case "conversation_locked":
+          setStaffLockError("Không thể gửi tin nhắn: cuộc trò chuyện chưa được mở khóa.");
+          break;
+        case "message_too_long":
+          setNotification("Tin nhắn vượt quá 2000 ký tự.");
+          break;
+        case "forbidden_payload":
+          setNotification("Không thể gửi định dạng tin nhắn này.");
+          break;
+        case "rate_limited":
+          setNotification("Bạn đang gửi tin nhắn quá nhanh, vui lòng chậm lại.");
+          break;
+        default:
+          setNotification("Không thể gửi tin nhắn.");
+      }
+      if (payload.reason !== "conversation_locked") {
+        const t = notificationTimerRef.current;
+        if (t) clearTimeout(t);
+        notificationTimerRef.current = setTimeout(() => setNotification(null), 4000);
+      }
     };
 
     socket.on("message_received", onMessageReceived);
-    socket.on("new_message", onMessageReceived);
     socket.on("message_deleted", onMessageDeleted);
     socket.on("conversation_read", onConversationRead);
     socket.on("typing", onTyping);
@@ -301,7 +340,6 @@ export default function ChatPage() {
 
     return () => {
       socket.off("message_received", onMessageReceived);
-      socket.off("new_message", onMessageReceived);
       socket.off("message_deleted", onMessageDeleted);
       socket.off("conversation_read", onConversationRead);
       socket.off("typing", onTyping);
@@ -314,20 +352,23 @@ export default function ChatPage() {
       socket.off("send_error", onSendError);
       socket.off("conversation_resolved", onConversationResolved);
     };
-  }, [socket, selectedConversation, isStaff, session]);
+  }, [socket, isStaff, session]);
 
   useEffect(() => {
     return () => {
-      if (isStaff && socket && previousConversationIdRef.current) {
-        // Do NOT emit close_conversation on unmount - lock should persist via timeout
-        // This prevents accidental lock release on page navigation
-      }
+      for (const t of sendTimeoutRef.current.values()) clearTimeout(t);
+      sendTimeoutRef.current.clear();
       if (notificationTimerRef.current) {
         clearTimeout(notificationTimerRef.current);
       }
-      disconnectChatSocket();
     };
   }, [socket, isStaff]);
+
+  useEffect(() => {
+    return () => {
+      disconnectChatSocket();
+    };
+  }, []);
 
   useEffect(() => {
     if (!session) return;
@@ -382,17 +423,16 @@ export default function ChatPage() {
     };
   }, [messageText, selectedConversation, socket]);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
-  }, [messages]);
-
-  useEffect(() => {
   selectedConversationRef.current = selectedConversation;
-  }, [selectedConversation]);
 
   // Socket connect/disconnect handler – re-join room for both staff and customers on reconnect
   useEffect(() => {
   if (!socket) return;
+
+  // Ensure socket actively tries to connect if not already
+  if (!socket.connected) {
+    socket.connect();
+  }
 
   const onConnect = () => {
     setConnected(true);
@@ -408,6 +448,9 @@ export default function ChatPage() {
       // Customer re-opens their conversation on reconnect
       socket.emit("open_conversation", { conversationId: conv.id });
     }
+
+    // Refresh messages to fill any gap while disconnected (merge instead of replace)
+    void refreshMessages(conv.id);
   };
   const onDisconnect = () => setConnected(false);
 
@@ -478,23 +521,60 @@ export default function ChatPage() {
   async function loadMessages(conversationId: string) {
     setLoadingMessages(true);
     setHasMoreMessages(false);
+    setFailedMessages(new Set());
     const result = await getConversationMessages(conversationId);
+    if (currentConversationIdRef.current !== conversationId) {
+      setLoadingMessages(false);
+      return;
+    }
     if (result.success && result.data) {
+      messagesConversationIdRef.current = conversationId;
       setMessages(result.data);
       setHasMoreMessages(result.data.length >= 15);
     }
     setLoadingMessages(false);
   }
 
+  async function refreshMessages(conversationId: string) {
+    setLoadingMessages(true);
+    const result = await getConversationMessages(conversationId);
+    if (result.success && result.data) {
+      const latestMessages = result.data;
+      const messagesConvId = messagesConversationIdRef.current;
+      if (messagesConvId !== conversationId) {
+        messagesConversationIdRef.current = conversationId;
+        setMessages(latestMessages);
+        setHasMoreMessages(latestMessages.length >= 15);
+      } else {
+        setMessages((prev) => {
+          if (prev.length === 0) return latestMessages;
+          const existingIds = new Set(prev.map(m => m.id));
+          const newMsgs = latestMessages.filter(m => !existingIds.has(m.id));
+          if (newMsgs.length === 0) return prev;
+          return [...prev, ...newMsgs].sort(
+            (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
+        });
+        setHasMoreMessages(latestMessages.length >= 15);
+      }
+    }
+    setLoadingMessages(false);
+  }
+
   async function loadOlderMessages() {
     if (!selectedConversation || messages.length === 0 || loadingOlderMessages) return;
+    const convId = selectedConversation.id;
     const oldestMessage = messages[0];
     setLoadingOlderMessages(true);
 
     const container = messagesContainerRef.current;
     const prevScrollHeight = container?.scrollHeight ?? 0;
 
-    const result = await getConversationMessages(selectedConversation.id, oldestMessage.id);
+    const result = await getConversationMessages(convId, oldestMessage.id);
+    if (currentConversationIdRef.current !== convId) {
+      setLoadingOlderMessages(false);
+      return;
+    }
     if (result.success && result.data) {
       if (result.data.length < 15) {
         setHasMoreMessages(false);
@@ -521,14 +601,73 @@ export default function ChatPage() {
 
 
   function openConversation() {
-    if (!socket || !selectedConversation) return;
-    isAcceptingConversationRef.current = true; 
-    socket.emit("open_conversation", { conversationId: selectedConversation.id });
+    if (!socket) {
+      console.warn("openConversation: socket is null, cannot emit");
+      return;
+    }
+    if (!selectedConversation) return;
+    isAcceptingConversationRef.current = selectedConversation.staffId === null;
+
+    const doEmit = () => {
+      socket!.emit("open_conversation", { conversationId: selectedConversation!.id });
+    };
+
+    if (!socket.connected) {
+      socket.connect();
+      socket.once("connect", doEmit);
+    } else {
+      doEmit();
+    }
   }
+  const sendTimeoutRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
   function sendMessage() {
     if (!socket || !selectedConversation || !messageText.trim()) return;
-    socket.emit("send_message", { conversationId: selectedConversation.id, content: messageText.trim() });
+    const convId = selectedConversation.id;
+    const content = messageText.trim();
     setMessageText("");
+
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const optimistic: ChatMessage = {
+      id: tempId,
+      conversation_id: convId,
+      sender_id: session?.user.id ?? "",
+      sender_type: isStaff ? "staff" : "customer",
+      content,
+      message_type: "text",
+      metadata: null,
+      created_at: new Date().toISOString(),
+      deleted_at: null,
+      deleted_by: null,
+    };
+
+    setMessages((prev) => [...prev, optimistic]);
+
+    emitChatMessage({ socket, conversationId: convId, content, tempId, sendTimeoutRef, setMessages, setFailedMessages });
+  }
+
+  function retrySendMessage(messageContent: string) {
+    if (!socket || !selectedConversation) return;
+    const convId = selectedConversation.id;
+    const content = messageContent;
+
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const optimistic: ChatMessage = {
+      id: tempId,
+      conversation_id: convId,
+      sender_id: session?.user.id ?? "",
+      sender_type: isStaff ? "staff" : "customer",
+      content,
+      message_type: "text",
+      metadata: null,
+      created_at: new Date().toISOString(),
+      deleted_at: null,
+      deleted_by: null,
+    };
+
+    setMessages((prev) => [...prev, optimistic]);
+
+    emitChatMessage({ socket, conversationId: convId, content, tempId, sendTimeoutRef, setMessages, setFailedMessages });
   }
 
   function deleteMessage(messageId: string) {
@@ -536,14 +675,9 @@ export default function ChatPage() {
     socket.emit("delete_message", { conversationId: selectedConversation.id, messageId });
   }
 
-  function markRead() {
-    if (!socket || !selectedConversation) return;
-    if (isStaff) {
-      socket.emit("resolve_conversation", { conversationId: selectedConversation.id });
-      return;
-    }
-
-    socket.emit("read_conversation", { conversationId: selectedConversation.id });
+  function resolveConversation() {
+    if (!socket || !selectedConversation || !isStaff) return;
+    socket.emit("resolve_conversation", { conversationId: selectedConversation.id });
   }
 
   function setTyping(isTyping: boolean) {
@@ -551,7 +685,7 @@ export default function ChatPage() {
     socket.emit("typing", { conversationId: selectedConversation.id, isTyping });
   }
 
-  function handleSetSidebarTab(tab: "assigned" | "unassigned" | "resolved") {
+  function handleSetSidebarTab(tab: "needs_reply" | "awaiting_reply" | "unassigned" | "resolved") {
   hasManuallyInteractedRef.current = true;
   setSidebarTab(tab);
   }
@@ -599,13 +733,15 @@ return (
       onJoinConversation={(id) => void joinConversation(id, true)}
       onSendMessage={sendMessage}
       onOpenConversation={openConversation}
-      onMarkRead={markRead}
+      onResolveConversation={resolveConversation}
       onTyping={setTyping}
       hasMoreMessages={hasMoreMessages}
       loadingOlderMessages={loadingOlderMessages}
       onLoadOlderMessages={loadOlderMessages} 
       messagesContainerRef={messagesContainerRef}
       onDeleteMessage={deleteMessage}
+      failedMessages={failedMessages}
+      onRetryMessage={retrySendMessage}
     />
   </StaffPortalShell>
 );

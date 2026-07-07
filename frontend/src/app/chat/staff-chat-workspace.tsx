@@ -27,20 +27,23 @@ interface StaffChatWorkspaceProps {
   lockStatus: ConversationLockStatus | null;
   staffCanReply: boolean;
   staffLockError: string | null;
-  sidebarTab: "assigned" | "unassigned" | "resolved";
-  setSidebarTab: (tab: "assigned" | "unassigned" | "resolved") => void;
+  sidebarTab: "needs_reply" | "awaiting_reply" | "unassigned" | "resolved";
+  setSidebarTab: (tab: "needs_reply" | "awaiting_reply" | "unassigned" | "resolved") => void;
   notification: string | null;
   session: AuthSession | null;
   onJoinConversation: (conversationId: string) => void;
   onSendMessage: () => void;
   onOpenConversation: () => void;
-  onMarkRead: () => void;
+  onResolveConversation: () => void;
+
   onTyping: (isTyping: boolean) => void;
   hasMoreMessages: boolean;
   loadingOlderMessages: boolean;
   onLoadOlderMessages: () => void;
   messagesContainerRef: RefObject<HTMLDivElement | null>;
   onDeleteMessage: (messageId: string) => void;
+  failedMessages?: Set<string>;
+  onRetryMessage?: (content: string) => void;
 }
 
 export function StaffChatWorkspace({
@@ -63,13 +66,15 @@ export function StaffChatWorkspace({
   onJoinConversation,
   onSendMessage,
   onOpenConversation,
-  onMarkRead,
+  onResolveConversation,
   onTyping,
   hasMoreMessages,
   loadingOlderMessages,
   onLoadOlderMessages,
   messagesContainerRef,
   onDeleteMessage,
+  failedMessages,
+  onRetryMessage,
 }: StaffChatWorkspaceProps) {
   // Cleanup toast timer on unmount
   useEffect(() => {
@@ -94,6 +99,7 @@ export function StaffChatWorkspace({
   const lastSuggestedMsgIdRef = useRef<string | null>(null);
   const [aiToast, setAiToast] = useState<string | null>(null);
   const aiToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showResolveConfirm, setShowResolveConfirm] = useState(false);
 
   function showAiToast(msg: string) {
     setAiToast(msg);
@@ -122,10 +128,11 @@ export function StaffChatWorkspace({
     }
   }
 
-  const assignedConversations = conversations.filter((c) => c.staffId === session?.user.id && c.status !== "resolved");
-  const unassignedConversations = conversations.filter((c) => c.staffId === null && c.status === "open" && c.lastMessage?.sender_id === c.customerId);
+  const needsReplyConversations = conversations.filter((c) => c.staffId === session?.user.id && c.status !== "resolved" && (!c.lastMessage || c.lastMessage.sender_id !== session?.user.id));
+  const awaitingReplyConversations = conversations.filter((c) => c.staffId === session?.user.id && c.status !== "resolved" && c.lastMessage && c.lastMessage.sender_id === session?.user.id);
+  const unassignedConversations = conversations.filter((c) => c.staffId === null && c.status === "open");
   const resolvedConversations = conversations.filter((c) => c.status === "resolved");
-  const displayedConversations = sidebarTab === "assigned" ? assignedConversations : sidebarTab === "resolved" ? resolvedConversations : unassignedConversations;
+  const displayedConversations = sidebarTab === "needs_reply" ? needsReplyConversations : sidebarTab === "awaiting_reply" ? awaitingReplyConversations : sidebarTab === "resolved" ? resolvedConversations : unassignedConversations;
 
   // Determine the viewing mode
   const isUnassignedPreview = selectedConversation && selectedConversation.staffId === null;
@@ -133,8 +140,13 @@ export function StaffChatWorkspace({
   const isResolved = selectedConversation?.status === "resolved";
 
   useEffect(() => {
-    if (messagesEndRef.current?.scrollIntoView) {
-      messagesEndRef.current.scrollIntoView({ block: "end", behavior: "smooth" });
+    const container = messagesContainerRef.current;
+    const endEl = messagesEndRef.current;
+    if (!container || !endEl || !endEl.scrollIntoView) return;
+
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+    if (isNearBottom) {
+      endEl.scrollIntoView({ block: "end", behavior: "smooth" });
     }
   }, [messages]);
 
@@ -143,7 +155,7 @@ export function StaffChatWorkspace({
     if (isUnassignedPreview || isAssignedToOther || isResolved || !selectedConversation || !session) return;
 
     const lastCustomerMsg = [...messages].reverse().find(
-      (m) => m.sender_id !== session.user.id && !m.deleted_at,
+      (m) => m.sender_id !== session.user.id && !m.deleted_at && (!m.message_type || m.message_type === "text"),
     );
     if (!lastCustomerMsg || lastSuggestedMsgIdRef.current === lastCustomerMsg.id) return;
     if (aiSuggestion.loading) return;
@@ -154,13 +166,21 @@ export function StaffChatWorkspace({
 
     // Collect last 10 messages (excluding the last customer msg) as history
     const historyMessages = messages
-      .filter((m) => !m.deleted_at && m.sender_id === m.sender_id)
+      .filter((m) => !m.deleted_at && (!m.message_type || m.message_type === "text" || m.message_type === "product_card"))
       .slice(-10)
-      .map((m) => ({
-        role: (m.sender_id === session.user.id ? "staff" : "customer") as "customer" | "staff",
-        content: m.content,
-        createdAt: m.created_at,
-      }));
+      .map((m) => {
+        let content = m.content;
+        if (m.message_type === "product_card" && m.metadata?.product) {
+          const p = m.metadata.product as Record<string, unknown>;
+          const price = typeof p.price === "number" ? p.price.toLocaleString() : "";
+          content = `[Đã gửi sản phẩm] ${p.name ?? ""} | Size: ${p.size ?? "N/A"} | Giá: ${price}đ/ngày`;
+        }
+        return {
+          role: (m.sender_id === session.user.id ? "staff" : "customer") as "customer" | "staff",
+          content,
+          createdAt: m.created_at,
+        };
+      });
 
     getProductAdvisor({
       message: lastCustomerMsg.content,
@@ -221,20 +241,38 @@ export function StaffChatWorkspace({
         <div className="mb-5 flex flex-wrap items-center gap-2 rounded-lg bg-parchment p-3 text-sm text-stone-700">
           <button
             type="button"
-            onClick={() => setSidebarTab("assigned")}
+            onClick={() => setSidebarTab("needs_reply")}
             className={`inline-flex items-center gap-2 rounded-full px-4 py-2 transition ${
-              sidebarTab === "assigned" ? "bg-oxblood text-white" : "bg-white text-stone-700 hover:bg-sand"
+              sidebarTab === "needs_reply" ? "bg-oxblood text-white" : "bg-white text-stone-700 hover:bg-sand"
             }`}
           >
-            Đang hỗ trợ
+            Cần trả lời
             <span
               className={`inline-flex items-center justify-center min-w-[20px] h-5 rounded-full px-1.5 text-[11px] font-bold leading-none ${
-                sidebarTab === "assigned"
+                sidebarTab === "needs_reply"
                   ? "bg-white/20 text-white"
                   : "bg-lotus/10 text-lotus"
               }`}
             >
-              {assignedConversations.length}
+              {needsReplyConversations.length}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSidebarTab("awaiting_reply")}
+            className={`inline-flex items-center gap-2 rounded-full px-4 py-2 transition ${
+              sidebarTab === "awaiting_reply" ? "bg-oxblood text-white" : "bg-white text-stone-700 hover:bg-sand"
+            }`}
+          >
+            Chờ phản hồi
+            <span
+              className={`inline-flex items-center justify-center min-w-[20px] h-5 rounded-full px-1.5 text-[11px] font-bold leading-none ${
+                sidebarTab === "awaiting_reply"
+                  ? "bg-white/20 text-white"
+                  : "bg-stone-200 text-stone-600"
+              }`}
+            >
+              {awaitingReplyConversations.length}
             </span>
           </button>
           <button
@@ -439,7 +477,7 @@ export function StaffChatWorkspace({
             {/* Preview Banner for unassigned conversations */}
             {isUnassignedPreview && (
               <div className="mb-5 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800 shrink-0">
-                🔍 Chế độ xem trước — Bạn đang xem tin nhắn. Nhấn <strong>"Tiếp nhận hỗ trợ"</strong> để nhận cuộc trò chuyện này.
+                {String.fromCodePoint(0x1F50D)} Chế độ xem trước &mdash; Bạn đang xem tin nhắn. Nhấn <strong>&ldquo;Tiếp nhận hỗ trợ&rdquo;</strong> để nhận cuộc trò chuyện này.
               </div>
             )}
 
@@ -542,6 +580,11 @@ export function StaffChatWorkspace({
                                 <p className="text-sm text-stone-500">Không thể hiển thị sản phẩm</p>
                               );
                             })()
+                          ) : message.sender_type === "ai" ? (
+                            <div className="rounded-xl border border-sand/70 bg-stone-50 px-4 py-3 shadow-sm">
+                              <p className="text-xs font-semibold text-stone-500 mb-1">🤖 Trợ lý AI</p>
+                              <p className="text-sm leading-6 text-stone-800">{message.content}</p>
+                            </div>
                           ) : (
                             <p className="text-sm leading-6">{message.content}</p>
                           )}
@@ -555,6 +598,17 @@ export function StaffChatWorkspace({
                             title="Xoá tin nhắn"
                           >
                             ✕
+                          </button>
+                        )}
+                        {/* Retry button for failed messages */}
+                        {isMine && message.id.startsWith("temp-") && failedMessages?.has(message.id) && (
+                          <button
+                            type="button"
+                            onClick={() => onRetryMessage?.(message.content)}
+                            className="absolute -bottom-2 -right-2 inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-500 text-white text-xs shadow-sm hover:bg-amber-600 transition"
+                            title="Gửi lại"
+                          >
+                            ↻
                           </button>
                         )}
                       </div>
@@ -625,12 +679,18 @@ export function StaffChatWorkspace({
                                     key={p.garmentId}
                                     className="flex gap-2 rounded-xl border border-sand/70 bg-white p-2 min-w-0"
                                   >
-                                    <img
-                                      src={p.imageUrl}
-                                      alt={p.name}
-                                      className="w-12 h-12 rounded-lg object-cover border border-sand/70 shrink-0"
-                                      onError={(e) => { e.currentTarget.src = DEFAULT_PRODUCT_IMAGE; }}
-                                    />
+                                     {p.imageUrl ? (
+                                      <img
+                                        src={p.imageUrl}
+                                        alt={p.name}
+                                        className="w-12 h-12 rounded-lg object-cover border border-sand/70 shrink-0"
+                                        onError={(e) => { e.currentTarget.src = DEFAULT_PRODUCT_IMAGE; }}
+                                      />
+                                    ) : (
+                                      <div className="w-12 h-12 rounded-lg bg-sand/50 shrink-0 flex items-center justify-center text-stone-400 text-xs">
+                                        📷
+                                      </div>
+                                    )}
                                     <div className="min-w-0 space-y-0.5 flex-1">
                                       <p className="text-xs font-semibold text-ink truncate">{p.name}</p>
                                       <p className="text-[11px] text-lotus font-semibold">{formatVND(p.dailyPrice)}</p>
@@ -746,7 +806,7 @@ export function StaffChatWorkspace({
                 {!isUnassignedPreview && !isResolved && (
                   <button
                     type="button"
-                    onClick={onMarkRead}
+                    onClick={() => setShowResolveConfirm(true)}
                     className="inline-flex items-center justify-center rounded-lg border border-lotus px-5 py-3 text-sm font-semibold text-lotus hover:bg-lotus/10"
                   >
                     Đánh dấu đã tư vấn
@@ -767,6 +827,36 @@ export function StaffChatWorkspace({
           </div>
         )}
       </section>
+
+      {showResolveConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="mx-4 w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="mb-2 text-lg font-semibold text-ink">Xác nhận</h3>
+            <p className="mb-6 text-sm text-stone-600">
+              Bạn có chắc chắn muốn đánh dấu cuộc trò chuyện này là đã tư vấn?
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowResolveConfirm(false)}
+                className="rounded-lg border border-sand px-4 py-2 text-sm text-stone-700 hover:bg-parchment"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowResolveConfirm(false);
+                  onResolveConversation();
+                }}
+                className="rounded-lg bg-lotus px-4 py-2 text-sm text-white hover:bg-red-800"
+              >
+                Xác nhận
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
