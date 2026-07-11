@@ -537,6 +537,15 @@ Dưới đây là danh sách sản phẩm hiện có trong cửa hàng:
 
 ${productLines}
 
+### QUY TẮC LỌC SẢN PHẨM THEO YÊU CẦU
+Khi khách yêu cầu sản phẩm theo các tiêu chí, bạn PHẢI lọc từ danh sách trên:
+- **Budget (giá)**: So sánh trực tiếp budget với cột "Giá" (VNĐ/ngày). "Dưới X" → dailyPrice <= X. "Trên X" → dailyPrice >= X. "Khoảng X" → dailyPrice gần X nhất.
+- **Màu sắc**: So sánh với cột "Màu". "Áo dài tím" → màu "tím". "Màu đỏ" → màu "đỏ".
+- **Size**: So sánh với cột "Size". "Size M", "cỡ L" → size_label chứa M hoặc L.
+- **Loại sản phẩm**: So sánh với cột "Loại". "Áo dài" → Loại = "Áo dài".
+- **NẾU có sản phẩm thỏa mãn**: PHẢI đề xuất sản phẩm đó. KHÔNG được nói "không có" rồi lại liệt kê sản phẩm thỏa mãn trong cùng câu trả lời.
+- **NẾU không có sản phẩm nào**: Kiểm tra lại catalog một lần nữa trước khi kết luận.
+
 ### QUY TẮC XỬ LÝ HỘI THOẠI
 1. INTENT SEGMENTATION: Xác định các câu hỏi độc lập trong chuỗi tin nhắn gần đây của khách.
 2. TOPIC GROUPING: Gom các câu hỏi cùng sản phẩm hoặc chủ đề vào một nhóm.
