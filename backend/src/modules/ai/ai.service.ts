@@ -4,7 +4,9 @@ import { ok } from "../../common/api-response";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { CreateTryonDto, TryonMode } from "./dto/create-tryon.dto";
 import type { ProductAdvisorDto } from "./dto/product-advisor.dto";
-import type { AdvisorProduct, OpenRouterResponse, ProductAdvisorResponse } from "./interfaces/ai-response.interface";
+import type { AdvisorProduct, OpenRouterResponse, ProductAdvisorResponse, ProductFilters } from "./interfaces/ai-response.interface";
+import { detectIntent } from "./utils/intent-detector";
+import { extractFilters } from "./utils/filter-extractor";
 
 const REPLICATE_API = "https://api.replicate.com/v1";
 const DEFAULT_FACE_SWAP_MODEL = "cdingram/face-swap";
@@ -16,6 +18,40 @@ const MIN_IMAGE_BYTES = 10 * 1024;
 const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
 
 type AllowedMimeType = (typeof ALLOWED_MIME_TYPES)[number];
+
+function getHardcodedReply(text: string, isAutoReply: boolean): ProductAdvisorResponse | null {
+  const lower = text.toLowerCase().trim();
+
+  // Greetings
+  if (/(?:^|(?<=\s))(chào|hello|hi|hí|hê?lô|alo)(?=\s|$|[.,;:!?])/i.test(lower)) {
+    return {
+      topics: [{ title: "Chào hỏi", assistantReply: "Chào bạn! Em có thể giúp gì cho bạn về sản phẩm hôm nay ạ?", recommendedProductIds: [], reasons: {}, products: [] }],
+    };
+  }
+
+  // Thanks
+  if (/(cảm ơn|cám ơn|thanks|thank you)/i.test(lower)) {
+    return {
+      topics: [{ title: "Cảm ơn", assistantReply: "Cảm ơn bạn! Nếu cần thêm thông tin gì, bạn cứ hỏi em nhé.", recommendedProductIds: [], reasons: {}, products: [] }],
+    };
+  }
+
+  // Auto-reply only: order / transaction / appointment → wait for staff
+  if (isAutoReply && /(đơn hàng|giao dịch|cuộc hẹn|booking|hủy|hoàn tiền|khiếu nại)/i.test(lower)) {
+    return {
+      topics: [{ title: "Cần staff hỗ trợ", assistantReply: "Vấn đề này cần nhân viên hỗ trợ trực tiếp. Vui lòng để lại tin nhắn và staff sẽ trả lời bạn sớm nhất.", recommendedProductIds: [], reasons: {}, products: [] }],
+    };
+  }
+
+  // All modes: store policies → staff needed
+  if (/(giờ mở cửa|mấy giờ|ở đâu|địa chỉ|giao hàng|vận chuyển|thanh toán|chuyển khoản|đổi trả|bảo hành|chính sách)/i.test(lower)) {
+    return {
+      topics: [{ title: "Chính sách cửa hàng", assistantReply: "Vấn đề này cần nhân viên hỗ trợ trực tiếp. Vui lòng để lại tin nhắn và staff sẽ trả lời bạn sớm nhất.", recommendedProductIds: [], reasons: {}, products: [] }],
+    };
+  }
+
+  return null;
+}
 
 type NormalizedImage = {
   dataUri: string;
@@ -474,9 +510,46 @@ export class AiService {
   }
 
   async productAdvisor(dto: ProductAdvisorDto, isAutoReply = false) {
-    const catalog = await this.queryCatalog();
+    const { intent, confidence } = detectIntent(dto.message);
+    console.log("=== AI productAdvisor ===");
+    console.log("Message:", dto.message);
+    console.log("Intent:", intent, `(confidence: ${confidence})`);
 
-    if (catalog.length === 0) {
+    const hardcoded = getHardcodedReply(dto.message, isAutoReply);
+    if (hardcoded) {
+      console.log("→ Hardcoded reply (no AI call)");
+      return ok(hardcoded);
+    }
+
+    const filters: ProductFilters | undefined = intent === "search" ? extractFilters(dto.message) : undefined;
+    console.log("Filters:", JSON.stringify(filters, null, 2));
+
+    let catalog: AdvisorProduct[] = [];
+
+    if (intent !== "other") {
+      catalog = await this.queryCatalog(filters);
+      console.log("Catalog count:", catalog.length);
+      if (catalog.length > 0) {
+        console.log("First 3 products:", catalog.slice(0, 3).map((p) => ({ id: p.garmentId, name: p.name, color: p.color, size: p.size, price: p.dailyPrice, inStock: p.inStock })));
+      }
+
+      if (catalog.length === 0 && filters?.keyword) {
+        console.log("→ 0 results with keyword, retrying without keyword");
+        catalog = await this.queryCatalog({ ...filters, keyword: undefined });
+        console.log("Catalog count (no keyword):", catalog.length);
+        if (catalog.length > 0) {
+          console.log("First 3 products (no keyword):", catalog.slice(0, 3).map((p) => ({ id: p.garmentId, name: p.name, color: p.color, size: p.size, price: p.dailyPrice, inStock: p.inStock })));
+        }
+      }
+
+      if (catalog.length === 0) {
+        if (intent === "search" && filters && isAutoReply) {
+          return ok({ topics: [{ title: "Không tìm thấy", assistantReply: "Hiện tại chưa có sản phẩm phù hợp với yêu cầu của bạn. Bạn có thể thử thay đổi tiêu chí hoặc liên hệ staff để được tư vấn thêm.", recommendedProductIds: [], reasons: {}, products: [] }] });
+        }
+        return ok({ topics: [] });
+      }
+    } else {
+      console.log("→ Other intent, skip catalog query");
       return ok({ topics: [] });
     }
 
@@ -486,9 +559,58 @@ export class AiService {
     return ok(this.parseAdvisorResponse(raw, catalog));
   }
 
-  private async queryCatalog(): Promise<AdvisorProduct[]> {
+  private async queryCatalog(filters?: ProductFilters): Promise<AdvisorProduct[]> {
+    const where: Record<string, unknown> = { isActive: true, deletedAt: null };
+
+    if (filters?.category?.length) {
+      where.category = { name: { in: filters.category } };
+    }
+
+    const andConds: Record<string, unknown>[] = [];
+
+    if (filters?.color?.length) {
+      const uniqueColors = [...new Set(filters.color.map((c) => c.toLowerCase()))];
+      andConds.push({
+        OR: uniqueColors.map((c) => ({ color: { contains: c, mode: "insensitive" } })),
+      });
+    }
+
+    if (filters?.keyword) {
+      andConds.push({
+        OR: [
+          { name: { contains: filters.keyword, mode: "insensitive" } },
+          { description: { contains: filters.keyword, mode: "insensitive" } },
+        ],
+      });
+    }
+
+    if (andConds.length > 0) {
+      where.AND = andConds;
+    }
+
+    const sizeCond: Record<string, unknown> | undefined = filters?.size?.length
+      ? { size_label: { in: filters.size }, is_active: true }
+      : undefined;
+    const priceMinCond: Record<string, unknown> | undefined = filters?.budgetMin !== undefined
+      ? { daily_price: { gte: filters.budgetMin } }
+      : undefined;
+    const priceMaxCond: Record<string, unknown> | undefined = filters?.budgetMax !== undefined
+      ? { daily_price: { lte: filters.budgetMax } }
+      : undefined;
+
+    const garmentSizeAnd: Array<Record<string, unknown>> = [];
+    if (sizeCond) garmentSizeAnd.push(sizeCond);
+    if (priceMinCond) garmentSizeAnd.push(priceMinCond);
+    if (priceMaxCond) garmentSizeAnd.push(priceMaxCond);
+
+    if (garmentSizeAnd.length > 0) {
+      where.garment_sizes = { some: { AND: garmentSizeAnd } };
+    }
+
+    console.log("Query WHERE:", JSON.stringify(where, null, 2).slice(0, 2000));
+
     const garments = await this.prisma.garment.findMany({
-      where: { isActive: true, deletedAt: null },
+      where: where as never,
       take: 50,
       include: {
         category: true,
@@ -502,18 +624,26 @@ export class AiService {
       orderBy: { createdAt: "desc" },
     });
 
-    return garments.map((g) => ({
-      garmentId: g.id,
-      name: g.name,
-      category: g.category?.name ?? "",
-      color: g.color ?? "",
-      imageUrl: g.images[0]?.imageUrl ?? "",
-      dailyPrice: g.garment_sizes[0]?.daily_price ? Number(g.garment_sizes[0].daily_price) : 0,
-      depositAmount: g.garment_sizes[0]?.deposit_amount ? Number(g.garment_sizes[0].deposit_amount) : 0,
-      size: g.garment_sizes.map((s) => s.size_label).filter(Boolean).join(", "),
-      reason: "",
-      inStock: g.assets.length > 0,
-    }));
+    return garments.map((g) => {
+      const activeSizes = g.garment_sizes;
+      const prices = activeSizes.map((s) => Number(s.daily_price)).filter((p) => p > 0);
+      const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
+      const deposits = activeSizes.map((s) => Number(s.deposit_amount)).filter((d) => d > 0);
+      const minDeposit = deposits.length > 0 ? Math.min(...deposits) : 0;
+
+      return {
+        garmentId: g.id,
+        name: g.name,
+        category: g.category?.name ?? "",
+        color: g.color ?? "",
+        imageUrl: g.images[0]?.imageUrl ?? "",
+        dailyPrice: minPrice,
+        depositAmount: minDeposit,
+        size: activeSizes.map((s) => s.size_label).filter(Boolean).join(", "),
+        reason: "",
+        inStock: g.assets.length > 0,
+      };
+    });
   }
 
   private buildAdvisorPrompt(catalog: AdvisorProduct[], isAutoReply = false): string {

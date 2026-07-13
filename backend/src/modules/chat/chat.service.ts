@@ -6,7 +6,7 @@ import type { AuthenticatedUser } from "../auth/auth-user";
 import { AiService } from "../ai/ai.service";
 
 const AI_USER_ID = "00000000-0000-0000-0000-000000000000";
-const QUESTION_KEYWORDS = /[?？]|\b(gì|nào|ko|không|bao nhiêu|có|sao|thế nào|khi nào|mấy|à|nhỉ|hả)\b/i;
+const QUESTION_KEYWORDS = /[?？]|(?:^|(?<=\s))(gì|nào|ko|không|bao nhiêu|có|sao|thế nào|khi nào|mấy|à|nhỉ|hả)(?=\s|$|[.,;:!?])/i;
 const AI_DEBOUNCE_MS = 3000;
 
 @Injectable()
@@ -373,14 +373,26 @@ export class ChatService {
     hasOnlineStaff: boolean,
     messageType?: string,
   ): Promise<messages[]> {
-    if (hasOnlineStaff) return [];
+    //console.log("maybeAutoReply", conversationId, messageContent, "onlineStaff?", hasOnlineStaff);
+    if (hasOnlineStaff) {
+      //console.log("→ skip: hasOnlineStaff", hasOnlineStaff);
+      return [];
+    }
     if (messageType !== "product_card" && messageType !== "booking_card") {
-      if (!QUESTION_KEYWORDS.test(messageContent)) return [];
+      // Greetings/thanks should bypass QUESTION_KEYWORDS (they're not questions but trigger hardcoded reply)
+      const isGreetingOrThanks = /(?:^|(?<=\s))(chào|hello|hi|hí|hê?lô|alo)(?=\s|$|[.,;:!?])/i.test(messageContent) ||
+        /(cảm ơn|cám ơn|thanks|thank you)/i.test(messageContent);
+      if (!isGreetingOrThanks) {
+        const match = QUESTION_KEYWORDS.test(messageContent);
+        //console.log("→ QUESTION_KEYWORDS test:", match);
+        if (!match) return [];
+      }
     }
 
     const conversation = await this.prisma.conversations.findUnique({
       where: { id: conversationId },
     });
+    //console.log("→ conv staff_id:", conversation?.staff_id);
     if (!conversation || conversation.staff_id !== null) return [];
 
     // Debounce: reset timer each time customer sends, only fire after AI_DEBOUNCE_MS of silence
@@ -390,7 +402,9 @@ export class ChatService {
 
       const timeout = setTimeout(async () => {
         this.aiDebounceMap.delete(conversationId);
+        //console.log("→ DEBOUNCE FIRE, calling performAutoReply");
         const result = await this.performAutoReply(conversationId, messageContent, conversation);
+        //console.log("→ performAutoReply done, topics:", result.length);
         resolve(result);
       }, AI_DEBOUNCE_MS);
 
@@ -596,6 +610,60 @@ export class ChatService {
       where: { status: "open", staff_id: { not: null } },
       data: { staff_id: null, updated_at: new Date() },
     });
+  }
+
+  //async releaseStaffAssignmentsByStaffId(staffId: string) {
+    // const result = await this.prisma.conversations.updateMany({
+    //   where: { status: "open", staff_id: staffId },
+    //   data: { staff_id: null, updated_at: new Date() },
+    // });
+    //console.log("releaseStaffAssignmentsByStaffId", staffId, "updated:", result.count);
+  //}
+
+  async autoReplyReleasedConversations(staffId: string): Promise<Array<{ conversationId: string; messages: messages[] }>> {
+    const conversations = await this.prisma.conversations.findMany({
+      where: { status: "open", staff_id: staffId },
+      select: { id: true, customer_id: true },
+    });
+    if (conversations.length === 0) return [];
+
+    await this.prisma.conversations.updateMany({
+      where: { id: { in: conversations.map(c => c.id) } },
+      data: { staff_id: null, updated_at: new Date() },
+    });
+    //console.log("autoReplyReleasedConversations released", conversations.length, "conversations");
+
+    const results: Array<{ conversationId: string; messages: messages[] }> = [];
+    for (const conv of conversations) {
+      const lastMsg = await this.prisma.messages.findFirst({
+        where: {
+          conversation_id: conv.id,
+          deleted_at: null,
+          sender_id: conv.customer_id,
+        },
+        orderBy: { created_at: "desc" },
+        select: { content: true, message_type: true, created_at: true },
+      });
+      if (!lastMsg) continue;
+
+      const lastAiReply = await this.prisma.messages.findFirst({
+        where: {
+          conversation_id: conv.id,
+          deleted_at: null,
+          sender_type: "ai",
+          created_at: { gt: lastMsg.created_at },
+        },
+        orderBy: { created_at: "desc" },
+        select: { id: true },
+      });
+      if (lastAiReply) continue;
+
+      const aiMsgs = await this.maybeAutoReply(conv.id, lastMsg.content, false, lastMsg.message_type);
+      if (aiMsgs.length > 0) {
+        results.push({ conversationId: conv.id, messages: aiMsgs });
+      }
+    }
+    return results;
   }
 
   async resolveAllReopenedConversations() {

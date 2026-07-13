@@ -23,6 +23,22 @@ export interface ProductAdvisorResponse {
   topics: AdvisorTopic[];
 }
 
+export type IntentType = "search" | "general" | "other";
+
+export interface IntentResult {
+  intent: IntentType;
+  confidence: number;
+}
+
+export interface ProductFilters {
+  category?: string[];
+  color?: string[];
+  size?: string[];
+  budgetMin?: number;
+  budgetMax?: number;
+  keyword?: string;
+}
+
 export interface OpenRouterMessage {
   role: "system" | "user" | "assistant";
   content: string;
