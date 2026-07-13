@@ -32,6 +32,10 @@ export function createChatSocket(accessToken: string) {
     timeout: 30000,
   });
 
+  //socket.on("connect", () => console.log("socket connected", socket!.id));
+  //socket.on("disconnect", (reason) => console.log("socket disconnected", reason));
+  //socket.on("connect_error", (err) => console.log("socket connect_error", err.message));
+
   return socket;
 }
 
@@ -41,6 +45,10 @@ export function getChatSocket() {
 
 export function disconnectChatSocket() {
   if (!socket) return;
+  //console.log("disconnectChatSocket: disconnecting socket", socket.id);
+  socket.removeAllListeners();
   socket.disconnect();
+  socket.io.reconnection(false);
   socket = null;
+  //console.log("disconnectChatSocket: socket set to null, reconnection disabled");
 }

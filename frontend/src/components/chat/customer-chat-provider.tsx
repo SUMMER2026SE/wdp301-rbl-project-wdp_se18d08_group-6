@@ -25,7 +25,7 @@ interface CustomerChatProviderProps {
 }
 
 export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
-  const { session } = useAuth();
+  const { session, signOut: authSignOut, refreshUser } = useAuth();
   const pathname = usePathname();
 
   const isCustomer = session?.user.role === "customer";
@@ -57,9 +57,9 @@ export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const selectedConversationRef = useRef<ChatConversation | null>(null);
   const sendTimeoutRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-
   const socketRef =
     useRef<ReturnType<typeof createChatSocket> | null>(null);
+  const roomJoinedRef = useRef(false);
 
   // =============================
   // SOCKET INIT
@@ -72,17 +72,21 @@ export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
     const socket = socketRef.current;
 
     const onConnect = () => {
+      //console.log("CONNECTED");
+      //console.log(socket.id);
+      //console.log(selectedConversationRef.current);
       const conv = selectedConversationRef.current;
       if (!conv) return;
 
-      socket.emit("join_room", { conversationId: conv.id });
+      socket.emit("join_room", { conversationId: conv.id }, () => {
+        roomJoinedRef.current = true;
+      });
       socket.emit("open_conversation", { conversationId: conv.id });
+      void loadMessages(conv.id);
     };
 
-    const onMessageReceived = (payload: {
-      conversationId: string;
-      message: ChatMessage;
-    }) => {
+    const onMessageReceived = (payload: any) => {
+      //console.log("MESSAGE_RECEIVED", payload.message.id, payload.message.content);
       // If the message is from current user, remove only the first matching optimistic message (fallback)
       if (payload.message.sender_id === session?.user.id) {
         setMessages((prev) => {
@@ -148,7 +152,21 @@ export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
     //   }
     // };
 
+    const onDisconnect = (reason: string) => {
+      roomJoinedRef.current = false;
+      if (reason === "io server disconnect") {
+        void refreshUser().then((user) => {
+          if (!user) authSignOut();
+        });
+        socket.connect();
+      }
+    };
+
+    //socket.onAny((event, ...args) => {
+    //  console.log("EVENT", event, args);
+    //});
     socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
     socket.on("message_received", onMessageReceived);
     socket.on("message_deleted", onMessageDeleted);
     socket.on("typing", onTyping);
@@ -157,7 +175,9 @@ export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
     if (socket.connected) onConnect();
 
     return () => {
+      socket.offAny();
       socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
       socket.off("message_received", onMessageReceived);
       socket.off("message_deleted", onMessageDeleted);
       socket.off("typing", onTyping);
@@ -165,7 +185,7 @@ export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [session?.accessToken, isCustomer, enabled]);
+  }, [session?.accessToken, isCustomer, enabled, authSignOut, refreshUser]);
 
   // =============================
   // CLEANUP SOCKET
@@ -211,17 +231,16 @@ export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
   }
 
   async function loadMessages(conversationId: string) {
-    setLoadingMessages(true);
-    setHasMoreMessages(false);
+    //console.log("LOAD", conversationId);
 
     const result = await getConversationMessages(conversationId);
 
-    if (result.success && result.data) {
-      setMessages(result.data ?? []);
-      setHasMoreMessages((result.data ?? []).length >= 15);
-    }
+    //console.log("RESULT", result.success);
+    //console.log("COUNT", result.data?.length);
 
-    setLoadingMessages(false);
+    if (result.success && result.data) {
+      setMessages(result.data);
+    }
   }
 
   async function loadOlderMessages() {
@@ -285,7 +304,7 @@ export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
     };
     setMessages((prev) => [...prev, optimistic]);
 
-    emitChatMessage({ socket: socketRef.current, conversationId: convId, content, tempId, sendTimeoutRef, setMessages, setFailedMessages });
+    emitChatMessage({ socket: socketRef.current, conversationId: convId, content, tempId, sendTimeoutRef, setMessages, setFailedMessages, roomJoinedRef });
   }
 
   function retrySendMessage(messageContent: string) {
@@ -309,7 +328,7 @@ export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
     };
     setMessages((prev) => [...prev, optimistic]);
 
-    emitChatMessage({ socket: socketRef.current, conversationId: convId, content, tempId, sendTimeoutRef, setMessages, setFailedMessages });
+    emitChatMessage({ socket: socketRef.current, conversationId: convId, content, tempId, sendTimeoutRef, setMessages, setFailedMessages, roomJoinedRef });
   }
 
   function deleteMessage(messageId: string) {

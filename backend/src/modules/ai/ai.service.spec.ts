@@ -122,7 +122,7 @@ describe("AiService", () => {
         "Mình gợi ý áo dài đỏ thêu sen rất hợp với nhu cầu của bạn.",
       );
       expect(result.data?.topics[0].recommendedProductIds).toEqual(["g-1"]);
-      expect(result.data?.topics[0].reasons["g-1"]).toBe("Màu đỏ nổi bật, hợp chụp kỷ yếu");
+      expect((result.data?.topics[0].reasons as Record<string, string>)["g-1"]).toBe("Màu đỏ nổi bật, hợp chụp kỷ yếu");
     });
 
     it("filters out product IDs not in catalog", async () => {
@@ -195,7 +195,7 @@ describe("AiService", () => {
       prisma.garment.findMany.mockResolvedValue(MOCK_CATALOG as any);
 
       await expect(
-        service.productAdvisor({ message: "Xin chào" }),
+        service.productAdvisor({ message: "Có gì đẹp?" }),
       ).rejects.toThrow("OPENROUTER_API_KEY not configured");
     });
 
@@ -209,7 +209,7 @@ describe("AiService", () => {
       } as Response);
 
       await expect(
-        service.productAdvisor({ message: "Xin chào" }),
+        service.productAdvisor({ message: "Có gì đẹp?" }),
       ).rejects.toThrow("OpenRouter API");
     });
   });

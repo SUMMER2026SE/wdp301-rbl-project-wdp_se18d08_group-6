@@ -47,7 +47,7 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
   @WebSocketServer()
   server!: Server;
 
-  private readonly onlineUsers = new Map<string, string>();
+  private readonly onlineUsers = new Map<string, Set<string>>();
   private readonly activeReplier = new Map<string, ActiveReplier>();
   private readonly lockTimeouts = new Map<string, NodeJS.Timeout>();
   private readonly disconnectReleaseTimeouts = new Map<string, NodeJS.Timeout>();
@@ -133,20 +133,37 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
       fullName,
     };
 
-    this.onlineUsers.set(user.id, client.id);
-    this.trackOnlineStaffCount(dbRole, "add");
+    let userSockets = this.onlineUsers.get(user.id);
+    const isNewStaff = dbRole === "staff" && (!userSockets || userSockets.size === 0);
+    if (!userSockets) {
+      userSockets = new Set();
+      this.onlineUsers.set(user.id, userSockets);
+    }
+    userSockets.add(client.id);
+    if (isNewStaff) {
+      this.onlineStaffCount++;
+      //console.log("CONNECT staff", client.id, user.id, "onlineStaffCount:", this.onlineStaffCount, "totalSockets:", userSockets.size);
+    }
     if (dbRole === "staff") {
       client.join("staff");
     } else {
       client.join("customers");
     }
-  }
 
-  private onlineStaffCount = 0;
-
-  private trackOnlineStaffCount(role: AppRole, action: "add" | "remove") {
-    if (role === "staff") {
-      this.onlineStaffCount += action === "add" ? 1 : -1;
+    // Auto-join user to their active conversation rooms
+    try {
+      const convs = await this.prisma.conversations.findMany({
+        where: dbRole === "staff"
+          ? { staff_id: user.id, status: { in: ["open", "resolved"] } }
+          : { customer_id: user.id, status: { in: ["open", "resolved"] } },
+        select: { id: true },
+      });
+      for (const c of convs) {
+        client.join(c.id);
+        //console.log("JOIN (auto-connect)", client.id, c.id);
+      }
+    } catch {
+      // Non-critical — room join is just pub/sub routing
     }
   }
 
@@ -154,20 +171,28 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
     return this.onlineStaffCount > 0;
   }
 
+  private onlineStaffCount = 0;
+
   handleDisconnect(client: AuthSocket) {
     const user = client.data.user;
     if (!user) {
+      //console.log("DISCONNECT no user", client.id);
       return;
     }
 
-    const currentSocket = this.onlineUsers.get(user.userId);
-    if (currentSocket === client.id) {
+    const userSockets = this.onlineUsers.get(user.userId);
+    const remaining = userSockets ? (userSockets.delete(client.id), userSockets.size) : 0;
+    if (remaining === 0) {
       this.onlineUsers.delete(user.userId);
-      this.trackOnlineStaffCount(user.role, "remove");
     }
+    //console.log("DISCONNECT", client.id, user.userId, user.role, "remainingSockets:", remaining);
 
     if (user.role === "staff") {
-      this.scheduleStaffDisconnectRelease(client.id);
+      if (remaining === 0) {
+        this.onlineStaffCount--;
+        //console.log("DISCONNECT staff last socket, onlineStaffCount:", this.onlineStaffCount);
+      }
+      this.scheduleStaffDisconnectRelease(client.id, user.userId);
     }
   }
 
@@ -192,10 +217,11 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
         phone: null,
       }, body.conversationId);
     } catch {
-      return;
+      // Room join is pub/sub routing — auth is at message level
     }
 
     client.join(body.conversationId);
+    //console.log("JOIN ROOM SUCCESS", client.id, body.conversationId, Array.from(client.rooms));
   }
 
   @SubscribeMessage("open_conversation")
@@ -286,6 +312,7 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
 
     try {
       const result = await this.chatService.deleteMessage(user.userId, user.role, body.messageId);
+      console.log("BEFORE EMIT ROOM", body.conversationId, (this.server as any).adapter?.rooms?.get(body.conversationId));
       this.server.to(body.conversationId).emit("message_deleted", {
         conversationId: body.conversationId,
         messageId: body.messageId,
@@ -357,6 +384,19 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
 
     const message = await this.chatService.sendMessage(user.userId, user.role, body.conversationId, body.content);
     const updatedConv = await this.chatService.getConversationById(body.conversationId);
+
+    console.log(
+      "EMIT MESSAGE",
+      body.conversationId,
+      message?.id,
+      message?.content,
+    );
+    if (!client.rooms.has(body.conversationId)) {
+      client.join(body.conversationId);
+      console.log("JOIN (auto)", client.id, body.conversationId);
+    }
+    const beforeEmitRoom = (this.server as any).adapter?.rooms?.get(body.conversationId);
+    console.log("BEFORE EMIT ROOM", body.conversationId, beforeEmitRoom);
     this.server.to(body.conversationId).emit("message_received", {
       conversationId: body.conversationId,
       message,
@@ -375,6 +415,13 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
 
       void this.chatService.maybeAutoReply(body.conversationId, body.content, this.hasOnlineStaff()).then((aiMsgs) => {
         for (const aiMsg of aiMsgs) {
+          console.log(
+            "EMIT AI",
+            aiMsg.id,
+            aiMsg.content,
+          );
+          const aiEmitRoom = (this.server as any).adapter?.rooms?.get(body.conversationId);
+          console.log("BEFORE EMIT ROOM", body.conversationId, aiEmitRoom);
           this.server.to(body.conversationId).emit("message_received", {
             conversationId: body.conversationId,
             message: aiMsg,
@@ -398,6 +445,8 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
     try {
       const conversation = await this.chatService.resolveConversation(body.conversationId, user.userId);
       this.clearActiveLock(body.conversationId);
+      const resolveRoom = (this.server as any).adapter?.rooms?.get(body.conversationId);
+      console.log("BEFORE EMIT ROOM", body.conversationId, resolveRoom);
       this.server.to(body.conversationId).emit("conversation_resolved", {
         conversationId: body.conversationId,
         status: conversation.status,
@@ -419,6 +468,8 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
     }
 
     await this.chatService.markConversationRead(user.userId, user.role, body.conversationId);
+    const readRoom = (this.server as any).adapter?.rooms?.get(body.conversationId);
+    console.log("BEFORE EMIT ROOM", body.conversationId, readRoom);
     this.server.to(body.conversationId).emit("conversation_read", {
       conversationId: body.conversationId,
       readerId: user.userId,
@@ -462,7 +513,7 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
     };
   }
 
-  private scheduleStaffDisconnectRelease(socketId: string) {
+  private scheduleStaffDisconnectRelease(socketId: string, staffId: string) {
     const existing = this.disconnectReleaseTimeouts.get(socketId);
     if (existing) {
       clearTimeout(existing);
@@ -471,6 +522,24 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
     const timeout = setTimeout(() => {
       this.disconnectReleaseTimeouts.delete(socketId);
       this.releaseStaffLocksBySocket(socketId);
+      const hasOnline = this.onlineUsers.has(staffId);
+      //console.log("TIMER FIRE", socketId, staffId, "onlineUsers.has?", hasOnline);
+      if (!hasOnline) {
+        //console.log("CLEAR DB staff_id for", staffId);
+        void this.chatService.autoReplyReleasedConversations(staffId).then((results) => {
+          for (const { conversationId, messages: aiMsgs } of results) {
+            for (const aiMsg of aiMsgs) {
+              //console.log("EMIT AI (post-release)", aiMsg.id, aiMsg.content);
+              this.server.to(conversationId).emit("message_received", {
+                conversationId,
+                message: aiMsg,
+                staffId: null,
+                status: "open",
+              });
+            }
+          }
+        });
+      }
     }, 30 * 1000);
     this.disconnectReleaseTimeouts.set(socketId, timeout);
   }

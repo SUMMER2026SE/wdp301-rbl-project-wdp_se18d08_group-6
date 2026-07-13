@@ -22,7 +22,7 @@ import { StaffChatWorkspace } from "./staff-chat-workspace";
 import { useRouter } from "next/navigation";
 import { StaffPortalShell } from "@/components/heritage/ui";
 export default function ChatPage() {
-  const { session, status } = useAuth();
+  const { session, status, signOut: authSignOut, refreshUser } = useAuth();
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<ChatConversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -365,10 +365,10 @@ export default function ChatPage() {
   }, [socket, isStaff]);
 
   useEffect(() => {
-    return () => {
+    if (!session?.accessToken) {
       disconnectChatSocket();
-    };
-  }, []);
+    }
+  }, [session?.accessToken]);
 
   useEffect(() => {
     if (!session) return;
@@ -451,8 +451,18 @@ export default function ChatPage() {
 
     // Refresh messages to fill any gap while disconnected (merge instead of replace)
     void refreshMessages(conv.id);
+    // Refresh conversation list to update unreadCount and new conversations
+    void loadConversations();
   };
-  const onDisconnect = () => setConnected(false);
+  const onDisconnect = (reason: string) => {
+    setConnected(false);
+    if (reason === "io server disconnect") {
+      void refreshUser().then((user) => {
+        if (!user) authSignOut();
+      });
+      socket.connect();
+    }
+  };
 
   socket.on("connect", onConnect);
   socket.on("disconnect", onDisconnect);
@@ -465,7 +475,7 @@ export default function ChatPage() {
     socket.off("connect", onConnect);
     socket.off("disconnect", onDisconnect);
   };
-  }, [socket, isStaff, session]);
+  }, [socket, isStaff, session, authSignOut, refreshUser]);
 
   async function loadConversations() {
     if (!session) return;
@@ -550,8 +560,12 @@ export default function ChatPage() {
           if (prev.length === 0) return latestMessages;
           const existingIds = new Set(prev.map(m => m.id));
           const newMsgs = latestMessages.filter(m => !existingIds.has(m.id));
-          if (newMsgs.length === 0) return prev;
-          return [...prev, ...newMsgs].sort(
+          const confirmedContent = new Set(latestMessages.map(m => `${m.sender_id}:${m.content}`));
+          const cleaned = prev.filter(m =>
+            !m.id.startsWith("temp-") || !confirmedContent.has(`${m.sender_id}:${m.content}`)
+          );
+          if (newMsgs.length === 0 && cleaned.length === prev.length) return prev;
+          return [...cleaned, ...newMsgs].sort(
             (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
           );
         });

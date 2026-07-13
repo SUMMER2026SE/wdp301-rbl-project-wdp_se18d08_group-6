@@ -221,15 +221,16 @@ export function emitChatMessage(params: {
   sendTimeoutRef: { current: Map<string, ReturnType<typeof setTimeout>> };
   setMessages: (updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => void;
   setFailedMessages: (updater: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
+  roomJoinedRef?: { current: boolean };
 }) {
   const { socket, conversationId, content, tempId, sendTimeoutRef, setMessages, setFailedMessages } = params;
+  const roomJoinedRef = params.roomJoinedRef;
 
   const doEmit = () => {
     socket.emit("send_message", { conversationId, content, tempId }, (ack: { success?: boolean; error?: string; tempId?: string } | undefined) => {
       const t = sendTimeoutRef.current.get(tempId);
       if (t) { clearTimeout(t); sendTimeoutRef.current.delete(tempId); }
       if (ack && ack.success && ack.tempId) {
-        setMessages((prev) => prev.filter((m) => m.id !== ack.tempId));
         setFailedMessages((prev) => {
           const next = new Set(prev);
           next.delete(ack.tempId!);
@@ -247,9 +248,26 @@ export function emitChatMessage(params: {
     sendTimeoutRef.current.set(tempId, timeout);
   };
 
+  const waitForRoom = (fn: () => void) => {
+    const poll = setInterval(() => {
+      if (roomJoinedRef?.current) {
+        clearInterval(poll);
+        fn();
+      }
+    }, 50);
+    setTimeout(() => {
+      clearInterval(poll);
+      fn();
+    }, 5000);
+  };
+
   if (!socket.connected) {
     socket.connect();
-    socket.once("connect", doEmit);
+    socket.once("connect", () => {
+      if (roomJoinedRef) { waitForRoom(doEmit); } else { doEmit(); }
+    });
+  } else if (roomJoinedRef && !roomJoinedRef.current) {
+    waitForRoom(doEmit);
   } else {
     doEmit();
   }
