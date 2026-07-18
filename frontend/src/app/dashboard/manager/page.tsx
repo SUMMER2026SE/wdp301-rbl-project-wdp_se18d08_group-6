@@ -902,15 +902,9 @@ function OverviewTab({
 
       <div className="grid grid-cols-1 gap-gutter lg:grid-cols-3">
         <div className="rounded-xl border border-sand bg-white p-6 shadow-xs lg:col-span-2">
-          <h2 className="mb-6 font-display text-2xl text-ink">Tình Trạng Vận Hành</h2>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-            <StatusCell label="Chờ xử lý" value={countBy(["pending_confirmation", "awaiting_payment"])} tone="amber" />
-            <StatusCell label="Đang chuẩn bị" value={countBy(["paid", "preparing", "ready_for_pickup", "delivering"])} tone="purple" />
-            <StatusCell label="Đang thuê" value={countBy(["renting"])} tone="lotus" />
-            <StatusCell label="Chờ kiểm tra" value={countBy(["returned", "inspection_pending"])} tone="orange" />
-            <StatusCell label="Hoàn thành" value={countBy(["completed"])} tone="jade" />
-          </div>
-          <div className="mt-6 flex items-start gap-4 rounded-r-lg border-l-4 border-lotus bg-parchment p-4">
+          <h2 className="mb-5 font-display text-2xl text-ink">Tình Trạng Vận Hành</h2>
+          <BookingPipelineChart countBy={countBy} />
+          <div className="mt-5 flex items-start gap-4 rounded-r-lg border-l-4 border-lotus bg-parchment p-4">
             <span className="material-symbols-outlined mt-0.5 text-lotus">warning</span>
             <div>
               <h3 className="text-sm font-semibold text-ink">Cảnh Báo Vận Hành</h3>
@@ -928,12 +922,18 @@ function OverviewTab({
           </div>
         </div>
 
-        <div className="flex flex-col rounded-xl border border-sand bg-white p-6 shadow-xs">
-          <h2 className="mb-6 font-display text-2xl text-ink">Truy Cập Nhanh</h2>
-          <div className="flex flex-1 flex-col gap-3">
-            <ShortcutButton icon="inventory_2" label="Kho trang phục" badge={bookingsNeedingAssets.length} tone="bronze" onClick={() => onGoToTab("assets")} />
-            <ShortcutButton icon="fact_check" label="Nhật ký kiểm tra" tone="jade" onClick={() => onGoToTab("inspection-log")} />
-            <ShortcutButton icon="bar_chart" label="Báo cáo tài chính" tone="antique" onClick={() => onGoToTab("finance")} />
+        <div className="flex flex-col gap-gutter">
+          <div className="rounded-xl border border-sand bg-white p-6 shadow-xs">
+            <h2 className="mb-4 font-display text-xl text-ink">Kho Tài Sản</h2>
+            <AssetDonutChart assetCounts={assetCounts} total={effectiveAssets.length} />
+          </div>
+          <div className="flex flex-col rounded-xl border border-sand bg-white p-6 shadow-xs">
+            <h2 className="mb-4 font-display text-xl text-ink">Truy Cập Nhanh</h2>
+            <div className="flex flex-1 flex-col gap-3">
+              <ShortcutButton icon="inventory_2" label="Kho trang phục" badge={bookingsNeedingAssets.length} tone="bronze" onClick={() => onGoToTab("assets")} />
+              <ShortcutButton icon="fact_check" label="Nhật ký kiểm tra" tone="jade" onClick={() => onGoToTab("inspection-log")} />
+              <ShortcutButton icon="bar_chart" label="Báo cáo tài chính" tone="antique" onClick={() => onGoToTab("finance")} />
+            </div>
           </div>
         </div>
       </div>
@@ -1991,6 +1991,108 @@ const TONE_CLASSES: Record<string, { text: string; bg: string; bar: string }> = 
   jade:    { text: "text-jade",    bg: "bg-jade/10", bar: "bg-jade" },
   bronze:  { text: "text-bronze",  bg: "bg-bronze/10", bar: "bg-bronze" },
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart: Booking Pipeline (horizontal bar chart)
+// ─────────────────────────────────────────────────────────────────────────────
+function BookingPipelineChart({ countBy }: { countBy: (s: string[]) => number }) {
+  const stages = [
+    { label: "Chờ xử lý",    statuses: ["pending_confirmation", "awaiting_payment"], color: "#d97706" },
+    { label: "Đang chuẩn bị", statuses: ["paid", "preparing", "ready_for_pickup", "delivering"], color: "#7c3aed" },
+    { label: "Đang thuê",     statuses: ["renting"],                                color: "#c0392b" },
+    { label: "Chờ kiểm tra",  statuses: ["returned", "inspection_pending"],         color: "#ea580c" },
+    { label: "Hoàn thành",    statuses: ["completed"],                              color: "#059669" },
+  ];
+  const values = stages.map((s) => countBy(s.statuses));
+  const max = Math.max(...values, 1);
+
+  return (
+    <div className="space-y-3">
+      {stages.map((stage, i) => {
+        const pct = (values[i] / max) * 100;
+        return (
+          <div key={stage.label} className="flex items-center gap-3">
+            <span className="w-28 flex-shrink-0 text-xs font-semibold text-stone-500 text-right leading-tight">{stage.label}</span>
+            <div className="relative flex-1 h-7 rounded-md bg-stone-100 overflow-hidden">
+              <div
+                className="h-full rounded-md transition-all duration-500"
+                style={{ width: `${pct}%`, backgroundColor: stage.color, minWidth: values[i] > 0 ? "2rem" : 0 }}
+              />
+              {values[i] > 0 && (
+                <span className="absolute inset-0 flex items-center pl-2 text-xs font-bold text-white mix-blend-luminosity" style={{ color: "#fff" }}>
+                  {values[i]}
+                </span>
+              )}
+            </div>
+            <span className="w-6 flex-shrink-0 text-xs font-bold text-stone-600 text-right">{values[i]}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart: Asset Status Donut
+// ─────────────────────────────────────────────────────────────────────────────
+const DONUT_COLORS: Record<string, string> = {
+  available:          "#059669",
+  reserved:           "#d97706",
+  rented:             "#c0392b",
+  inspection_pending: "#ea580c",
+  laundry:            "#0284c7",
+  maintenance:        "#7c3aed",
+  damaged:            "#dc2626",
+  retired:            "#9ca3af",
+  lost:               "#4b5563",
+};
+
+function AssetDonutChart({ assetCounts, total }: { assetCounts: Record<string, number>; total: number }) {
+  if (total === 0) {
+    return <div className="flex h-40 items-center justify-center text-sm text-stone-400">Chưa có tài sản nào.</div>;
+  }
+  const slices = Object.entries(assetCounts).filter(([, v]) => v > 0);
+  const cx = 60; const cy = 60; const r = 50; const innerR = 32;
+  let cumAngle = -Math.PI / 2;
+  const paths: { d: string; color: string; label: string; count: number }[] = [];
+
+  for (const [status, count] of slices) {
+    const angle = (count / total) * 2 * Math.PI;
+    const x1 = cx + r * Math.cos(cumAngle);
+    const y1 = cy + r * Math.sin(cumAngle);
+    const x2 = cx + r * Math.cos(cumAngle + angle);
+    const y2 = cy + r * Math.sin(cumAngle + angle);
+    const ix1 = cx + innerR * Math.cos(cumAngle);
+    const iy1 = cy + innerR * Math.sin(cumAngle);
+    const ix2 = cx + innerR * Math.cos(cumAngle + angle);
+    const iy2 = cy + innerR * Math.sin(cumAngle + angle);
+    const large = angle > Math.PI ? 1 : 0;
+    const d = `M ${ix1} ${iy1} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} L ${ix2} ${iy2} A ${innerR} ${innerR} 0 ${large} 0 ${ix1} ${iy1} Z`;
+    paths.push({ d, color: DONUT_COLORS[status] ?? "#9ca3af", label: ASSET_STATUS_META[status]?.label ?? status, count });
+    cumAngle += angle;
+  }
+
+  return (
+    <div className="flex items-center gap-4">
+      <svg viewBox="0 0 120 120" className="w-28 h-28 flex-shrink-0">
+        {paths.map((p, i) => <path key={i} d={p.d} fill={p.color} />)}
+        <text x={cx} y={cy - 4} textAnchor="middle" className="text-lg font-bold" style={{ fontSize: 14, fontWeight: 700, fill: "#1c1c1c" }}>{total}</text>
+        <text x={cx} y={cy + 10} textAnchor="middle" style={{ fontSize: 7, fill: "#78716c" }}>tài sản</text>
+      </svg>
+      <div className="flex-1 space-y-1.5">
+        {paths.map((p, i) => (
+          <div key={i} className="flex items-center justify-between text-xs">
+            <div className="flex items-center gap-1.5">
+              <span className="inline-block h-2.5 w-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: p.color }} />
+              <span className="text-stone-600">{p.label}</span>
+            </div>
+            <span className="font-semibold text-ink">{p.count}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function QuickWorkItem({ icon, label, value, tone, onClick }: { icon: string; label: string; value: number; tone: "amber" | "orange" | "blue" | "red"; onClick: () => void }) {
   const cls = {
