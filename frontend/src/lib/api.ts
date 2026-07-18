@@ -224,6 +224,7 @@ export type BookingResponse = {
   depositTotal: number;
   shippingFee?: number;
   penaltyTotal?: number;
+  paymentMethod: string;
   note: string | null;
   deliveryAddressId?: string | null;
   deliveryAddress?: Omit<CustomerAddress, "isDefault" | "createdAt"> | null;

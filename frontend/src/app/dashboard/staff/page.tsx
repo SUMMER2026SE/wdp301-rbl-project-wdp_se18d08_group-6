@@ -28,8 +28,8 @@ function formatVND(amount: number) {
 
 const NEXT_ACTIONS: Partial<Record<string, { status: string; label: string; style: string }[]>> = {
   pending_confirmation: [
-    { status: "confirmed", label: "Xác nhận", style: "bg-lotus text-white hover:bg-oxblood" },
-    { status: "rejected",  label: "Từ chối",  style: "border border-red-300 text-red-700 hover:bg-red-50" },
+    { status: "awaiting_payment", label: "Xác nhận", style: "bg-lotus text-white hover:bg-oxblood" },
+    { status: "rejected",         label: "Từ chối",  style: "border border-red-300 text-red-700 hover:bg-red-50" },
   ],
   confirmed: [
     { status: "awaiting_payment", label: "Chờ thanh toán", style: "bg-lotus text-white hover:bg-oxblood" },
@@ -158,7 +158,7 @@ export default function StaffDashboardPage() {
   }
 
   function openPaymentDialog(booking: StaffBookingResponse) {
-    setSelectedPaymentMethod("cash");
+    setSelectedPaymentMethod(booking.paymentMethod ?? "cash");
     setPaymentDialog({
       bookingId: booking.id,
       customerName: booking.customerName,
@@ -676,6 +676,16 @@ export default function StaffDashboardPage() {
               <label className="mb-3 block text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">
                 Phương thức thanh toán
               </label>
+              {/* Highlight customer's chosen method */}
+              {(() => {
+                const customerMethod = PAYMENT_METHODS.find((pm) => pm.key === selectedPaymentMethod);
+                return customerMethod ? (
+                  <div className="mb-3 flex items-center gap-2 rounded-lg bg-jade/10 border border-jade/30 px-3 py-2 text-sm text-jade">
+                    <span className="material-symbols-outlined text-base">check_circle</span>
+                    <span>Khách đã chọn: <strong>{customerMethod.label}</strong></span>
+                  </div>
+                ) : null;
+              })()}
               <div className="grid grid-cols-2 gap-3">
                 {PAYMENT_METHODS.map((pm) => (
                   <button
