@@ -37,7 +37,7 @@ const ASSET_REQUIRED_STATUSES: BookingStatus[] = [
 ];
 
 const STAFF_ALLOWED_TRANSITIONS: Partial<Record<BookingStatus, BookingStatus[]>> = {
-  [BookingStatus.pending_confirmation]: [BookingStatus.confirmed, BookingStatus.rejected],
+  [BookingStatus.pending_confirmation]: [BookingStatus.awaiting_payment, BookingStatus.confirmed, BookingStatus.rejected],
   [BookingStatus.confirmed]: [BookingStatus.awaiting_payment, BookingStatus.cancelled],
   [BookingStatus.awaiting_payment]: [BookingStatus.paid],
   [BookingStatus.paid]: [BookingStatus.preparing],
@@ -197,6 +197,7 @@ export class BookingsService {
           .filter(Boolean)
           .join("\n\n") || null,
         items: { create: itemsData },
+        paymentMethod: dto.paymentMethod ?? "cash",
       },
       include: {
         items: {
@@ -806,6 +807,7 @@ export class BookingsService {
         district: booking.deliveryAddress.district,
         city: booking.deliveryAddress.city,
       } : null,
+      paymentMethod: booking.paymentMethod ?? "cash",
       createdAt: booking.createdAt.toISOString(),
       items: (booking.items ?? []).map((item: any) => ({
         id: item.id,
