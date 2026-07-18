@@ -59,6 +59,11 @@ export function DeliveryTracker({ data }: { data: DeliveryTrackData }) {
         mapRef.current = null;
       }
 
+      const container = containerRef.current as any;
+      if (container && container._leaflet_id) {
+        container._leaflet_id = null;
+      }
+
       const { storeLat, storeLng, customerLat, customerLng, shipperLat, shipperLng } = data;
 
       const map = L.map(containerRef.current);
@@ -125,7 +130,13 @@ export function DeliveryTracker({ data }: { data: DeliveryTrackData }) {
 
     render();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+    };
   }, [mounted, data]);
 
   // Animate shipper position updates when status changes

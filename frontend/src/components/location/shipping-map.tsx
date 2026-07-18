@@ -51,6 +51,11 @@ export function ShippingMap({
         mapRef.current = null;
       }
 
+      const container = containerRef.current as any;
+      if (container && container._leaflet_id) {
+        container._leaflet_id = null;
+      }
+
       const centerLat = (storeLat + customerLat) / 2;
       const centerLng = (storeLng + customerLng) / 2;
 
@@ -105,6 +110,10 @@ export function ShippingMap({
 
     return () => {
       cancelled = true;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
     };
   }, [storeLat, storeLng, customerLat, customerLng, storeName]);
 

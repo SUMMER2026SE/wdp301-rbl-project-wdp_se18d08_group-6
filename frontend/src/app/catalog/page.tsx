@@ -360,7 +360,7 @@ export default function CatalogPage() {
         {/* Featured */}
         {featured && (
           <section className="mb-20 grid items-center gap-10 lg:grid-cols-[1.25fr_0.9fr] lg:gap-20">
-            <div className="relative overflow-hidden rounded-sm border border-sand/70 bg-[#f8dcd8] shadow-lg">
+            <div className="relative overflow-hidden rounded-sm border border-sand/70 bg-lotus/5 shadow-lg">
               <div className="flex aspect-[4/5] items-center justify-center">
                 {featured.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -419,7 +419,23 @@ export default function CatalogPage() {
 
         {/* Grid */}
         {loading ? (
-          <div className="py-20 text-center text-stone-400">Đang tải bộ sưu tập...</div>
+          <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="flex flex-col border border-sand bg-white/80 p-4">
+                <div className="aspect-[3/4] w-full animate-pulse bg-stone-200" />
+                <div className="mt-6 h-6 w-3/4 animate-pulse rounded bg-stone-200" />
+                <div className="mt-3 flex gap-2">
+                  <div className="h-6 w-8 animate-pulse rounded-full bg-stone-200" />
+                  <div className="h-6 w-8 animate-pulse rounded-full bg-stone-200" />
+                </div>
+                <div className="mt-auto pt-4">
+                  <div className="h-4 w-full animate-pulse rounded bg-stone-200" />
+                  <div className="mt-2 h-4 w-2/3 animate-pulse rounded bg-stone-200" />
+                  <div className="mt-4 h-10 w-full animate-pulse rounded-lg bg-stone-200" />
+                </div>
+              </div>
+            ))}
+          </div>
         ) : filtered.length === 0 ? (
           <div className="py-20 text-center text-stone-400">
             <span className="material-symbols-outlined text-[48px]">checkroom</span>
@@ -435,7 +451,7 @@ export default function CatalogPage() {
                   key={group.slug}
                   className="group flex flex-col border border-antique/20 bg-white/80 p-4 backdrop-blur-sm transition duration-500 hover:border-antique/60 hover:shadow-lg"
                 >
-                  <Link href={`/catalog/${selectedGarmentId}`} className="relative flex aspect-[3/4] items-center justify-center overflow-hidden bg-[#f8dcd8] cursor-pointer">
+                  <Link href={`/catalog/${selectedGarmentId}`} className="relative flex aspect-[3/4] items-center justify-center overflow-hidden bg-lotus/5 cursor-pointer">
                     {group.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={group.imageUrl} alt={group.name} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />

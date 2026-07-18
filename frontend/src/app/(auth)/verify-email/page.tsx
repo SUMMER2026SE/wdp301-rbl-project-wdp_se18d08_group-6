@@ -113,11 +113,11 @@ function VerifyEmailContent() {
       className="flex min-h-screen items-center justify-center bg-cover bg-center bg-no-repeat p-4"
       style={{ backgroundImage: "url('/images/bg-ao-dai.png')" }}
     >
-      <div className="w-full max-w-md overflow-hidden rounded-lg border border-white/40 bg-white/60 p-8 shadow-lg backdrop-blur-xl">
+      <div className="w-full max-w-md overflow-hidden rounded-lg border border-sand bg-white p-8 shadow-xl">
         {/* Icon phong bì */}
         <div className="mb-6 flex justify-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-lotus/10 text-3xl">
-            ✉️
+            <span className="material-symbols-outlined text-lotus text-[32px]">mark_email_read</span>
           </div>
         </div>
 
@@ -153,7 +153,7 @@ function VerifyEmailContent() {
                     value={digit}
                     onChange={(e) => handleDigitChange(i, e.target.value)}
                     onKeyDown={(e) => handleKeyDown(i, e)}
-                    className="h-12 w-12 rounded-xl border border-white/50 bg-white/60 text-center text-xl font-bold text-ink shadow-sm backdrop-blur-sm transition-all duration-200 focus:border-lotus focus:bg-white/90 focus:outline-none focus:ring-4 focus:ring-lotus/20"
+                    className="h-12 w-12 rounded-md border border-sand bg-white text-center text-xl font-bold text-ink shadow-sm outline-none transition focus:border-lotus"
                     suppressHydrationWarning
                   />
                 ))}
@@ -169,7 +169,7 @@ function VerifyEmailContent() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-xl bg-lotus px-4 py-3.5 font-medium text-white shadow-lg shadow-lotus/30 transition-all duration-300 hover:bg-lotus/90 focus:outline-none focus:ring-4 focus:ring-lotus/20 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded-md bg-lotus px-4 py-3 font-semibold text-white transition hover:bg-oxblood disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? "Đang xác thực..." : "Xác nhận mã OTP"}
             </button>

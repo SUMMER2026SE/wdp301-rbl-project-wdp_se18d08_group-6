@@ -37,6 +37,11 @@ export function MapPreview({ lat, lng, className = "" }: MapPreviewProps) {
         mapRef.current = null;
       }
 
+      const container = containerRef.current as any;
+      if (container && container._leaflet_id) {
+        container._leaflet_id = null;
+      }
+
       const map = L.map(containerRef.current).setView([lat, lng], 16);
       mapRef.current = map;
 
@@ -54,6 +59,10 @@ export function MapPreview({ lat, lng, className = "" }: MapPreviewProps) {
 
     return () => {
       cancelled = true;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
     };
   }, [lat, lng]);
 

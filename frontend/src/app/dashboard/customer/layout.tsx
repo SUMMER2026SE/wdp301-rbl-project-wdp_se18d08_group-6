@@ -93,10 +93,29 @@ export default function CustomerDashboardLayout({ children }: { children: ReactN
           </aside>
 
           {/* Main content */}
-          <main className="flex-1 px-4 py-8 md:ml-64 md:px-10 md:py-10">
+          <main className="flex-1 px-4 py-8 pb-24 md:ml-64 md:px-10 md:py-10 md:pb-10">
             <div className="mx-auto max-w-[1200px]">{children}</div>
           </main>
         </div>
+
+        {/* Mobile Bottom Navigation */}
+        <nav className="fixed bottom-0 left-0 right-0 z-40 flex h-16 border-t border-sand bg-mist/95 backdrop-blur-md md:hidden">
+          {navItems.slice(0, 5).map((item) => {
+            const isActive = pathname === item.href || (item.href !== "/dashboard/customer" && pathname.startsWith(item.href));
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex flex-1 flex-col items-center justify-center gap-1 transition ${
+                  isActive ? "text-lotus" : "text-stone-500 hover:text-stone-800"
+                }`}
+              >
+                <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
+                <span className="text-[10px] font-semibold">{item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
 
         <CustomerFooter />
       </div>

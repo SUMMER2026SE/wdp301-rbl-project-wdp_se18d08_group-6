@@ -44,6 +44,26 @@ function PreferenceSwitch({ label, checked, onChange }: { label: string; checked
   );
 }
 
+function getNotificationIcon(title: string) {
+  const t = title.toLowerCase();
+  if (t.includes("đơn thuê") || t.includes("booking") || t.includes("lịch")) {
+    return { icon: "calendar_today", bg: "bg-jade/10", text: "text-jade" };
+  }
+  if (t.includes("thanh toán") || t.includes("cọc") || t.includes("tiền")) {
+    return { icon: "payments", bg: "bg-amber-50", text: "text-amber-700" };
+  }
+  if (t.includes("vận chuyển") || t.includes("giao hàng")) {
+    return { icon: "local_shipping", bg: "bg-blue-50", text: "text-blue-600" };
+  }
+  if (t.includes("kiểm tra") || t.includes("tình trạng")) {
+    return { icon: "fact_check", bg: "bg-stone-100", text: "text-stone-600" };
+  }
+  if (t.includes("tài khoản") || t.includes("bảo mật") || t.includes("hệ thống")) {
+    return { icon: "manage_accounts", bg: "bg-stone-100", text: "text-stone-600" };
+  }
+  return { icon: "notifications", bg: "bg-stone-100", text: "text-stone-600" };
+}
+
 export default function CustomerNotificationsPage() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -194,7 +214,7 @@ export default function CustomerNotificationsPage() {
       ) : null}
 
       {errorMsg ? (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {errorMsg}
         </div>
       ) : null}
@@ -232,13 +252,27 @@ export default function CustomerNotificationsPage() {
 
             <div className="mt-6 space-y-3">
               {loading ? (
-                <div className="rounded-lg border border-dashed border-sand p-8 text-center text-stone-400">Đang tải thông báo...</div>
+                Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="flex gap-4 rounded-xl border border-sand bg-white p-4">
+                    <div className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-stone-200" />
+                    <div className="flex-1 space-y-3 py-1">
+                      <div className="h-4 w-1/3 animate-pulse rounded bg-stone-200" />
+                      <div className="h-4 w-3/4 animate-pulse rounded bg-stone-200" />
+                      <div className="h-3 w-24 animate-pulse rounded bg-stone-200" />
+                    </div>
+                  </div>
+                ))
               ) : filteredNotifications.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-sand p-8 text-center text-stone-400">Chưa có thông báo phù hợp.</div>
               ) : (
-                filteredNotifications.map((item) => (
+                filteredNotifications.map((item) => {
+                  const iconData = getNotificationIcon(item.title);
+                  return (
                   <article key={item.id} className={`rounded-xl border p-4 transition ${item.isRead ? "border-sand bg-white" : "border-lotus/30 bg-mist"}`}>
-                    <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${iconData.bg} ${iconData.text}`}>
+                        <span className="material-symbols-outlined text-[20px]">{iconData.icon}</span>
+                      </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="font-semibold text-ink">{item.title}</h3>
@@ -259,7 +293,8 @@ export default function CustomerNotificationsPage() {
                       </button>
                     </div>
                   </article>
-                ))
+                  );
+                })
               )}
             </div>
           </section>

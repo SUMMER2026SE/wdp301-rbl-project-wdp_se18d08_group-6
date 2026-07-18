@@ -26,24 +26,63 @@ export function BookingFlowShell({
             <h2 className="font-display text-2xl text-lotus">Tiến trình đặt thuê</h2>
             <p className="mt-1 text-sm text-stone-500">Theo dõi từng bước xác nhận</p>
           </div>
-          <nav className="flex flex-1 flex-col gap-2">
-            {bookingFlowSteps.map((step) => {
+          <nav className="relative flex flex-1 flex-col gap-4">
+            {/* Vertical connector line */}
+            <div className="absolute bottom-6 left-6 top-6 w-px bg-sand" />
+
+            {bookingFlowSteps.map((step, index) => {
               const isActive = step.key === currentStep;
+              // Check if step is completed (comes before current step)
+              const currentIndex = bookingFlowSteps.findIndex((s) => s.key === currentStep);
+              const isCompleted = index < currentIndex;
+
               return (
-                <Link
-                  key={step.key}
-                  href={step.href}
-                  className={isActive
-                    ? "flex items-center gap-3 rounded-lg bg-lotus/10 px-4 py-3 text-sm font-semibold text-lotus"
-                    : "flex items-center gap-3 rounded-lg px-4 py-3 text-sm text-stone-600 transition hover:bg-mist hover:text-lotus"}
-                >
-                  <span className="material-symbols-outlined text-[20px]">{step.icon}</span>
-                  <span>{step.label}</span>
-                </Link>
+                <div key={step.key} className="relative z-10">
+                  <Link
+                    href={step.href}
+                    className={`flex items-center gap-4 rounded-lg px-2 py-2 transition-all ${
+                      isActive
+                        ? "bg-white shadow-sm ring-1 ring-lotus/20"
+                        : "hover:bg-white/50"
+                    }`}
+                  >
+                    {/* Step indicator circle */}
+                    <div
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+                        isActive
+                          ? "border-lotus bg-lotus text-white shadow-sm"
+                          : isCompleted
+                            ? "border-jade bg-jade text-white"
+                            : "border-sand bg-mist text-stone-400"
+                      }`}
+                    >
+                      {isCompleted ? (
+                        <span className="material-symbols-outlined text-[16px]">check</span>
+                      ) : (
+                        <span className="text-xs font-bold">{index + 1}</span>
+                      )}
+                    </div>
+
+                    {/* Text content */}
+                    <div>
+                      <span
+                        className={`block text-sm font-semibold ${
+                          isActive ? "text-lotus" : isCompleted ? "text-ink" : "text-stone-500"
+                        }`}
+                      >
+                        {step.label}
+                      </span>
+                      <span className="block text-[11px] uppercase tracking-wider text-stone-400">
+                        Bước {index + 1}
+                      </span>
+                    </div>
+                  </Link>
+                </div>
               );
             })}
           </nav>
-          <button type="button" className="mt-6 rounded-lg border border-sand bg-white px-4 py-3 text-sm font-medium text-lotus transition hover:bg-mist">
+          <button type="button" className="mt-6 flex items-center justify-center gap-2 rounded-lg border border-sand bg-white px-4 py-3 text-sm font-semibold text-lotus transition hover:border-lotus/30 hover:bg-lotus/5">
+            <span className="material-symbols-outlined text-[18px]">support_agent</span>
             Hỗ trợ đặt thuê
           </button>
         </aside>

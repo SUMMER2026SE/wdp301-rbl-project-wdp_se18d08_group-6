@@ -163,7 +163,7 @@ function LoginPageContent() {
                 <label className="mb-1 block text-sm font-semibold text-ink" htmlFor="email">Email</label>
                 <input
                   id="email"
-                  className="focus-ring block w-full border border-sand bg-white px-4 py-3 text-ink shadow-sm"
+                  className="focus-ring block w-full rounded-md border border-sand bg-white px-4 py-3 text-ink shadow-sm outline-none transition focus:border-lotus"
                   autoComplete="email"
                   placeholder="your@email.com"
                   type="email"
@@ -179,7 +179,7 @@ function LoginPageContent() {
                 <div className="relative">
                   <input
                     id="password"
-                    className="focus-ring block w-full border border-sand bg-white px-4 py-3 pr-12 text-ink shadow-sm"
+                    className="focus-ring block w-full rounded-md border border-sand bg-white px-4 py-3 pr-12 text-ink shadow-sm outline-none transition focus:border-lotus"
                     autoComplete="current-password"
                     placeholder="••••••••"
                     type={showPassword ? "text" : "password"}
