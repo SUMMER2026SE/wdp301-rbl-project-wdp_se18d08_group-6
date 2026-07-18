@@ -368,7 +368,7 @@ async function handleConsult() {
                   ))}
                 </div>
               </div>
-              <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg border border-sand bg-[#f8dcd8]">
+              <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg border border-sand bg-lotus/5">
                 <span className="material-symbols-outlined text-[60px] text-antique/30">diamond</span>
               </div>
             </div>

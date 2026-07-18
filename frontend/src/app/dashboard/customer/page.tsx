@@ -134,7 +134,20 @@ export default function CustomerDashboardPage() {
 
           {/* Đơn đang active */}
           {loading ? (
-            <div className="rounded-xl border border-sand bg-white p-8 text-stone-400">Đang tải đơn thuê...</div>
+            <div className="rounded-xl border border-sand bg-white p-8 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-3">
+                  <div className="h-10 w-48 animate-pulse rounded bg-stone-200" />
+                  <div className="h-4 w-64 animate-pulse rounded bg-stone-200" />
+                  <div className="h-4 w-56 animate-pulse rounded bg-stone-200" />
+                </div>
+                <div className="h-6 w-24 animate-pulse rounded-full bg-stone-200" />
+              </div>
+              <div className="mt-8 flex gap-3">
+                <div className="h-10 w-32 animate-pulse rounded-lg bg-stone-200" />
+                <div className="h-10 w-32 animate-pulse rounded-lg bg-stone-200" />
+              </div>
+            </div>
           ) : activeBooking ? (
             <section className="overflow-hidden rounded-xl border border-sand bg-white p-8 shadow-md">
               <div className="flex flex-col gap-6">
@@ -193,14 +206,16 @@ export default function CustomerDashboardPage() {
               </div>
             </section>
           ) : (
-            <section className="rounded-xl border border-sand bg-white p-8 text-center shadow-sm">
-              <p className="text-stone-500">Bạn chưa có đơn thuê nào đang hoạt động.</p>
+            <section className="rounded-lg border border-dashed border-sand bg-mist p-12 text-center">
+              <span className="material-symbols-outlined mb-4 text-5xl text-stone-300">inventory_2</span>
+              <h3 className="font-display text-2xl text-ink">Không có đơn đang hoạt động</h3>
+              <p className="mt-2 text-stone-500">Hãy bắt đầu hành trình thuê trang phục đầu tiên của bạn.</p>
               <Link
                 href="/catalog"
-                className="mt-4 inline-flex items-center gap-2 rounded-lg bg-lotus px-5 py-3 text-sm font-semibold text-white transition hover:bg-oxblood"
+                className="mt-6 inline-flex items-center gap-2 rounded-md bg-lotus px-6 py-3 text-sm font-semibold text-white transition hover:bg-oxblood"
               >
                 Khám phá bộ sưu tập
-                <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+                <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
               </Link>
             </section>
           )}
@@ -235,7 +250,18 @@ export default function CustomerDashboardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {history.map((b) => {
+                    {loading ? (
+                      Array.from({ length: 3 }).map((_, i) => (
+                        <tr key={`skeleton-${i}`} className="border-t border-sand">
+                          <td className="px-6 py-4"><div className="h-4 w-32 animate-pulse rounded bg-stone-200" /></td>
+                          <td className="px-6 py-4"><div className="h-4 w-40 animate-pulse rounded bg-stone-200" /></td>
+                          <td className="px-6 py-4"><div className="h-6 w-24 animate-pulse rounded-full bg-stone-200" /></td>
+                          <td className="px-6 py-4"><div className="h-4 w-20 animate-pulse rounded bg-stone-200" /></td>
+                          <td className="px-6 py-4"><div className="h-6 w-28 animate-pulse rounded-full bg-stone-200" /></td>
+                          <td className="px-6 py-4"><div className="h-6 w-16 animate-pulse rounded bg-stone-200" /></td>
+                        </tr>
+                      ))
+                    ) : history.map((b) => {
                       const st = statusOf(b.status);
                       const refund = refundMap[b.id];
                       return (

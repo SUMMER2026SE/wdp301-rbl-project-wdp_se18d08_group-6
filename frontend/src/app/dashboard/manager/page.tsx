@@ -1048,7 +1048,7 @@ function InventoryTab({
                     onClick={() => onSelectGarment(g.id)}
                     className="w-full text-left"
                   >
-                    <div className="aspect-[3/4] relative overflow-hidden bg-[#f8dcd8]">
+                    <div className="aspect-[3/4] relative overflow-hidden bg-lotus/5">
                       {g.images && g.images.length > 0 ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={g.images[0].imageUrl} alt={g.name} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
@@ -1182,7 +1182,7 @@ function InventoryTab({
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-5">
                   {/* Garment preview */}
-                  <div className="overflow-hidden rounded border border-outline-variant bg-[#f8dcd8]">
+                  <div className="overflow-hidden rounded border border-outline-variant bg-lotus/5">
                     <div className="aspect-square">
                       {selectedGarment?.images && selectedGarment.images.length > 0 ? (
                         // eslint-disable-next-line @next/next/no-img-element

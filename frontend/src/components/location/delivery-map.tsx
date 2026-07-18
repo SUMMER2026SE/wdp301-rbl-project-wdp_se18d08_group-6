@@ -72,6 +72,11 @@ export function DeliveryMap({ points, storeLat = 10.7769, storeLng = 106.7009, s
         mapRef.current = null;
       }
 
+      const container = containerRef.current as any;
+      if (container && container._leaflet_id) {
+        container._leaflet_id = null;
+      }
+
       const allLats = [storeLat, ...points.map((p) => p.latitude)];
       const allLngs = [storeLng, ...points.map((p) => p.longitude)];
 
@@ -132,7 +137,13 @@ export function DeliveryMap({ points, storeLat = 10.7769, storeLng = 106.7009, s
     }
 
     render();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+    };
   }, [points, storeLat, storeLng, storeName]);
 
   return (
