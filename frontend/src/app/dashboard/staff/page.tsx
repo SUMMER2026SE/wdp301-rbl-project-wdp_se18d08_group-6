@@ -76,10 +76,16 @@ type PaymentDialog = {
 
 const PAYMENT_METHODS: { key: string; label: string; icon: string }[] = [
   { key: "cash", label: "Tiền mặt", icon: "payments" },
-  { key: "bank_transfer", label: "Chuyển khoản", icon: "account_balance" },
   { key: "qr_code", label: "QR Code", icon: "qr_code" },
-  { key: "pos_card", label: "Thẻ POS", icon: "credit_card" },
 ];
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: "Tiền mặt",
+  bank_transfer: "Chuyển khoản",
+  qr_code: "Chuyển khoản (QR)",
+  pos_card: "Thẻ POS",
+  online: "Online",
+};
 
 // Statuses mà item chưa có asset là vấn đề cần báo manager
 const ASSET_NEEDED_STATUSES = [
@@ -139,7 +145,7 @@ export default function StaffDashboardPage() {
     setActioningId(null);
     if (res.success && res.data) {
       setBookings((prev) =>
-        prev.map((b) => (b.id === id ? { ...b, status: res.data!.status } : b)),
+        prev.map((b) => (b.id === id ? { ...b, status: res.data!.status, paidPaymentMethod: res.data!.paidPaymentMethod ?? b.paidPaymentMethod } : b)),
       );
       if (tab === "pending" && status !== "pending_confirmation") {
         setBookings((prev) => prev.filter((b) => b.id !== id));
@@ -158,7 +164,8 @@ export default function StaffDashboardPage() {
   }
 
   function openPaymentDialog(booking: StaffBookingResponse) {
-    setSelectedPaymentMethod(booking.paymentMethod ?? "cash");
+    // Tự chọn sẵn phương thức khách đã đăng ký với đơn (cash | qr_code)
+    setSelectedPaymentMethod(booking.paymentMethod === "qr_code" ? "qr_code" : "cash");
     setPaymentDialog({
       bookingId: booking.id,
       customerName: booking.customerName,
@@ -177,7 +184,7 @@ export default function StaffDashboardPage() {
     setActioningId(null);
     if (res.success && res.data) {
       setBookings((prev) =>
-        prev.map((b) => (b.id === id ? { ...b, status: res.data!.status } : b)),
+        prev.map((b) => (b.id === id ? { ...b, status: res.data!.status, paidPaymentMethod: res.data!.paidPaymentMethod ?? b.paidPaymentMethod } : b)),
       );
     } else {
       setErrorMsg(res.message ?? "Không thể ghi nhận thanh toán.");
@@ -187,11 +194,11 @@ export default function StaffDashboardPage() {
   async function handleMarkDeliveryPaid(bookingId: string) {
     setActioningId(bookingId);
     setErrorMsg(null);
-    const res = await markBookingPaid(bookingId, "online");
+    const res = await markBookingPaid(bookingId, "qr_code");
     setActioningId(null);
     if (res.success && res.data) {
       setBookings((prev) =>
-        prev.map((b) => (b.id === bookingId ? { ...b, status: res.data!.status } : b)),
+        prev.map((b) => (b.id === bookingId ? { ...b, status: res.data!.status, paidPaymentMethod: res.data!.paidPaymentMethod ?? b.paidPaymentMethod } : b)),
       );
     } else {
       setErrorMsg(res.message ?? "Không thể xác nhận thanh toán online.");
@@ -384,6 +391,9 @@ export default function StaffDashboardPage() {
             const refund = (booking as any).refunds?.[0];
             const isRefunded = refund && (refund.status === "refunded" || refund.status === "partially_refunded");
             const isPendingRefund = refund && (refund.status === "pending" || refund.status === "refunding");
+            const paidMethod = booking.paidPaymentMethod
+              ? PAYMENT_METHOD_LABELS[booking.paidPaymentMethod] ?? booking.paidPaymentMethod
+              : null;
 
             return (
               <div
@@ -412,7 +422,7 @@ export default function StaffDashboardPage() {
                   </span>
                 </div>
 
-                <div className="grid gap-6 p-6 sm:grid-cols-2 lg:grid-cols-4">
+                <div className={`grid gap-6 p-6 sm:grid-cols-2 ${paidMethod ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Khách hàng</p>
                     <p className="mt-1 font-medium text-ink">{booking.customerName ?? "—"}</p>
@@ -446,6 +456,18 @@ export default function StaffDashboardPage() {
                       </p>
                     )}
                   </div>
+                  {paidMethod && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Phương thức thanh toán</p>
+                      <p className="mt-1 flex items-center gap-1.5 font-medium text-ink">
+                        <span className="material-symbols-outlined text-[18px] text-jade">
+                          {booking.paidPaymentMethod === "cash" ? "payments" : booking.paidPaymentMethod === "pos_card" ? "credit_card" : booking.paidPaymentMethod === "qr_code" ? "qr_code" : "account_balance"}
+                        </span>
+                        {paidMethod}
+                      </p>
+                      <p className="text-sm text-jade">Đã thanh toán</p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Cảnh báo: item chưa có asset — staff không có quyền gán, phải báo manager */}
@@ -537,7 +559,7 @@ export default function StaffDashboardPage() {
                               onClick={() => handleMarkDeliveryPaid(booking.id)}
                               className="rounded-lg bg-jade px-4 py-2 text-sm font-semibold text-white transition hover:bg-forest disabled:opacity-50"
                             >
-                              {isActioning ? "Đang xử lý..." : `Xác nhận đã nhận tiền online (${formatVND(booking.rentalTotal + booking.depositTotal)})`}
+                              {isActioning ? "Đang xử lý..." : `Xác nhận đã nhận tiền QR (${formatVND(booking.rentalTotal + booking.depositTotal)})`}
                             </button>
                           ) : (
                             <button

@@ -29,10 +29,19 @@ function buildHeaders(init?: ApiRequestOptions) {
 }
 
 export async function apiRequest<T>(path: string, init?: ApiRequestOptions): Promise<ApiResponse<T>> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: buildHeaders(init),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      headers: buildHeaders(init),
+    });
+  } catch {
+    return {
+      success: false,
+      error: "NETWORK_ERROR",
+      message: "Không thể kết nối đến máy chủ. Vui lòng kiểm tra backend đang chạy và thử lại.",
+    };
+  }
 
   const payload = (await response.json().catch(() => null)) as ApiResponse<T> | null;
 
@@ -204,6 +213,7 @@ export type BookingItem = {
   garmentId: string;
   garmentSizeId?: string;
   garmentName: string | null;
+  imageUrl?: string | null;
   sizeLabel: string | null;
   dailyPrice: number;
   depositAmount: number;
@@ -225,6 +235,7 @@ export type BookingResponse = {
   shippingFee?: number;
   penaltyTotal?: number;
   paymentMethod: string;
+  paidPaymentMethod?: string | null;
   note: string | null;
   deliveryAddressId?: string | null;
   deliveryAddress?: Omit<CustomerAddress, "isDefault" | "createdAt"> | null;

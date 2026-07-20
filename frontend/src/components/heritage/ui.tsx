@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { LogoutButton } from "@/components/auth/logout-button";
+import { StaffChatNavBadge } from "@/components/chat/staff-chat-nav-badge";
 import { bookingFlowSteps } from "@/lib/heritage-mock-data";
 
 type BookingStepKey = (typeof bookingFlowSteps)[number]["key"];
@@ -141,6 +142,7 @@ export function StaffPortalShell({
               >
                 <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
                 <span>{item.label}</span>
+                {item.key === "chat" && <StaffChatNavBadge />}
               </Link>
             );
           })}

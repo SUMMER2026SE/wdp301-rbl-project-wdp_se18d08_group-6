@@ -48,7 +48,13 @@ function BookingReviewInner() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [deliveryAddress, setDeliveryAddress] = useState<CustomerAddress | null>(null);
   const [addressLoading, setAddressLoading] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "qr_code">("cash");
+  const isDelivery = pickupMethod === "delivery";
+  // Đơn giao tận nơi bắt buộc thanh toán QR trước khi giao
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "qr_code">(isDelivery ? "qr_code" : "cash");
+
+  useEffect(() => {
+    if (isDelivery && paymentMethod !== "qr_code") setPaymentMethod("qr_code");
+  }, [isDelivery, paymentMethod]);
 
   const cartItems = getCart();
   const days = startDate && endDate ? daysBetween(startDate, endDate) : 0;
@@ -261,15 +267,22 @@ function BookingReviewInner() {
 
             <div className="mt-8 border-t border-sand pt-6">
               <h3 className="mb-4 text-sm font-semibold uppercase tracking-[0.18em] text-stone-500">Phương thức thanh toán</h3>
+              {isDelivery && (
+                <p className="mb-3 rounded-lg border border-antique/40 bg-antique/10 p-3 text-xs text-bronze">
+                  Đơn giao tận nơi cần thanh toán chuyển khoản QR trước khi cửa hàng giao trang phục.
+                </p>
+              )}
               <div className="space-y-3">
-                <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-sand p-4 transition hover:border-lotus has-[:checked]:border-lotus has-[:checked]:bg-[#fff0ee]">
-                  <input type="radio" name="paymentMethod" value="cash" checked={paymentMethod === "cash"} onChange={() => setPaymentMethod("cash")} className="h-4 w-4 text-lotus focus:ring-lotus" />
-                  <span className="material-symbols-outlined text-xl text-stone-500">payments</span>
-                  <div>
-                    <span className="text-sm font-medium text-ink">Tiền mặt</span>
-                    <p className="text-xs text-stone-500">Thanh toán tại cửa hàng khi nhận đồ</p>
-                  </div>
-                </label>
+                {!isDelivery && (
+                  <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-sand p-4 transition hover:border-lotus has-[:checked]:border-lotus has-[:checked]:bg-[#fff0ee]">
+                    <input type="radio" name="paymentMethod" value="cash" checked={paymentMethod === "cash"} onChange={() => setPaymentMethod("cash")} className="h-4 w-4 text-lotus focus:ring-lotus" />
+                    <span className="material-symbols-outlined text-xl text-stone-500">payments</span>
+                    <div>
+                      <span className="text-sm font-medium text-ink">Tiền mặt</span>
+                      <p className="text-xs text-stone-500">Thanh toán tại cửa hàng khi nhận đồ</p>
+                    </div>
+                  </label>
+                )}
                 <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-sand p-4 transition hover:border-lotus has-[:checked]:border-lotus has-[:checked]:bg-[#fff0ee]">
                   <input type="radio" name="paymentMethod" value="qr_code" checked={paymentMethod === "qr_code"} onChange={() => setPaymentMethod("qr_code")} className="h-4 w-4 text-lotus focus:ring-lotus" />
                   <span className="material-symbols-outlined text-xl text-stone-500">qr_code_2</span>

@@ -16,16 +16,17 @@ function PaymentInner() {
   const bookingId = searchParams.get("bookingId") ?? "";
   const cancelled = searchParams.get("cancelled") === "1";
 
-  const [paymentData] = useState(() => {
-    if (typeof window === "undefined") return { amount: 0 };
+  // Đọc localStorage sau khi mount để HTML server và client khớp nhau (tránh hydration mismatch)
+  const [paymentData, setPaymentData] = useState<{ amount: number }>({ amount: 0 });
+
+  useEffect(() => {
     try {
       const raw = localStorage.getItem("heritage-payment");
-      if (!raw) return { amount: 0 };
-      return JSON.parse(raw) as { amount: number };
+      if (raw) setPaymentData(JSON.parse(raw) as { amount: number });
     } catch {
-      return { amount: 0 };
+      // localStorage hỏng hoặc bị chặn — giữ amount 0
     }
-  });
+  }, []);
 
   const [paid, setPaid] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -79,20 +80,20 @@ function PaymentInner() {
 
     setCountdown(5);
     countdownRef.current = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          if (countdownRef.current) clearInterval(countdownRef.current);
-          router.push(`/booking/success?bookingId=${bookingId}`);
-          return 0;
-        }
-        return prev - 1;
-      });
+      setCountdown((prev) => (prev <= 1 ? 0 : prev - 1));
     }, 1000);
 
     return () => {
       if (countdownRef.current) clearInterval(countdownRef.current);
     };
-  }, [paid, bookingId, router]);
+  }, [paid]);
+
+  // Điều hướng phải nằm ngoài hàm updater của setState — React cấm setState component khác khi đang render
+  useEffect(() => {
+    if (!paid || countdown > 0) return;
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    router.push(`/booking/success?bookingId=${bookingId}`);
+  }, [paid, countdown, bookingId, router]);
 
   const displayCode = bookingId ? `#${bookingId.slice(0, 8).toUpperCase()}` : "";
 
