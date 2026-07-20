@@ -613,16 +613,6 @@ export class BookingsService {
 
     await this.notificationsService.sendBookingNotification({
       userId: booking.customerId,
-      templateKey: "booking.cancelled",
-      bookingId: updated.id,
-      garmentName: updated.items[0]?.garment_sizes?.garments?.name ?? null,
-      startDate: updated.rentalStartDate.toISOString().slice(0, 10),
-      endDate: updated.rentalEndDate.toISOString().slice(0, 10),
-      note: "�on thu� d� b? h?y.",
-    });
-
-    await this.notificationsService.sendBookingNotification({
-      userId: booking.customerId,
       templateKey: "booking.status_changed",
       bookingId: updated.id,
       garmentName: updated.items[0]?.garment_sizes?.garments?.name ?? null,

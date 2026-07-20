@@ -79,7 +79,7 @@ const DEFAULT_TEMPLATES: NotificationTemplateMap = {
     subject: "Trạng thái đơn thuê đã thay đổi",
     title: "Cập nhật đơn thuê",
     body: "Đơn thuê {{bookingId}} đã chuyển sang trạng thái {{statusLabel}}. Ghi chú: {{note}}",
-    channels: ["inApp", "email"],
+    channels: ["inApp"],
     enabled: true,
   },
   "booking.payment_received": {
@@ -585,11 +585,101 @@ export class NotificationsService {
 
   private wrapEmailHtml(title: string, body: string) {
     return `
-      <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; color: #1f2937; background: #fff;">
-        <div style="font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: #8b0000; font-weight: 700; margin-bottom: 12px;">Cổ Phục ERP</div>
-        <h1 style="font-size: 22px; margin: 0 0 16px; color: #111827;">${title}</h1>
-        <div style="font-size: 14px; line-height: 1.7; color: #374151;">${body}</div>
-      </div>
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title} — Cổ Phục ERP</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f5f0eb; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; -webkit-font-smoothing: antialiased;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f0eb; padding: 32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width: 600px; width: 100%;">
+
+          <!-- HEADER WITH GRADIENT -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #8B0000 0%, #a31515 50%, #c0392b 100%); border-radius: 16px 16px 0 0; padding: 36px 40px 28px; text-align: center;">
+              <!-- Logo / Brand Mark -->
+              <div style="margin-bottom: 16px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" style="margin: 0 auto;">
+                  <tr>
+                    <td style="width: 48px; height: 48px; background: rgba(255,255,255,0.15); border-radius: 12px; text-align: center; vertical-align: middle;">
+                      <span style="font-size: 24px; color: #FFD700;">&#9734;</span>
+                    </td>
+                  </tr>
+                </table>
+              </div>
+              <div style="font-size: 11px; letter-spacing: 0.25em; text-transform: uppercase; color: rgba(255,215,0,0.9); font-weight: 700; margin-bottom: 8px;">Cổ Phục ERP</div>
+              <div style="font-size: 13px; color: rgba(255,255,255,0.7); font-weight: 400;">Hệ thống quản lý cho thuê trang phục cổ phục</div>
+            </td>
+          </tr>
+
+          <!-- DECORATIVE DIVIDER -->
+          <tr>
+            <td style="background: #ffffff; padding: 0 40px;">
+              <div style="height: 4px; background: linear-gradient(90deg, #8B0000, #D4A017, #8B0000); border-radius: 2px;"></div>
+            </td>
+          </tr>
+
+          <!-- MAIN CONTENT -->
+          <tr>
+            <td style="background: #ffffff; padding: 32px 40px 24px;">
+              <h1 style="font-size: 22px; font-weight: 700; color: #1a1a2e; margin: 0 0 8px; line-height: 1.3;">${title}</h1>
+              <div style="width: 40px; height: 3px; background: #D4A017; border-radius: 2px; margin-bottom: 20px;"></div>
+              <div style="font-size: 15px; line-height: 1.8; color: #4a4a5a;">${body}</div>
+            </td>
+          </tr>
+
+          <!-- CTA / INFO BOX -->
+          <tr>
+            <td style="background: #ffffff; padding: 0 40px 32px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background: #faf6f1; border: 1px solid #e8e0d5; border-radius: 12px; padding: 20px 24px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="width: 36px; vertical-align: top;">
+                          <div style="width: 32px; height: 32px; background: linear-gradient(135deg, #8B0000, #D4A017); border-radius: 8px; text-align: center; line-height: 32px;">
+                            <span style="color: #fff; font-size: 16px;">&#9993;</span>
+                          </div>
+                        </td>
+                        <td style="padding-left: 12px; vertical-align: top;">
+                          <div style="font-size: 13px; font-weight: 600; color: #8B0000; margin-bottom: 4px;">Cần hỗ trợ?</div>
+                          <div style="font-size: 13px; color: #6b6b7b; line-height: 1.6;">Nếu bạn có thắc mắc, vui lòng liên hệ đội ngũ chăm sóc khách hàng qua email hoặc hotline bên dưới.</div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- FOOTER -->
+          <tr>
+            <td style="background: #1a1a2e; border-radius: 0 0 16px 16px; padding: 28px 40px; text-align: center;">
+              <div style="font-size: 12px; font-weight: 600; letter-spacing: 0.15em; text-transform: uppercase; color: #D4A017; margin-bottom: 12px;">Cổ Phục ERP</div>
+              <div style="font-size: 12px; color: rgba(255,255,255,0.5); line-height: 1.8;">
+                Email: cophuctruyenthong@gmail.com &nbsp;|&nbsp; Hotline: 1900 xxxx<br>
+                Đà Nẵng, Việt Nam
+              </div>
+              <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.1);">
+                <div style="font-size: 11px; color: rgba(255,255,255,0.35); line-height: 1.6;">
+                  &copy; 2026 Cổ Phục ERP. Bạn nhận email này vì đã đăng ký tài khoản trên hệ thống.<br>
+                  Đây là email tự động, vui lòng không trả lời trực tiếp.
+                </div>
+              </div>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
     `;
   }
 
