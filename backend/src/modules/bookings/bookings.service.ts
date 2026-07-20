@@ -343,7 +343,7 @@ export class BookingsService {
   async findAllPending() {
     const bookings = await this.prisma.booking.findMany({
       where: { status: BookingStatus.pending_confirmation },
-      orderBy: { createdAt: "asc" },
+      orderBy: { createdAt: "desc" },
       include: {
         items: {
           include: {

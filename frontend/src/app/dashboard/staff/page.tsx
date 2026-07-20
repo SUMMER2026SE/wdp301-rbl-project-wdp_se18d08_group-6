@@ -87,6 +87,24 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   online: "Online",
 };
 
+const STAFF_PAGE_SIZE = 5;
+
+// Danh sách số trang rút gọn: 1 … 4 5 6 … 20
+function buildPageList(current: number, total: number): (number | "...")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const wanted = [1, total, current - 1, current, current + 1]
+    .filter((p) => p >= 1 && p <= total)
+    .sort((a, b) => a - b);
+  const pages: (number | "...")[] = [];
+  let prev = 0;
+  for (const p of [...new Set(wanted)]) {
+    if (p - prev > 1) pages.push("...");
+    pages.push(p);
+    prev = p;
+  }
+  return pages;
+}
+
 // Statuses mà item chưa có asset là vấn đề cần báo manager
 const ASSET_NEEDED_STATUSES = [
   "confirmed",
@@ -102,6 +120,8 @@ export default function StaffDashboardPage() {
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [errorDialog, setErrorDialog] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
   const [paymentDialog, setPaymentDialog] = useState<PaymentDialog>(null);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("cash");
 
@@ -118,6 +138,7 @@ export default function StaffDashboardPage() {
   const [refundBankHolder, setRefundBankHolder] = useState("");
 
   useEffect(() => {
+    setPage(1);
     if (tab === "map") {
       setLoading(false);
       return;
@@ -305,6 +326,23 @@ export default function StaffDashboardPage() {
 
   const pendingRefundCount = tab === "pending" ? bookings.filter((b) => b.status === "pending_confirmation").length : 0;
 
+  // Tìm kiếm theo mã đơn / tên khách / SĐT / tên trang phục
+  const searchQuery = search.trim().toLowerCase().replace(/^#/, "");
+  const filteredBookings = searchQuery
+    ? bookings.filter(
+        (b) =>
+          b.id.toLowerCase().includes(searchQuery) ||
+          (b.customerName ?? "").toLowerCase().includes(searchQuery) ||
+          (b.customerPhone ?? "").includes(searchQuery) ||
+          b.items.some((item) => (item.garmentName ?? "").toLowerCase().includes(searchQuery)),
+      )
+    : bookings;
+
+  // Phân trang danh sách đơn
+  const totalPages = Math.max(1, Math.ceil(filteredBookings.length / STAFF_PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pagedBookings = filteredBookings.slice((currentPage - 1) * STAFF_PAGE_SIZE, currentPage * STAFF_PAGE_SIZE);
+
   return (
     <StaffPortalShell
       active="overview"
@@ -312,7 +350,7 @@ export default function StaffDashboardPage() {
       subtitle="Xác nhận, theo dõi và điều phối vòng đời đơn thuê trang phục."
     >
       {/* Tab bar */}
-      <div className="mb-6 flex gap-2 border-b border-sand">
+      <div className="mb-6 flex items-center gap-2 border-b border-sand">
         <button
           type="button"
           onClick={() => setTab("pending")}
@@ -363,6 +401,16 @@ export default function StaffDashboardPage() {
           <span className="material-symbols-outlined text-[18px]">map</span>
           Bản đồ giao hàng
         </button>
+        <div className="relative ml-auto mb-2 hidden md:block">
+          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-stone-400">search</span>
+          <input
+            className="w-72 rounded-lg border border-sand bg-white py-2 pl-10 pr-4 text-sm text-ink outline-none transition focus:border-lotus"
+            placeholder="Tìm mã đơn, khách hàng..."
+            type="text"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          />
+        </div>
       </div>
 
       {errorMsg && (
@@ -375,13 +423,15 @@ export default function StaffDashboardPage() {
         <DeliveryMapPanel />
       ) : loading ? (
         <div className="py-20 text-center text-stone-400">Đang tải...</div>
-      ) : bookings.length === 0 ? (
+      ) : filteredBookings.length === 0 ? (
         <div className="py-20 text-center text-stone-400">
-          {tab === "pending" ? "Không có đơn nào đang chờ xác nhận." : tab === "refunds" ? "Không có đơn nào cần hoàn cọc." : "Chưa có đơn nào."}
+          {searchQuery
+            ? `Không tìm thấy đơn phù hợp với "${search.trim()}".`
+            : tab === "pending" ? "Không có đơn nào đang chờ xác nhận." : tab === "refunds" ? "Không có đơn nào cần hoàn cọc." : "Chưa có đơn nào."}
         </div>
       ) : (
         <div className="space-y-4">
-          {bookings.map((booking) => {
+          {pagedBookings.map((booking) => {
             const s = STATUS_LABELS[booking.status] ?? { label: booking.status, color: "bg-stone-100 text-stone-600" };
             const actions = NEXT_ACTIONS[booking.status] ?? [];
             const isActioning = actioningId === booking.id;
@@ -590,6 +640,53 @@ export default function StaffDashboardPage() {
               </div>
             );
           })}
+
+          {/* Phân trang */}
+          {totalPages > 1 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sand bg-white px-6 py-4 shadow-sm">
+              <p className="text-xs text-stone-500">
+                Hiển thị {(currentPage - 1) * STAFF_PAGE_SIZE + 1}–{Math.min(currentPage * STAFF_PAGE_SIZE, filteredBookings.length)} trong {filteredBookings.length} đơn
+              </p>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={currentPage <= 1}
+                  onClick={() => setPage(currentPage - 1)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-sand bg-white text-stone-600 transition hover:border-lotus hover:text-lotus disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Trang trước"
+                >
+                  <span className="material-symbols-outlined text-[18px]">chevron_left</span>
+                </button>
+                {buildPageList(currentPage, totalPages).map((p, idx) =>
+                  p === "..." ? (
+                    <span key={`ellipsis-${idx}`} className="px-1 text-xs text-stone-400">…</span>
+                  ) : (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setPage(p)}
+                      className={
+                        p === currentPage
+                          ? "flex h-8 min-w-8 items-center justify-center rounded-lg bg-lotus px-2 text-xs font-semibold text-white"
+                          : "flex h-8 min-w-8 items-center justify-center rounded-lg border border-sand bg-white px-2 text-xs font-semibold text-stone-600 transition hover:border-lotus hover:text-lotus"
+                      }
+                    >
+                      {p}
+                    </button>
+                  ),
+                )}
+                <button
+                  type="button"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setPage(currentPage + 1)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-sand bg-white text-stone-600 transition hover:border-lotus hover:text-lotus disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Trang sau"
+                >
+                  <span className="material-symbols-outlined text-[18px]">chevron_right</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

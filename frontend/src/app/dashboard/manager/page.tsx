@@ -56,6 +56,14 @@ function formatVND(amount: number) {
   return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
 }
 
+function formatCompactVND(amount: number) {
+  if (amount >= 1_000_000) {
+    return `${new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1 }).format(amount / 1_000_000)}tr`;
+  }
+  if (amount >= 1_000) return `${Math.round(amount / 1_000)}k`;
+  return String(amount);
+}
+
 const ASSET_STATUS_META: Record<string, { label: string; color: string }> = {
   available:         { label: "Sẵn sàng",       color: "bg-state-available/10 text-state-available border border-state-available/20" },
   reserved:          { label: "Đã giữ chỗ",     color: "bg-amber-100 text-amber-700 border border-amber-200" },
@@ -67,6 +75,11 @@ const ASSET_STATUS_META: Record<string, { label: string; color: string }> = {
   retired:           { label: "Đã thanh lý",    color: "bg-stone-100 text-stone-500 border border-stone-200" },
   lost:              { label: "Mất",            color: "bg-red-100 text-red-700 border border-red-200" },
 };
+
+const ASSET_STATUS_ORDER = [
+  "available", "reserved", "rented", "laundry", "maintenance",
+  "damaged", "inspection_pending", "retired", "lost",
+] as const;
 
 const ACTIVE_STATUSES = [
   "confirmed", "awaiting_payment", "paid", "preparing",
@@ -571,6 +584,7 @@ export default function ManagerDashboardPage() {
         <OverviewTab
           totalRentalRevenue={totalRentalRevenue}
           totalDepositHeld={totalDepositHeld}
+          bookings={bookings}
           activeBookings={activeBookings}
           utilizationPct={utilizationPct}
           rentedItemCount={rentedItemCount}
@@ -822,12 +836,13 @@ function AssetsAssignTab({
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function OverviewTab({
-  totalRentalRevenue, totalDepositHeld, activeBookings,
+  totalRentalRevenue, totalDepositHeld, bookings, activeBookings,
   utilizationPct, rentedItemCount, utilizationDenominator,
   countBy, garments, onGoToTab, bookingsNeedingAssets, allAssets, laundryTickets, maintenanceJobs, assets,
 }: {
   totalRentalRevenue: number;
   totalDepositHeld: number;
+  bookings: StaffBookingResponse[];
   activeBookings: StaffBookingResponse[];
   utilizationPct: number;
   rentedItemCount: number;
@@ -863,44 +878,78 @@ function OverviewTab({
         <SnapshotCard label="Hiệu suất lấp đầy" value={garments.length === 0 ? "—" : `${utilizationPct}%`} hint={`${rentedItemCount} đang thuê / ${utilizationDenominator} khả dụng`} icon="pie_chart" tone="bronze" progress={garments.length === 0 ? null : utilizationPct} />
       </div>
 
-      <section className="rounded-xl border border-sand bg-white p-5 shadow-sm">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h2 className="font-display text-2xl text-ink">Việc cần xử lý</h2>
-            <p className="text-sm text-stone-500">Ưu tiên vận hành trong ngày</p>
-          </div>
-          <span className="material-symbols-outlined text-lotus">task_alt</span>
-        </div>
-        <div className="grid gap-3 md:grid-cols-4">
-          <QuickWorkItem icon="swap_horiz" label="Cần gán tài sản" value={bookingsNeedingAssets.length} tone="amber" onClick={() => onGoToTab("assets")} />
-          <QuickWorkItem icon="search_check" label="Chờ kiểm tra" value={returnedWaiting} tone="orange" onClick={() => onGoToTab("inspection-log")} />
-          <QuickWorkItem icon="dry_cleaning" label="Đang giặt sấy" value={laundryTickets.length} tone="blue" onClick={() => onGoToTab("laundry")} />
-          <QuickWorkItem icon="build" label="Cần bảo trì" value={maintenanceJobs.filter((j) => j.status !== "completed" && j.status !== "cannot_repair").length} tone="red" onClick={() => onGoToTab("damaged")} />
-        </div>
-      </section>
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <section className="rounded-xl border border-sand bg-white p-6 shadow-xs xl:col-span-2">
+          <MonthlyFinanceChart bookings={bookings} />
+        </section>
 
-      <section className="rounded-xl border border-sand bg-white p-5 shadow-sm">
-        <div className="mb-4 flex items-center justify-between">
+        <section className="flex flex-col rounded-xl border border-sand bg-white p-6 shadow-xs">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="font-display text-2xl text-ink">Việc cần xử lý</h2>
+              <p className="text-sm text-stone-500">Ưu tiên vận hành trong ngày</p>
+            </div>
+            <span className="material-symbols-outlined text-lotus">task_alt</span>
+          </div>
+          <div className="flex flex-1 flex-col justify-between gap-3">
+            <QuickWorkItem icon="swap_horiz" label="Cần gán tài sản" value={bookingsNeedingAssets.length} tone="amber" onClick={() => onGoToTab("assets")} />
+            <QuickWorkItem icon="search_check" label="Chờ kiểm tra" value={returnedWaiting} tone="orange" onClick={() => onGoToTab("inspection-log")} />
+            <QuickWorkItem icon="dry_cleaning" label="Đang giặt sấy" value={Math.max(laundryTickets.length, assetCounts["laundry"] ?? 0)} tone="laundry" onClick={() => onGoToTab("laundry")} />
+            <QuickWorkItem icon="build" label="Cần bảo trì" value={Math.max(maintenanceJobs.filter((j) => j.status !== "completed" && j.status !== "cannot_repair").length, assetCounts["maintenance"] ?? 0)} tone="red" onClick={() => onGoToTab("damaged")} />
+          </div>
+        </section>
+      </div>
+
+      <section className="rounded-xl border border-sand bg-white p-6 shadow-xs">
+        <div className="mb-5 flex items-center justify-between">
           <div>
             <h2 className="font-display text-2xl text-ink">Tổng Quan Kho Tài Sản</h2>
             <p className="text-sm text-stone-500">Tình trạng hiện vật đang vận hành trong cửa hàng</p>
           </div>
-          <span className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-400">{effectiveAssets.length} tài sản</span>
+          <span className="rounded-full border border-sand bg-mist px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-bronze">{effectiveAssets.length} tài sản</span>
         </div>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-          {["available", "reserved", "rented", "laundry", "maintenance", "damaged", "inspection_pending", "retired", "lost"].map((status) => {
+
+        {effectiveAssets.length > 0 && (
+          <div className="mb-5">
+            <div className="flex h-3 w-full overflow-hidden rounded-full border border-sand/60 bg-mist">
+              {ASSET_STATUS_ORDER.filter((s) => (assetCounts[s] ?? 0) > 0).map((status) => (
+                <div
+                  key={status}
+                  title={`${ASSET_STATUS_META[status]?.label ?? status}: ${assetCounts[status]}`}
+                  style={{ width: `${((assetCounts[status] ?? 0) / effectiveAssets.length) * 100}%`, backgroundColor: DONUT_COLORS[status] ?? "#9ca3af" }}
+                />
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-stone-400">Phân bố trạng thái trên tổng số tài sản</p>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {ASSET_STATUS_ORDER.map((status) => {
             const meta = ASSET_STATUS_META[status] ?? { label: status, color: "bg-stone-100 text-stone-600" };
+            const count = assetCounts[status] ?? 0;
             return (
-              <button key={status} type="button" onClick={() => onGoToTab("inventory")} className="rounded-lg border border-sand bg-mist p-3 text-left transition hover:border-lotus/50 hover:bg-white">
-                <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${meta.color}`}>{meta.label}</span>
-                <p className="mt-2 font-display text-2xl text-ink">{assetCounts[status] ?? 0}</p>
+              <button
+                key={status}
+                type="button"
+                onClick={() => onGoToTab("inventory")}
+                className="group flex items-center gap-3 rounded-lg border border-sand bg-white p-3.5 text-left transition hover:-translate-y-0.5 hover:border-lotus/40 hover:shadow-sm"
+              >
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: count > 0 ? (DONUT_COLORS[status] ?? "#9ca3af") : "#d6d3d1" }}
+                />
+                <span className="min-w-0">
+                  <span className="block truncate text-xs font-semibold text-stone-500">{meta.label}</span>
+                  <span className={`block font-display text-2xl ${count > 0 ? "text-ink" : "text-stone-300"}`}>{count}</span>
+                </span>
               </button>
             );
           })}
         </div>
       </section>
 
-      <div className="grid grid-cols-1 gap-gutter lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="rounded-xl border border-sand bg-white p-6 shadow-xs lg:col-span-2">
           <h2 className="mb-5 font-display text-2xl text-ink">Tình Trạng Vận Hành</h2>
           <BookingPipelineChart countBy={countBy} />
@@ -922,7 +971,7 @@ function OverviewTab({
           </div>
         </div>
 
-        <div className="flex flex-col gap-gutter">
+        <div className="flex flex-col gap-6">
           <div className="rounded-xl border border-sand bg-white p-6 shadow-xs">
             <h2 className="mb-4 font-display text-xl text-ink">Kho Tài Sản</h2>
             <AssetDonutChart assetCounts={assetCounts} total={effectiveAssets.length} />
@@ -1995,6 +2044,111 @@ const TONE_CLASSES: Record<string, { text: string; bg: string; bar: string }> = 
 // ─────────────────────────────────────────────────────────────────────────────
 // Chart: Booking Pipeline (horizontal bar chart)
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart: Monthly Revenue & Deposit (grouped bars, last 6 months)
+// ─────────────────────────────────────────────────────────────────────────────
+function MonthlyFinanceChart({ bookings }: { bookings: StaffBookingResponse[] }) {
+  const months = useMemo(() => {
+    const now = new Date();
+    const buckets: { key: string; label: string; revenue: number; deposit: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      buckets.push({
+        key: `${d.getFullYear()}-${d.getMonth()}`,
+        label: `T${d.getMonth() + 1}/${String(d.getFullYear()).slice(2)}`,
+        revenue: 0,
+        deposit: 0,
+      });
+    }
+    const map = new Map(buckets.map((b) => [b.key, b]));
+    for (const b of bookings) {
+      if (["cancelled", "rejected", "draft"].includes(b.status)) continue;
+      const d = new Date(b.createdAt);
+      const bucket = map.get(`${d.getFullYear()}-${d.getMonth()}`);
+      if (!bucket) continue;
+      if (REVENUE_STATUSES.includes(b.status)) bucket.revenue += b.rentalTotal;
+      bucket.deposit += b.depositTotal;
+    }
+    return buckets;
+  }, [bookings]);
+
+  const maxVal = Math.max(...months.flatMap((m) => [m.revenue, m.deposit]), 1);
+  const current = months[months.length - 1];
+  const previous = months[months.length - 2];
+  const delta = previous.revenue > 0
+    ? Math.round(((current.revenue - previous.revenue) / previous.revenue) * 100)
+    : null;
+  const hasData = months.some((m) => m.revenue > 0 || m.deposit > 0);
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-display text-2xl text-ink">Doanh Thu & Tiền Cọc Theo Tháng</h2>
+          <p className="text-sm text-stone-500">6 tháng gần nhất, tính theo thời điểm tạo đơn</p>
+        </div>
+        {delta !== null ? (
+          <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${delta >= 0 ? "bg-jade/10 text-jade" : "bg-red-50 text-red-600"}`}>
+            <span className="material-symbols-outlined text-[16px]">{delta >= 0 ? "trending_up" : "trending_down"}</span>
+            {delta >= 0 ? "+" : ""}{delta}% so với tháng trước
+          </span>
+        ) : current.revenue > 0 ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-jade/10 px-3 py-1 text-xs font-semibold text-jade">
+            <span className="material-symbols-outlined text-[16px]">trending_up</span>
+            Tháng trước chưa có doanh thu
+          </span>
+        ) : null}
+      </div>
+
+      <div className="mt-3 flex items-center gap-5 text-xs text-stone-500">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-2.5 rounded-sm bg-lotus" />
+          Doanh thu
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-2.5 rounded-sm bg-antique" />
+          Tiền cọc
+        </span>
+      </div>
+
+      {!hasData ? (
+        <div className="flex h-56 items-center justify-center text-sm text-stone-400">
+          Chưa có dữ liệu doanh thu trong 6 tháng gần nhất.
+        </div>
+      ) : (
+        <div className="mt-6 flex items-end gap-2 sm:gap-3">
+          {months.map((m, i) => {
+            const isCurrent = i === months.length - 1;
+            return (
+              <div
+                key={m.key}
+                className={`flex flex-1 flex-col items-center gap-2 rounded-lg pb-2 pt-3 ${isCurrent ? "bg-parchment" : ""}`}
+              >
+                <div className="flex h-40 w-full items-end justify-center gap-1.5 px-2">
+                  <div
+                    title={`Doanh thu ${m.label}: ${formatVND(m.revenue)}`}
+                    className="w-1/2 max-w-[26px] rounded-t-md bg-lotus transition-all duration-500 hover:bg-oxblood"
+                    style={{ height: `${Math.max((m.revenue / maxVal) * 100, m.revenue > 0 ? 3 : 1)}%` }}
+                  />
+                  <div
+                    title={`Tiền cọc ${m.label}: ${formatVND(m.deposit)}`}
+                    className="w-1/2 max-w-[26px] rounded-t-md bg-antique transition-all duration-500 hover:bg-bronze"
+                    style={{ height: `${Math.max((m.deposit / maxVal) * 100, m.deposit > 0 ? 3 : 1)}%` }}
+                  />
+                </div>
+                <div className="text-center">
+                  <p className={`text-[11px] font-semibold uppercase tracking-wide ${isCurrent ? "text-lotus" : "text-stone-500"}`}>{m.label}</p>
+                  <p className="text-[11px] text-stone-400">{m.revenue > 0 ? formatCompactVND(m.revenue) : "–"}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BookingPipelineChart({ countBy }: { countBy: (s: string[]) => number }) {
   const stages = [
     { label: "Chờ xử lý",    statuses: ["pending_confirmation", "awaiting_payment"], color: "#d97706" },
@@ -2094,20 +2248,30 @@ function AssetDonutChart({ assetCounts, total }: { assetCounts: Record<string, n
   );
 }
 
-function QuickWorkItem({ icon, label, value, tone, onClick }: { icon: string; label: string; value: number; tone: "amber" | "orange" | "blue" | "red"; onClick: () => void }) {
-  const cls = {
-    amber: "bg-amber-50 text-amber-700 border-amber-200",
-    orange: "bg-orange-50 text-orange-700 border-orange-200",
-    blue: "bg-sky-50 text-sky-700 border-sky-200",
-    red: "bg-red-50 text-red-700 border-red-200",
+function QuickWorkItem({ icon, label, value, tone, onClick }: { icon: string; label: string; value: number; tone: "amber" | "orange" | "laundry" | "red"; onClick: () => void }) {
+  const chip = {
+    amber: "bg-amber-50 text-amber-700",
+    orange: "bg-orange-50 text-orange-700",
+    laundry: "bg-sky-50 text-sky-700",
+    red: "bg-red-50 text-red-700",
   }[tone];
   return (
-    <button type="button" onClick={onClick} className={`flex items-center justify-between rounded-lg border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${cls}`}>
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] opacity-80">{label}</p>
-        <p className="mt-1 font-display text-3xl">{value}</p>
-      </div>
-      <span className="material-symbols-outlined text-3xl opacity-70">{icon}</span>
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex w-full items-center gap-4 rounded-lg border border-sand bg-white p-4 text-left transition hover:-translate-y-0.5 hover:border-lotus/40 hover:shadow-sm"
+    >
+      <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${chip}`}>
+        <span className="material-symbols-outlined text-[22px]">{icon}</span>
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">{label}</span>
+        <span className={`mt-0.5 block font-display text-2xl ${value > 0 ? "text-ink" : "text-stone-300"}`}>{value}</span>
+      </span>
+      {value > 0 && (
+        <span className="rounded-full bg-lotus/10 px-2.5 py-0.5 text-[11px] font-semibold text-lotus">Cần xử lý</span>
+      )}
+      <span className="material-symbols-outlined text-stone-300 transition group-hover:translate-x-0.5 group-hover:text-lotus">chevron_right</span>
     </button>
   );
 }
