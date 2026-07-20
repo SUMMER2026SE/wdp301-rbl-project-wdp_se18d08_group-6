@@ -7,7 +7,7 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { apiRequest, forgotPassword, resetPassword } from "@/lib/api";
 import { getRoleLabel, normalizeNullableText, type AuthenticatedUser } from "@/lib/auth";
 
-export default function ManagerProfilePage() {
+export default function AdminProfilePage() {
   const router = useRouter();
   const { replaceUser, signOut, user } = useAuth();
   const [fullName, setFullName] = useState("");
@@ -53,7 +53,7 @@ export default function ManagerProfilePage() {
       }
 
       replaceUser(result.data);
-      setMessage("Cập nhật hồ sơ quản lý thành công.");
+      setMessage("Cập nhật hồ sơ quản trị viên thành công.");
     } finally {
       setSaving(false);
     }
@@ -121,11 +121,11 @@ export default function ManagerProfilePage() {
       <header className="border-b border-sand bg-mist px-6 py-4">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
           <div>
-            <h1 className="font-display text-3xl text-lotus">Hồ sơ quản lý</h1>
-            <p className="text-sm text-stone-500">Cập nhật thông tin tài khoản vận hành cửa hàng.</p>
+            <h1 className="font-display text-3xl text-lotus">Hồ sơ quản trị viên</h1>
+            <p className="text-sm text-stone-500">Cập nhật thông tin tài khoản quản trị hệ thống.</p>
           </div>
           <div className="flex items-center gap-3">
-            <Link href="/dashboard/manager" className="rounded-lg border border-sand bg-white px-4 py-2 text-sm font-semibold text-stone-600 transition hover:border-lotus hover:text-lotus">
+            <Link href="/dashboard/admin" className="rounded-lg border border-sand bg-white px-4 py-2 text-sm font-semibold text-stone-600 transition hover:border-lotus hover:text-lotus">
               Quay lại dashboard
             </Link>
             <button type="button" onClick={handleSignOut} className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100">
@@ -143,7 +143,7 @@ export default function ManagerProfilePage() {
                 {(user.fullName ?? user.email).slice(0, 2).toUpperCase()}
               </div>
               <div className="min-w-0">
-                <p className="truncate text-lg font-semibold text-ink">{user.fullName ?? "Quản lý cửa hàng"}</p>
+                <p className="truncate text-lg font-semibold text-ink">{user.fullName ?? "Quản trị viên"}</p>
                 <p className="truncate text-sm text-stone-500">{user.email}</p>
               </div>
             </div>
@@ -175,7 +175,7 @@ export default function ManagerProfilePage() {
             <div className="mt-6 space-y-4">
               <div>
                 <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Họ tên</label>
-                <input value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="Tên quản lý" />
+                <input value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique" placeholder="Tên quản trị viên" />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Số điện thoại</label>

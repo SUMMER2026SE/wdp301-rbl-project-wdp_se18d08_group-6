@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, forgotPassword, resetPassword } from "@/lib/api";
 import { normalizeNullableText, type AuthenticatedUser } from "@/lib/auth";
 
 export default function CustomerProfilePage() {
@@ -12,6 +12,15 @@ export default function CustomerProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Password change state
+  const [pwdStep, setPwdStep] = useState<"idle" | "otp_sent">("idle");
+  const [pwdOtp, setPwdOtp] = useState("");
+  const [pwdNew, setPwdNew] = useState("");
+  const [pwdConfirm, setPwdConfirm] = useState("");
+  const [pwdError, setPwdError] = useState<string | null>(null);
+  const [pwdMessage, setPwdMessage] = useState<string | null>(null);
+  const [pwdLoading, setPwdLoading] = useState(false);
 
   useEffect(() => {
     setFullName(user?.fullName ?? "");
@@ -41,6 +50,58 @@ export default function CustomerProfilePage() {
       setMessage("Cập nhật hồ sơ thành công.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleRequestOtp() {
+    if (!user?.email) return;
+    setPwdError(null);
+    setPwdMessage(null);
+    setPwdLoading(true);
+    try {
+      const result = await forgotPassword(user.email);
+      if (!result.success) {
+        setPwdError(result.message ?? "Không thể gửi mã OTP.");
+        return;
+      }
+      setPwdStep("otp_sent");
+      setPwdMessage("Mã OTP đã được gửi đến email của bạn.");
+    } finally {
+      setPwdLoading(false);
+    }
+  }
+
+  async function handleResetPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!user?.email) return;
+    
+    setPwdError(null);
+    setPwdMessage(null);
+    
+    if (pwdNew !== pwdConfirm) {
+      setPwdError("Mật khẩu xác nhận không khớp.");
+      return;
+    }
+    
+    if (pwdNew.length < 8) {
+      setPwdError("Mật khẩu mới phải có ít nhất 8 ký tự.");
+      return;
+    }
+
+    setPwdLoading(true);
+    try {
+      const result = await resetPassword(user.email, pwdOtp, pwdNew);
+      if (!result.success) {
+        setPwdError(result.message ?? "Không thể đổi mật khẩu.");
+        return;
+      }
+      setPwdStep("idle");
+      setPwdOtp("");
+      setPwdNew("");
+      setPwdConfirm("");
+      setPwdMessage("Đổi mật khẩu thành công!");
+    } finally {
+      setPwdLoading(false);
     }
   }
 
@@ -158,6 +219,121 @@ export default function CustomerProfilePage() {
               </button>
             </div>
           </form>
+
+          {/* Change Password Form */}
+          <div className="mt-8 rounded-lg border border-sand bg-white p-8 shadow-sm md:p-10">
+            <h3 className="mb-6 flex items-center gap-2 font-display text-2xl text-lotus">
+              <span className="material-symbols-outlined text-[22px]">lock</span>
+              Bảo mật & Mật khẩu
+            </h3>
+            
+            {pwdStep === "idle" ? (
+              <div>
+                <p className="mb-6 text-sm text-stone-600 leading-relaxed">
+                  Để thay đổi mật khẩu, chúng tôi sẽ gửi một mã OTP gồm 6 chữ số về email <span className="font-semibold text-ink">{user.email}</span> để xác thực.
+                </p>
+                {pwdError && (
+                  <div className="mb-6 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{pwdError}</div>
+                )}
+                {pwdMessage && (
+                  <div className="mb-6 flex items-center gap-2 rounded-md border border-jade/30 bg-jade/5 px-4 py-3 text-sm text-jade">
+                    <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                    {pwdMessage}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={handleRequestOtp}
+                  disabled={pwdLoading}
+                  className="rounded-md border border-sand bg-parchment px-6 py-3 text-sm font-semibold text-stone-700 transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {pwdLoading ? "Đang gửi..." : "Đổi mật khẩu"}
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleResetPassword}>
+                <p className="mb-6 text-sm text-stone-600 leading-relaxed">
+                  Vui lòng kiểm tra email và nhập mã OTP để thiết lập mật khẩu mới.
+                </p>
+                <div className="space-y-6">
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-stone-500" htmlFor="pwdOtp">
+                      Mã OTP (6 chữ số)
+                    </label>
+                    <input
+                      id="pwdOtp"
+                      type="text"
+                      value={pwdOtp}
+                      onChange={(e) => setPwdOtp(e.target.value)}
+                      placeholder="Nhập mã OTP"
+                      required
+                      className="w-full rounded-md border border-sand bg-parchment px-4 py-3 text-sm text-ink outline-none transition focus:border-lotus"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-stone-500" htmlFor="pwdNew">
+                      Mật khẩu mới
+                    </label>
+                    <input
+                      id="pwdNew"
+                      type="password"
+                      value={pwdNew}
+                      onChange={(e) => setPwdNew(e.target.value)}
+                      placeholder="Ít nhất 8 ký tự, gồm chữ hoa, thường & số"
+                      required
+                      className="w-full rounded-md border border-sand bg-parchment px-4 py-3 text-sm text-ink outline-none transition focus:border-lotus"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-stone-500" htmlFor="pwdConfirm">
+                      Nhập lại mật khẩu mới
+                    </label>
+                    <input
+                      id="pwdConfirm"
+                      type="password"
+                      value={pwdConfirm}
+                      onChange={(e) => setPwdConfirm(e.target.value)}
+                      placeholder="Xác nhận mật khẩu"
+                      required
+                      className="w-full rounded-md border border-sand bg-parchment px-4 py-3 text-sm text-ink outline-none transition focus:border-lotus"
+                    />
+                  </div>
+                </div>
+
+                {pwdError && (
+                  <div className="mt-6 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{pwdError}</div>
+                )}
+                {pwdMessage && (
+                  <div className="mt-6 flex items-center gap-2 rounded-md border border-jade/30 bg-jade/5 px-4 py-3 text-sm text-jade">
+                    <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                    {pwdMessage}
+                  </div>
+                )}
+
+                <div className="mt-8 flex items-center gap-4">
+                  <button
+                    type="submit"
+                    disabled={pwdLoading}
+                    className="rounded-md bg-lotus px-8 py-3 text-sm font-semibold text-white transition hover:bg-oxblood disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {pwdLoading ? "Đang xử lý..." : "Xác nhận đổi mật khẩu"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPwdStep("idle");
+                      setPwdError(null);
+                      setPwdMessage(null);
+                    }}
+                    disabled={pwdLoading}
+                    className="text-sm font-medium text-stone-500 hover:text-ink"
+                  >
+                    Hủy
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
         </div>
       </div>
     </div>
