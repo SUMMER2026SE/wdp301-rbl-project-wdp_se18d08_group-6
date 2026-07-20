@@ -147,6 +147,9 @@ export class BookingsService {
 
     let deliveryAddressSnapshot: string | null = null;
     if (dto.pickupMethod === "delivery") {
+      if (dto.paymentMethod && dto.paymentMethod !== "qr_code") {
+        throw new BadRequestException("Đơn giao tận nơi phải thanh toán bằng chuyển khoản QR.");
+      }
       if (!dto.deliveryAddressId) {
         throw new BadRequestException("Vui lòng chọn địa chỉ giao nhận.");
       }
@@ -197,7 +200,7 @@ export class BookingsService {
           .filter(Boolean)
           .join("\n\n") || null,
         items: { create: itemsData },
-        paymentMethod: dto.paymentMethod ?? "cash",
+        paymentMethod: dto.pickupMethod === "delivery" ? "qr_code" : (dto.paymentMethod ?? "cash"),
       },
       include: {
         items: {
@@ -312,17 +315,24 @@ export class BookingsService {
 
 
     return ok(this.serializeBooking(updated));
-  }  async findOneForStaff(id: string) {
+  }
+
+  async findOneForStaff(id: string) {
     const booking = await this.prisma.booking.findUnique({
       where: { id },
       include: {
         items: {
           include: {
-            garment_sizes: { include: { garments: true } },
+            garment_sizes: {
+              include: {
+                garments: { include: { images: { orderBy: { sortOrder: "asc" }, take: 1 } } },
+              },
+            },
             garmentAsset: true,
           },
         },
         customer: { select: { profile: { select: { fullName: true, phone: true } }, email: true } },
+        payments: { where: { status: PaymentStatus.paid }, take: 1 },
         deliveryAddress: true,
       },
     });
@@ -342,6 +352,7 @@ export class BookingsService {
           },
         },
         customer: { select: { profile: { select: { fullName: true, phone: true } }, email: true } },
+        payments: { where: { status: PaymentStatus.paid }, take: 1 },
       },
     });
     return ok(bookings.map((b) => this.serializeStaffBooking(b)));
@@ -360,6 +371,7 @@ export class BookingsService {
           },
         },
         customer: { select: { profile: { select: { fullName: true, phone: true } }, email: true } },
+        payments: { where: { status: PaymentStatus.paid }, take: 1 },
       },
     });
     return ok(bookings.map((b) => this.serializeStaffBooking(b)));
@@ -378,6 +390,7 @@ export class BookingsService {
           },
         },
         customer: { select: { profile: { select: { fullName: true, phone: true } }, email: true } },
+        payments: { where: { status: PaymentStatus.paid }, take: 1 },
       },
     });
     return ok(bookings.map((b) => this.serializeStaffBooking(b)));
@@ -398,6 +411,7 @@ export class BookingsService {
           },
         },
         customer: { select: { profile: { select: { fullName: true, phone: true } }, email: true } },
+        payments: { where: { status: PaymentStatus.paid }, take: 1 },
       },
     });
     return ok(bookings.map((b) => this.serializeStaffBooking(b)));
@@ -416,6 +430,7 @@ export class BookingsService {
           },
         },
         customer: { select: { profile: { select: { fullName: true, phone: true } }, email: true } },
+        payments: { where: { status: PaymentStatus.paid }, take: 1 },
         refunds: { orderBy: { createdAt: "desc" }, take: 1 },
       },
     });
@@ -545,7 +560,7 @@ export class BookingsService {
   async advanceStatus(id: string, dto: UpdateBookingStatusDto, changedBy?: string) {
     const booking = await this.prisma.booking.findUnique({
       where: { id },
-      include: { items: true },
+      include: { items: true, payments: true },
     });
     if (!booking) throw new NotFoundException("Booking not found.");
 
@@ -572,7 +587,14 @@ export class BookingsService {
       throw new BadRequestException("Cannot manually set booking to 'paid'. Use the mark-paid endpoint.");
     }
 
-    if (dto.status === BookingStatus.awaiting_payment && booking.pickupMethod === "store_pickup") {
+    // Đơn đã có payment thành công (VD: thanh toán QR trước khi xác nhận)
+    // thì bỏ qua bước chờ thanh toán, nhảy thẳng sang 'paid'.
+    // Đơn chưa thanh toán (tiền mặt / QR chưa quét) vẫn phải qua chờ thanh toán.
+    const alreadyPaid = booking.payments.some((p) => p.status === PaymentStatus.paid);
+    const skipAwaitingPayment = dto.status === BookingStatus.awaiting_payment && alreadyPaid;
+    const targetStatus = skipAwaitingPayment ? BookingStatus.paid : dto.status;
+
+    if (targetStatus === BookingStatus.awaiting_payment && booking.pickupMethod === "store_pickup") {
       await this.prisma.booking.update({
         where: { id },
         data: { paymentDueAt: new Date(Date.now() + 2 * 60 * 60 * 1000) },
@@ -585,22 +607,32 @@ export class BookingsService {
 
     const updated = await this.prisma.$transaction(async (tx) => {
       if (assetIds.length > 0) {
-        if (dto.status === BookingStatus.renting) {
+        if (targetStatus === BookingStatus.renting) {
           await tx.garmentAsset.updateMany({ where: { id: { in: assetIds } }, data: { status: AssetStatus.rented } });
         }
-        if (dto.status === BookingStatus.returned || dto.status === BookingStatus.inspection_pending) {
+        if (targetStatus === BookingStatus.returned || targetStatus === BookingStatus.inspection_pending) {
           await tx.garmentAsset.updateMany({ where: { id: { in: assetIds } }, data: { status: AssetStatus.inspection_pending } });
         }
-        if (dto.status === BookingStatus.cancelled || dto.status === BookingStatus.rejected) {
+        if (targetStatus === BookingStatus.cancelled || targetStatus === BookingStatus.rejected) {
           await tx.garmentAsset.updateMany({ where: { id: { in: assetIds } }, data: { status: AssetStatus.available } });
         }
       }
       await tx.bookingStatusHistory.create({
-        data: { bookingId: id, fromStatus: booking.status, toStatus: dto.status, changedBy: changedBy ?? null, note: dto.note ?? null },
+        data: {
+          bookingId: id,
+          fromStatus: booking.status,
+          toStatus: targetStatus,
+          changedBy: changedBy ?? null,
+          note: dto.note ?? (skipAwaitingPayment ? "Đã thanh toán online trước — bỏ qua bước chờ thanh toán" : null),
+        },
       });
       return tx.booking.update({
         where: { id },
-        data: { status: dto.status, ...(dto.note ? { note: dto.note } : {}) },
+        data: {
+          status: targetStatus,
+          ...(targetStatus === BookingStatus.paid ? { paymentDueAt: null } : {}),
+          ...(dto.note ? { note: dto.note } : {}),
+        },
         include: {
           items: {
             include: {
@@ -608,6 +640,7 @@ export class BookingsService {
               garmentAsset: true,
             },
           },
+          payments: true,
         },
       });
     });
@@ -629,7 +662,7 @@ export class BookingsService {
       garmentName: updated.items[0]?.garment_sizes?.garments?.name ?? null,
       startDate: updated.rentalStartDate.toISOString().slice(0, 10),
       endDate: updated.rentalEndDate.toISOString().slice(0, 10),
-      statusLabel: dto.status,
+      statusLabel: targetStatus,
       note: dto.note ?? null,
     });
 
@@ -691,19 +724,28 @@ export class BookingsService {
       throw new BadRequestException(`Booking must be in 'awaiting_payment' to mark as paid (current: ${booking.status}).`);
 
     const isDelivery = booking.pickupMethod === "delivery";
-    const paymentMethod = isDelivery ? "online" : (dto.paymentMethod ?? "cash");
+    const alreadyPaid = booking.payments.some((p) => p.status === PaymentStatus.paid);
+
+    // Đơn giao tận nơi bắt buộc khách thanh toán QR (PayOS) trước — staff không thể tự ghi nhận thu tiền.
+    if (isDelivery && !alreadyPaid) {
+      throw new BadRequestException("Đơn giao tận nơi phải được khách thanh toán qua QR trước khi xác nhận.");
+    }
+
+    const paymentMethod = dto.paymentMethod ?? booking.paymentMethod ?? "cash";
     const totalAmount = Number(booking.rentalTotal);
     const depositAmount = Number(booking.depositTotal);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       await tx.booking.update({ where: { id }, data: { status: BookingStatus.paid, paymentDueAt: null } });
-      await tx.payment.create({
-        data: {
-          bookingId: id, provider: isDelivery ? "online" : "manual", paymentMethod,
-          amount: totalAmount + depositAmount, depositAmount, status: PaymentStatus.paid, paidAt: new Date(),
-
-        },
-      });
+      // Chỉ tạo bản ghi thu tiền khi chưa có payment thành công (tránh ghi trùng với tiền QR đã vào)
+      if (!alreadyPaid) {
+        await tx.payment.create({
+          data: {
+            bookingId: id, provider: "manual", paymentMethod,
+            amount: totalAmount + depositAmount, depositAmount, status: PaymentStatus.paid, paidAt: new Date(),
+          },
+        });
+      }
       await tx.bookingStatusHistory.create({
         data: { bookingId: id, fromStatus: BookingStatus.awaiting_payment, toStatus: BookingStatus.paid, changedBy: staffId ?? null, note: "Đã thanh toán" },
       });
@@ -716,6 +758,7 @@ export class BookingsService {
               garmentAsset: true,
             },
           },
+          payments: true,
         },
       });
     });
@@ -808,12 +851,15 @@ export class BookingsService {
         city: booking.deliveryAddress.city,
       } : null,
       paymentMethod: booking.paymentMethod ?? "cash",
+      paidPaymentMethod:
+        (booking.payments ?? []).find((p: any) => p.status === PaymentStatus.paid)?.paymentMethod ?? null,
       createdAt: booking.createdAt.toISOString(),
       items: (booking.items ?? []).map((item: any) => ({
         id: item.id,
         garmentSizeId: item.garment_size_id,
         garmentId: item.garmentId,
         garmentName: item.garment_sizes?.garments?.name ?? null,
+        imageUrl: item.garment_sizes?.garments?.images?.[0]?.imageUrl ?? null,
         sizeLabel: item.garment_sizes?.size_label ?? null,
         dailyPrice: Number(item.dailyPrice),
         depositAmount: Number(item.depositAmount),
