@@ -14,6 +14,25 @@ import {
 
 type ViewFilter = "all" | "unread" | "read";
 
+const NOTIFICATIONS_FETCH_LIMIT = 200;
+const PAGE_SIZE = 8;
+
+// Danh sách số trang rút gọn: 1 … 4 5 6 … 20
+function buildPageList(current: number, total: number): (number | "...")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const wanted = [1, total, current - 1, current, current + 1]
+    .filter((p) => p >= 1 && p <= total)
+    .sort((a, b) => a - b);
+  const pages: (number | "...")[] = [];
+  let prev = 0;
+  for (const p of [...new Set(wanted)]) {
+    if (p - prev > 1) pages.push("...");
+    pages.push(p);
+    prev = p;
+  }
+  return pages;
+}
+
 const DEFAULT_PREFERENCES: NotificationPreferences = {
   emailEnabled: true,
   inAppEnabled: true,
@@ -76,6 +95,7 @@ export default function CustomerNotificationsPage() {
   const [markingAll, setMarkingAll] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     let active = true;
@@ -86,7 +106,7 @@ export default function CustomerNotificationsPage() {
 
       try {
         const [notificationsRes, preferencesRes] = await Promise.all([
-          getMyNotifications(50),
+          getMyNotifications(NOTIFICATIONS_FETCH_LIMIT),
           getMyNotificationPreferences(),
         ]);
 
@@ -122,13 +142,18 @@ export default function CustomerNotificationsPage() {
     });
   }, [notifications, view]);
 
+  // Phân trang
+  const totalPages = Math.max(1, Math.ceil(filteredNotifications.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pagedNotifications = filteredNotifications.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
   function flash(message: string) {
     setSuccessMsg(message);
     window.setTimeout(() => setSuccessMsg(null), 3500);
   }
 
   async function refreshNotifications() {
-    const res = await getMyNotifications(50);
+    const res = await getMyNotifications(NOTIFICATIONS_FETCH_LIMIT);
     if (res.success && res.data) {
       setNotifications(res.data.notifications);
       setUnreadCount(res.data.unreadCount);
@@ -242,7 +267,7 @@ export default function CustomerNotificationsPage() {
                 <button
                   key={item}
                   type="button"
-                  onClick={() => setView(item)}
+                  onClick={() => { setView(item); setPage(1); }}
                   className={`rounded-full px-4 py-2 text-sm font-semibold capitalize transition ${view === item ? "bg-lotus text-white" : "border border-sand bg-white text-stone-600 hover:bg-mist"}`}
                 >
                   {item === "all" ? "Tất cả" : item === "unread" ? "Chưa đọc" : "Đã đọc"}
@@ -265,7 +290,7 @@ export default function CustomerNotificationsPage() {
               ) : filteredNotifications.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-sand p-8 text-center text-stone-400">Chưa có thông báo phù hợp.</div>
               ) : (
-                filteredNotifications.map((item) => {
+                pagedNotifications.map((item) => {
                   const iconData = getNotificationIcon(item.title);
                   return (
                   <article key={item.id} className={`rounded-xl border p-4 transition ${item.isRead ? "border-sand bg-white" : "border-lotus/30 bg-mist"}`}>
@@ -297,6 +322,53 @@ export default function CustomerNotificationsPage() {
                 })
               )}
             </div>
+
+            {/* Phân trang */}
+            {!loading && totalPages > 1 && (
+              <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-sand pt-4">
+                <p className="text-xs text-stone-500">
+                  Hiển thị {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filteredNotifications.length)} trong {filteredNotifications.length} thông báo
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={currentPage <= 1}
+                    onClick={() => setPage(currentPage - 1)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-sand bg-white text-stone-600 transition hover:border-lotus hover:text-lotus disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label="Trang trước"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">chevron_left</span>
+                  </button>
+                  {buildPageList(currentPage, totalPages).map((p, idx) =>
+                    p === "..." ? (
+                      <span key={`ellipsis-${idx}`} className="px-1 text-xs text-stone-400">…</span>
+                    ) : (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setPage(p)}
+                        className={
+                          p === currentPage
+                            ? "flex h-8 min-w-8 items-center justify-center rounded-lg bg-lotus px-2 text-xs font-semibold text-white"
+                            : "flex h-8 min-w-8 items-center justify-center rounded-lg border border-sand bg-white px-2 text-xs font-semibold text-stone-600 transition hover:border-lotus hover:text-lotus"
+                        }
+                      >
+                        {p}
+                      </button>
+                    ),
+                  )}
+                  <button
+                    type="button"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setPage(currentPage + 1)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-sand bg-white text-stone-600 transition hover:border-lotus hover:text-lotus disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label="Trang sau"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">chevron_right</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </section>
         </div>
 
