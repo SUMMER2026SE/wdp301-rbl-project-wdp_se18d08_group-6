@@ -1,6 +1,6 @@
 import { IsIn, IsNotEmpty, IsOptional, IsString } from "class-validator";
 
-const PAYMENT_METHODS = ["cash", "bank_transfer", "qr_code", "pos_card", "online"] as const;
+const PAYMENT_METHODS = ["cash", "qr_code"] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 export class MarkPaidDto {

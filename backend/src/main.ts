@@ -12,7 +12,13 @@ async function bootstrap() {
 
   app.setGlobalPrefix("api");
   app.enableCors({
-    origin: frontendUrl,
+    // Cho phép FRONTEND_URL và mọi origin localhost/127.0.0.1 (dev)
+    origin: (origin, callback) => {
+      if (!origin || origin === frontendUrl || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`Origin ${origin} not allowed by CORS`), false);
+    },
     credentials: true,
   });
   app.useGlobalPipes(

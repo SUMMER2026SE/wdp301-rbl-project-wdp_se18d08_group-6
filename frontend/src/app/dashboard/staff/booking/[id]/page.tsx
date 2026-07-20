@@ -64,9 +64,7 @@ const NEXT_ACTIONS: Partial<Record<string, { status: string; label: string; styl
 
 const PAYMENT_METHODS: { key: string; label: string; icon: string }[] = [
   { key: "cash", label: "Tiền mặt", icon: "payments" },
-  { key: "bank_transfer", label: "Chuyển khoản", icon: "account_balance" },
   { key: "qr_code", label: "QR Code", icon: "qr_code" },
-  { key: "pos_card", label: "Thẻ POS", icon: "credit_card" },
 ];
 
 export default function StaffBookingDetailPage() {
@@ -128,12 +126,12 @@ export default function StaffBookingDetailPage() {
     if (!booking) return;
     setActioning(true);
     setActionError(null);
-    const res = await markBookingPaid(booking.id, "online");
+    const res = await markBookingPaid(booking.id, "qr_code");
     setActioning(false);
     if (res.success && res.data) {
       setBooking((prev) => (prev ? { ...prev, status: res.data!.status } : prev));
     } else {
-      setActionError(res.message ?? "Không thể xác nhận thanh toán online.");
+      setActionError(res.message ?? "Không thể xác nhận thanh toán QR.");
     }
   }
 
@@ -285,7 +283,23 @@ export default function StaffBookingDetailPage() {
             <tbody>
               {booking.items.map((item) => (
                 <tr key={item.id} className="border-b border-sand last:border-b-0 hover:bg-stone-50">
-                  <td className="px-6 py-3 font-medium text-ink">{item.garmentName ?? "—"}</td>
+                  <td className="px-6 py-3 font-medium text-ink">
+                    <div className="flex items-center gap-3">
+                      {item.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={item.imageUrl}
+                          alt={item.garmentName ?? "Trang phục"}
+                          className="h-14 w-11 shrink-0 rounded-md border border-sand object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-14 w-11 shrink-0 items-center justify-center rounded-md border border-sand bg-parchment text-stone-300">
+                          <span className="material-symbols-outlined text-[20px]">apparel</span>
+                        </div>
+                      )}
+                      <span>{item.garmentName ?? "—"}</span>
+                    </div>
+                  </td>
                   <td className="px-6 py-3 text-stone-600">{item.sizeLabel ?? "—"}</td>
                   <td className="px-6 py-3 text-stone-600">{formatVND(item.dailyPrice)}</td>
                   <td className="px-6 py-3 text-stone-600">{formatVND(item.depositAmount)}</td>
@@ -369,13 +383,13 @@ export default function StaffBookingDetailPage() {
                 onClick={handleMarkDeliveryPaid}
                 className="rounded-lg bg-jade px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-forest disabled:opacity-50"
               >
-                {actioning ? "Đang xử lý..." : `Xác nhận đã nhận tiền online (${formatVND(booking.rentalTotal + booking.depositTotal)})`}
+                {actioning ? "Đang xử lý..." : `Xác nhận đã nhận tiền QR (${formatVND(booking.rentalTotal + booking.depositTotal)})`}
               </button>
             ) : (
               <button
                 type="button"
                 disabled={actioning}
-                onClick={() => { setSelectedPaymentMethod("cash"); setPaymentDialog(true); }}
+                onClick={() => { setSelectedPaymentMethod(booking.paymentMethod === "qr_code" ? "qr_code" : "cash"); setPaymentDialog(true); }}
                 className="rounded-lg bg-jade px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-forest disabled:opacity-50"
               >
                 {actioning ? "Đang xử lý..." : `Đã thanh toán (${formatVND(booking.rentalTotal + booking.depositTotal)})`}
