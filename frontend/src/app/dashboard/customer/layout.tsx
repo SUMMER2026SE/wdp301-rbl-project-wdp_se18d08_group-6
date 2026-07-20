@@ -37,7 +37,8 @@ export default function CustomerDashboardLayout({ children }: { children: ReactN
 
         <div className="flex flex-1">
           {/* Sidebar */}
-          <aside className="fixed left-0 top-16 hidden h-[calc(100vh-64px)] w-64 flex-col border-r border-sand bg-parchment p-4 md:flex z-30">
+          {/* sticky (không phải fixed) để sidebar chiếm chỗ trong layout — footer bên dưới không bị che */}
+          <aside className="sticky top-16 hidden h-[calc(100vh-64px)] w-64 shrink-0 flex-col self-start border-r border-sand bg-parchment p-4 md:flex">
             {/* User greeting */}
             <div className="mb-8 flex items-center gap-3 rounded-lg border border-sand/70 bg-white p-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-lotus text-sm font-bold text-white">
@@ -93,7 +94,7 @@ export default function CustomerDashboardLayout({ children }: { children: ReactN
           </aside>
 
           {/* Main content */}
-          <main className="flex-1 px-4 py-8 pb-24 md:ml-64 md:px-10 md:py-10 md:pb-10">
+          <main className="min-w-0 flex-1 px-4 py-8 pb-24 md:px-10 md:py-10 md:pb-10">
             <div className="mx-auto max-w-[1200px]">{children}</div>
           </main>
         </div>

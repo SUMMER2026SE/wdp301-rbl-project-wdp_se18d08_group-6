@@ -7,9 +7,8 @@ import { readStoredSession } from "@/lib/auth";
 const POLL_INTERVAL_MS = 30_000;
 
 /**
- * Badge đếm số cuộc trò chuyện đang chờ staff xử lý, hiển thị cạnh mục CSKH
- * trên navbar: gồm "Cần trả lời" (khách nhắn mà staff chưa đáp) và
- * "Chờ tiếp nhận" (khách mới, chưa có staff nào nhận).
+ * Badge cạnh mục CSKH trên navbar, đếm đúng số cuộc trò chuyện của tab
+ * "Chờ tiếp nhận" (khách mới nhắn, chưa có staff nào tiếp nhận).
  */
 export function StaffChatNavBadge() {
   const [count, setCount] = useState(0);
@@ -24,14 +23,8 @@ export function StaffChatNavBadge() {
       const res = await getChatConversations();
       if (cancelled || !res.success || !res.data) return;
 
-      const needsReply = res.data.filter(
-        (c) =>
-          c.staffId === session.user.id &&
-          c.status !== "resolved" &&
-          (!c.lastMessage || c.lastMessage.sender_id !== session.user.id),
-      ).length;
       const unassigned = res.data.filter((c) => c.staffId === null && c.status === "open").length;
-      setCount(needsReply + unassigned);
+      setCount(unassigned);
     }
 
     void load();

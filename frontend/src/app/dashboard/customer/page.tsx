@@ -10,6 +10,8 @@ import { getMyChatConversation, sendBookingCardMessage } from "@/lib/chat";
 import { customerWidgets } from "@/lib/heritage-mock-data";
 import { STATUS_LABELS, statusBadgeClass, statusOf, ACTIVE_BOOKING_STATUSES, CANCELLABLE_STATUSES } from "@/lib/status-labels";
 
+const HISTORY_PAGE_SIZE = 5;
+
 function formatVND(n: number) {
   return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(n);
 }
@@ -61,6 +63,7 @@ export default function CustomerDashboardPage() {
   }, [bookings]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [sendingBookingId, setSendingBookingId] = useState<string | null>(null);
+  const [historyPage, setHistoryPage] = useState(1);
 
   useEffect(() => {
     const session = readStoredSession();
@@ -118,6 +121,14 @@ export default function CustomerDashboardPage() {
 
   const activeBooking = bookings.find((b) => ACTIVE_BOOKING_STATUSES.has(b.status));
   const history = bookings.filter((b) => !ACTIVE_BOOKING_STATUSES.has(b.status));
+
+  // Phân trang lịch sử thuê
+  const totalHistoryPages = Math.max(1, Math.ceil(history.length / HISTORY_PAGE_SIZE));
+  const currentHistoryPage = Math.min(historyPage, totalHistoryPages);
+  const pagedHistory = history.slice(
+    (currentHistoryPage - 1) * HISTORY_PAGE_SIZE,
+    currentHistoryPage * HISTORY_PAGE_SIZE,
+  );
 
   return (
     <div className="space-y-10">
@@ -261,7 +272,7 @@ export default function CustomerDashboardPage() {
                           <td className="px-6 py-4"><div className="h-6 w-16 animate-pulse rounded bg-stone-200" /></td>
                         </tr>
                       ))
-                    ) : history.map((b) => {
+                    ) : pagedHistory.map((b) => {
                       const st = statusOf(b.status);
                       const refund = refundMap[b.id];
                       return (
@@ -324,6 +335,49 @@ export default function CustomerDashboardPage() {
                     })}
                   </tbody>
                 </table>
+
+                {/* Phân trang */}
+                {!loading && totalHistoryPages > 1 && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-sand bg-parchment/60 px-6 py-4">
+                    <p className="text-xs text-stone-500">
+                      Hiển thị {(currentHistoryPage - 1) * HISTORY_PAGE_SIZE + 1}–{Math.min(currentHistoryPage * HISTORY_PAGE_SIZE, history.length)} trong {history.length} đơn
+                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        disabled={currentHistoryPage <= 1}
+                        onClick={() => setHistoryPage(currentHistoryPage - 1)}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-sand bg-white text-stone-600 transition hover:border-lotus hover:text-lotus disabled:cursor-not-allowed disabled:opacity-40"
+                        aria-label="Trang trước"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">chevron_left</span>
+                      </button>
+                      {Array.from({ length: totalHistoryPages }, (_, i) => i + 1).map((page) => (
+                        <button
+                          key={page}
+                          type="button"
+                          onClick={() => setHistoryPage(page)}
+                          className={
+                            page === currentHistoryPage
+                              ? "flex h-8 min-w-8 items-center justify-center rounded-lg bg-lotus px-2 text-xs font-semibold text-white"
+                              : "flex h-8 min-w-8 items-center justify-center rounded-lg border border-sand bg-white px-2 text-xs font-semibold text-stone-600 transition hover:border-lotus hover:text-lotus"
+                          }
+                        >
+                          {page}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        disabled={currentHistoryPage >= totalHistoryPages}
+                        onClick={() => setHistoryPage(currentHistoryPage + 1)}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-sand bg-white text-stone-600 transition hover:border-lotus hover:text-lotus disabled:cursor-not-allowed disabled:opacity-40"
+                        aria-label="Trang sau"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">chevron_right</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </section>

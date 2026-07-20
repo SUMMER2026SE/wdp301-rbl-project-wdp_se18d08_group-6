@@ -161,14 +161,6 @@ export function StaffPortalShell({
           </div>
           <div className="flex items-center gap-2">
             <div className="hidden items-center gap-3 md:flex">
-              <div className="relative">
-                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-stone-400">search</span>
-                <input
-                  className="w-72 rounded-lg border border-sand bg-white py-2 pl-10 pr-4 text-sm text-ink outline-none transition focus:border-lotus"
-                  placeholder="Tìm mã đơn, khách hàng..."
-                  type="text"
-                />
-              </div>
               <button type="button" className="rounded-full p-2 text-lotus transition hover:bg-lotus/10">
                 <span className="material-symbols-outlined text-[22px]">notifications</span>
               </button>
