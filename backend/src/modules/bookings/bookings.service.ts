@@ -54,7 +54,7 @@ export class BookingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
-  ) {}
+  ) { }
 
   private parseDateRange(startDate: string, endDate: string) {
     const start = new Date(startDate);
@@ -722,7 +722,7 @@ export class BookingsService {
     }
 
     const paymentMethod = dto.paymentMethod ?? booking.paymentMethod ?? "cash";
-    const totalAmount = Number(booking.rentalTotal);
+    const totalAmount = Number(booking.rentalTotal) + Number(booking.shippingFee ?? 0);
     const depositAmount = Number(booking.depositTotal);
 
     const updated = await this.prisma.$transaction(async (tx) => {
@@ -815,7 +815,7 @@ export class BookingsService {
     const end = new Date(booking.rentalEndDate);
     const computedDays = days ?? Math.round(
       (Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()) -
-       Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate())) / MS_PER_DAY,
+        Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate())) / MS_PER_DAY,
     ) + 1;
 
     return {
