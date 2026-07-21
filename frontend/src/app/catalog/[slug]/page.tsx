@@ -1,0 +1,381 @@
+"use client";
+
+import Link from "next/link";
+import { notFound, useRouter } from "next/navigation";
+import { use, useEffect, useState } from "react";
+import { CustomerNavbar } from "@/components/customer/navbar";
+import { CustomerFooter } from "@/components/customer/footer";
+import { useAuth } from "@/components/auth/auth-provider";
+import { getGarmentsGrouped, type GarmentGrouped } from "@/lib/api";
+import { addToCart, cartCount } from "@/lib/cart";
+import { garmentSpecs, pairingItems } from "@/lib/heritage-mock-data";
+import { getMyChatConversation, sendProductCardMessage } from "@/lib/chat";
+
+function formatVND(amount: number) {
+  return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
+}
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addDays(iso: string, n: number) {
+  const d = new Date(iso);
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+export default function GarmentDetailPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug: garmentId } = use(params);
+  const router = useRouter();
+
+  const [group, setGroup] = useState<GarmentGrouped | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [notFoundFlag, setNotFoundFlag] = useState(false);
+  const [selectedGarmentId, setSelectedGarmentId] = useState<string | null>(null);
+  const [addedMsg, setAddedMsg] = useState<string | null>(null);
+  const [activeImageIdx, setActiveImageIdx] = useState(0);
+  const [consultMsg, setConsultMsg] = useState<string | null>(null);
+
+  const today = todayIso();
+  const [startDate, setStartDate] = useState(today);
+  const [endDate, setEndDate] = useState(addDays(today, 2));
+  const { user } = useAuth();
+
+  useEffect(() => {
+    // Tìm garment trong danh sách grouped
+    getGarmentsGrouped().then((res) => {
+      if (res.success && res.data) {
+        for (const g of res.data) {
+          const found = g.sizes.find((s) => s.garmentSizeId === garmentId);
+          if (found) {
+            setGroup(g);
+            setSelectedGarmentId(garmentId);
+            setLoading(false);
+            return;
+          }
+        }
+        setNotFoundFlag(true);
+      } else {
+        setNotFoundFlag(true);
+      }
+      setLoading(false);
+    });
+  }, [garmentId]);
+
+  if (notFoundFlag) notFound();
+
+  const selectedSize = group?.sizes.find((s) => s.garmentSizeId === selectedGarmentId) ?? group?.sizes[0];
+
+async function handleConsult() {
+  if (!group || !selectedSize) return;
+    console.log("group:", group);
+  console.log("group.garmentId:", group.garmentId);
+  console.log("selectedSize:", selectedSize);
+  const result = await getMyChatConversation();
+  if (!result.success || !result.data) {
+    setConsultMsg("Vui lòng đăng nhập để sử dụng tính năng tư vấn.");
+    setTimeout(() => setConsultMsg(null), 3000);
+    return;
+  }
+
+  const conversation = result.data;
+
+  if (!group.garmentId) {
+    setConsultMsg("Không tìm thấy thông tin sản phẩm.");
+    setTimeout(() => setConsultMsg(null), 3000);
+    return;
+  }
+
+  const sendResult = await sendProductCardMessage({
+    conversationId: conversation.id,
+    productId: group.garmentId,
+  });
+
+  if (!sendResult.success) {
+    setConsultMsg("Không thể gửi sản phẩm. Vui lòng thử lại.");
+    setTimeout(() => setConsultMsg(null), 3000);
+    return;
+  }
+
+  setConsultMsg("Đã gửi thông tin sản phẩm đến tư vấn viên!");
+  setTimeout(() => setConsultMsg(null), 3000);
+}
+
+  function handleAddToCart() {
+    if (!group || !selectedSize) return;
+    const s = selectedSize;
+    addToCart({
+      garmentSizeId: s.garmentSizeId,
+      garmentId: s.garmentSizeId || "",
+      name: group.name + (s.sizeLabel ? ` (Size ${s.sizeLabel})` : ""),
+      sizeLabel: s.sizeLabel,
+      dailyPrice: s.dailyPrice,
+      depositAmount: s.depositAmount,
+      imageUrl: group.imageUrl,
+    });
+    setAddedMsg("Đã thêm vào giỏ!");
+    setTimeout(() => setAddedMsg(null), 2000);
+  }
+
+  function handleBookNow() {
+    if (!group || !selectedSize) return;
+    const s = selectedSize;
+    addToCart({
+      garmentSizeId: s.garmentSizeId,
+      garmentId: s.garmentSizeId || "",
+      name: group.name + (s.sizeLabel ? ` (Size ${s.sizeLabel})` : ""),
+      sizeLabel: s.sizeLabel,
+      dailyPrice: s.dailyPrice,
+      depositAmount: s.depositAmount,
+      imageUrl: group.imageUrl,
+    });
+    const p = new URLSearchParams({ startDate, endDate });
+    router.push(`/booking/date-selection?${p.toString()}`);
+  }
+
+  return (
+    <div className="min-h-screen bg-mist text-ink">
+      <CustomerNavbar active="collection" />
+
+      <main className="mx-auto max-w-7xl px-4 pb-24 pt-24 sm:px-6 lg:px-8 lg:pt-28">
+        <nav className="mb-8 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
+          <Link href="/catalog" className="transition hover:text-lotus">Bộ sưu tập</Link>
+          <span className="material-symbols-outlined text-[14px]">chevron_right</span>
+          <span>{group?.categoryName ?? "—"}</span>
+          <span className="material-symbols-outlined text-[14px]">chevron_right</span>
+          <span className="text-ink">{loading ? "..." : group?.name}</span>
+        </nav>
+
+        {loading ? (
+          <div className="flex h-64 items-center justify-center text-stone-400">Đang tải...</div>
+        ) : group ? (
+          <div className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-20">
+            {/* Gallery */}
+            <div className="space-y-4 lg:sticky lg:top-28 lg:self-start">
+              {/* Main viewer */}
+              <div className="relative flex aspect-[3/4] items-center justify-center overflow-hidden rounded-lg border border-sand bg-lotus/10">
+                {group.images && group.images.length > 0 ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={group.images[activeImageIdx]?.imageUrl ?? group.imageUrl ?? ""}
+                      alt={group.name}
+                      className="h-full w-full object-cover transition-opacity duration-300"
+                    />
+                    {/* Prev / Next arrows — only if more than 1 image */}
+                    {group.images.length > 1 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setActiveImageIdx((i) => (i - 1 + group.images.length) % group.images.length)}
+                          className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-white/80 p-1.5 text-ink shadow backdrop-blur-sm transition hover:bg-white"
+                          aria-label="Ảnh trước"
+                        >
+                          <span className="material-symbols-outlined text-[20px]">chevron_left</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveImageIdx((i) => (i + 1) % group.images.length)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-white/80 p-1.5 text-ink shadow backdrop-blur-sm transition hover:bg-white"
+                          aria-label="Ảnh tiếp"
+                        >
+                          <span className="material-symbols-outlined text-[20px]">chevron_right</span>
+                        </button>
+                        {/* Dot indicators */}
+                        <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1.5">
+                          {group.images.map((_, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setActiveImageIdx(idx)}
+                              className={`h-1.5 rounded-full transition-all ${idx === activeImageIdx ? "w-5 bg-white" : "w-1.5 bg-white/50"}`}
+                              aria-label={`Ảnh ${idx + 1}`}
+                            />
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </>
+                ) : group.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={group.imageUrl} alt={group.name} className="h-full w-full object-cover" />
+                ) : (
+                  <span className="material-symbols-outlined text-[80px] text-antique/30">checkroom</span>
+                )}
+              </div>
+
+              {/* Thumbnail strip — only if more than 1 image */}
+              {group.images && group.images.length > 1 && (
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {group.images.map((img, idx) => (
+                    <button
+                      key={img.id}
+                      type="button"
+                      onClick={() => setActiveImageIdx(idx)}
+                      className={`relative flex-none h-20 w-16 overflow-hidden rounded border-2 transition ${idx === activeImageIdx ? "border-lotus" : "border-sand hover:border-antique"
+                        }`}
+                      aria-label={`Xem ảnh ${idx + 1}`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={img.imageUrl} alt={img.altText ?? group.name} className="h-full w-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 lg:pt-6">
+              <div className="relative mb-8 border-b border-sand/80 pb-8">
+                <p className="text-xs font-semibold uppercase tracking-[0.26em] text-antique">{group.categoryName} · Bộ sưu tập</p>
+                <h1 className="mt-3 font-display text-5xl text-ink sm:text-6xl">{group.name}</h1>
+                <div className="mt-6 flex flex-wrap items-end gap-4">
+                  <p className="text-3xl font-semibold text-lotus">
+                    {selectedSize ? formatVND(selectedSize.dailyPrice) + " / ngày" : "—"}
+                  </p>
+                  <p className="pb-1 text-sm text-stone-500">
+                    Tiền cọc: <span className="font-semibold text-ink">{selectedSize ? formatVND(selectedSize.depositAmount) : "—"}</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-8">
+                {/* Date range picker */}
+                <div>
+                  <label className="mb-3 block text-sm font-semibold uppercase tracking-[0.18em] text-ink">Khoảng thời gian thuê</label>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="relative">
+                      <span className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-stone-400">calendar_month</span>
+                      <input
+                        type="date" min={today} value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="w-full rounded-lg border border-sand bg-white py-3 pl-10 pr-4 text-sm text-ink outline-none transition focus:border-antique"
+                      />
+                    </div>
+                    <div className="relative">
+                      <span className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-stone-400">calendar_month</span>
+                      <input
+                        type="date" min={startDate} value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="w-full rounded-lg border border-sand bg-white py-3 pl-10 pr-4 text-sm text-ink outline-none transition focus:border-antique"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Size - interactive */}
+                <div>
+                  <div className="mb-3 flex items-center justify-between">
+                    <label className="text-sm font-semibold uppercase tracking-[0.18em] text-ink">Kích thước</label>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    {group.sizes.map((s) => {
+                      const active = s.garmentSizeId === selectedGarmentId;
+                      return (
+                        <button
+                          key={s.garmentSizeId}
+                          type="button"
+                          onClick={() => setSelectedGarmentId(s.garmentSizeId)}
+                          className={
+                            active
+                              ? "flex h-12 min-w-[3rem] items-center justify-center rounded border border-lotus bg-parchment px-3 text-sm font-semibold text-lotus"
+                              : "flex h-12 min-w-[3rem] items-center justify-center rounded border border-sand bg-white px-3 text-sm text-ink transition hover:border-antique"
+                          }
+                        >
+                          {s.sizeLabel ?? "—"}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <Link href={`/try-on?garmentSizeId=${selectedGarmentId}`} className="group relative block overflow-hidden rounded-xl border border-antique/30 bg-gradient-to-r from-[#f9f5f0] to-white p-6 transition hover:border-antique/60">
+                  <div className="flex items-start gap-3">
+                    <span className="material-symbols-outlined text-lotus">magic_button</span>
+                    <div>
+                      <h2 className="font-display text-3xl text-ink">Thử đồ AI <span className="font-sans text-base font-normal text-stone-500">(mô phỏng thử trên ảnh)</span></h2>
+                      <p className="mt-2 max-w-xl text-sm leading-7 text-stone-600">Tải ảnh chân dung để xem thử cách bộ trang phục ôm dáng trước khi đặt thuê.</p>
+                      <span className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-lotus">Khám phá ngay<span className="material-symbols-outlined text-[16px]">arrow_forward</span></span>
+                    </div>
+                  </div>
+                </Link>
+              </div>
+
+              <div className="mt-8 space-y-3">
+                <button
+                  type="button"
+                  onClick={handleBookNow}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-lotus px-6 py-4 text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-oxblood"
+                >
+                  Đặt thuê ngay
+                  <span className="material-symbols-outlined text-[18px]">shopping_cart</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddToCart}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-lotus px-6 py-4 text-sm font-semibold uppercase tracking-[0.18em] text-lotus transition hover:bg-parchment"
+                >
+                  Thêm vào giỏ
+                  <span className="material-symbols-outlined text-[18px]">shopping_bag</span>
+                </button>
+                {(!user || user.role === "customer") && (
+                  <button
+                    type="button"
+                    onClick={handleConsult}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-lotus px-6 py-4 text-sm font-semibold uppercase tracking-[0.18em] text-jade transition hover:bg-jade/5"
+                  >
+                    Tư vấn
+                    <span className="material-symbols-outlined text-[18px]">support_agent</span>
+                  </button>
+                )}
+                {addedMsg && <p className="text-center text-sm font-medium text-jade">{addedMsg}</p>}
+                {consultMsg && <p className="text-center text-sm font-medium text-jade">{consultMsg}</p>}
+                <p className="text-center text-sm text-stone-500">Đã bao gồm công là ủi, làm sạch và hỗ trợ chỉnh sửa cơ bản.</p>
+              </div>
+
+              <section className="mt-12 border-t border-sand pt-8">
+                <h2 className="font-display text-4xl text-ink">Thông số chi tiết</h2>
+                <ul className="mt-6 space-y-4">
+                  {garmentSpecs.map((spec) => (
+                    <li key={spec.label} className="flex items-center justify-between gap-4 border-b border-sand/70 pb-3 text-sm">
+                      <span className="text-stone-500">{spec.label}</span>
+                      <span className="font-medium text-ink">{spec.value}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Pairing accessories */}
+        {group && (
+          <section className="mt-24 rounded-lg border border-sand bg-mist px-6 py-12 lg:px-12">
+            <div className="grid items-center gap-10 lg:grid-cols-[0.95fr_1.05fr]">
+              <div>
+                <h2 className="font-display text-5xl text-ink">Phối hợp phụ kiện</h2>
+                <p className="mt-4 text-base leading-8 text-stone-600">Gợi ý phụ kiện để hoàn thiện thần thái trang phục.</p>
+                <div className="mt-8 space-y-4">
+                  {pairingItems.map((item) => (
+                    <div key={item.title} className="flex items-center gap-4 rounded-lg border border-sand bg-white p-4 transition hover:border-antique">
+                      <img alt={item.title} className="h-16 w-16 rounded object-cover" src={item.image} />
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-ink">{item.title}</h3>
+                        <p className="text-sm text-antique">{item.price}</p>
+                      </div>
+                      <span className="material-symbols-outlined text-stone-500">add_circle</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg border border-sand bg-lotus/5">
+                <span className="material-symbols-outlined text-[60px] text-antique/30">diamond</span>
+              </div>
+            </div>
+          </section>
+        )}
+      </main>
+      <CustomerFooter />
+    </div>
+  );
+}

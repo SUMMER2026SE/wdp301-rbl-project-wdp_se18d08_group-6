@@ -1,0 +1,45 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { getChatConversations } from "@/lib/chat";
+import { readStoredSession } from "@/lib/auth";
+
+const POLL_INTERVAL_MS = 30_000;
+
+/**
+ * Badge cạnh mục CSKH trên navbar, đếm đúng số cuộc trò chuyện của tab
+ * "Chờ tiếp nhận" (khách mới nhắn, chưa có staff nào tiếp nhận).
+ */
+export function StaffChatNavBadge() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      const session = readStoredSession();
+      if (!session || session.user.role !== "staff") return;
+
+      const res = await getChatConversations();
+      if (cancelled || !res.success || !res.data) return;
+
+      const unassigned = res.data.filter((c) => c.staffId === null && c.status === "open").length;
+      setCount(unassigned);
+    }
+
+    void load();
+    const timer = setInterval(() => void load(), POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
+
+  if (count === 0) return null;
+
+  return (
+    <span className="ml-auto inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-lotus px-1.5 text-[11px] font-bold leading-none text-white">
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}

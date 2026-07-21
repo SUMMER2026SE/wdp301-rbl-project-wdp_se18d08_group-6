@@ -1,0 +1,629 @@
+import { ConnectedSocket, MessageBody, SubscribeMessage, WebSocketGateway, OnGatewayConnection, OnGatewayDisconnect, WebSocketServer } from "@nestjs/websockets";
+import { JwtService } from "@nestjs/jwt";
+import { Injectable, OnModuleInit } from "@nestjs/common";
+import type { AppRole } from "@prisma/client";
+import type { Server, Socket } from "socket.io";
+import { ChatService } from "./chat.service";
+import { PrismaService } from "../../prisma/prisma.service";
+
+interface JwtPayload {
+  sub?: string;
+  role?: AppRole;
+}
+
+interface AuthSocket extends Socket {
+  data: {
+    user?: {
+      userId: string;
+      role: AppRole;
+      fullName: string;
+    };
+  };
+}
+
+interface ActiveReplier {
+  staffId: string;
+  name: string;
+  socketId: string;
+  lockedAt: Date;
+}
+
+@WebSocketGateway({
+  namespace: "/chat",
+  cors: {
+    origin: true,
+    credentials: true,
+  },
+})
+@Injectable()
+export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGatewayDisconnect {
+
+  async onModuleInit() {
+    // Resolve all reopened conversations first (server was restarted, in-memory timers are gone)
+    await this.chatService.resolveAllReopenedConversations();
+    // Then clear staff assignments for normal open conversations
+    await this.chatService.clearAllStaffAssignments();
+  }
+  @WebSocketServer()
+  server!: Server;
+
+  private readonly onlineUsers = new Map<string, Set<string>>();
+  private readonly activeReplier = new Map<string, ActiveReplier>();
+  private readonly lockTimeouts = new Map<string, NodeJS.Timeout>();
+  private readonly disconnectReleaseTimeouts = new Map<string, NodeJS.Timeout>();
+  private readonly messageRateLimits = new Map<string, number[]>();
+  private static readonly MAX_MESSAGE_LENGTH = 2000;
+  private static readonly RATE_LIMIT_MAX = 5;
+  private static readonly RATE_LIMIT_WINDOW_MS = 10_000;
+
+  private isProductCardPayload(content: string): boolean {
+    try {
+      const parsed = JSON.parse(content);
+      return parsed?.type === "product_card" || parsed?.type === "booking_card";
+    } catch {
+      return false;
+    }
+  }
+
+  private checkRateLimit(userId: string): boolean {
+    const now = Date.now();
+    const timestamps = this.messageRateLimits.get(userId) ?? [];
+    const recent = timestamps.filter((ts) => now - ts < ChatGateway.RATE_LIMIT_WINDOW_MS);
+    if (recent.length >= ChatGateway.RATE_LIMIT_MAX) {
+      return false;
+    }
+    recent.push(now);
+    this.messageRateLimits.set(userId, recent);
+    return true;
+  }
+
+  private cleanupRateLimits() {
+    const now = Date.now();
+    for (const [userId, timestamps] of this.messageRateLimits) {
+      const recent = timestamps.filter((ts) => now - ts < ChatGateway.RATE_LIMIT_WINDOW_MS);
+      if (recent.length === 0) {
+        this.messageRateLimits.delete(userId);
+      } else {
+        this.messageRateLimits.set(userId, recent);
+      }
+    }
+  }
+
+  constructor(
+    private readonly chatService: ChatService,
+    private readonly jwtService: JwtService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  async handleConnection(client: AuthSocket) {
+    const token = this.getTokenFromHandshake(client);
+    if (!token) {
+      client.disconnect();
+      return;
+    }
+
+    let payload: JwtPayload;
+    try {
+      payload = await this.jwtService.verifyAsync<JwtPayload>(token);
+    } catch {
+      client.disconnect();
+      return;
+    }
+
+    if (!payload?.sub || !payload?.role) {
+      client.disconnect();
+      return;
+    }
+
+    const user = await this.prisma.userAccount.findUnique({
+      where: { id: payload.sub },
+      include: { profile: true },
+    });
+
+    if (!user || !user.isActive) {
+      client.disconnect();
+      return;
+    }
+
+    const fullName = user.profile?.fullName ?? user.email;
+    const dbRole = user.role;
+    client.data.user = {
+      userId: user.id,
+      role: dbRole,
+      fullName,
+    };
+
+    let userSockets = this.onlineUsers.get(user.id);
+    const isNewStaff = dbRole === "staff" && (!userSockets || userSockets.size === 0);
+    if (!userSockets) {
+      userSockets = new Set();
+      this.onlineUsers.set(user.id, userSockets);
+    }
+    userSockets.add(client.id);
+    if (isNewStaff) {
+      this.onlineStaffCount++;
+      //console.log("CONNECT staff", client.id, user.id, "onlineStaffCount:", this.onlineStaffCount, "totalSockets:", userSockets.size);
+    }
+    if (dbRole === "staff") {
+      client.join("staff");
+    } else {
+      client.join("customers");
+    }
+
+    // Auto-join user to their active conversation rooms
+    try {
+      const convs = await this.prisma.conversations.findMany({
+        where: dbRole === "staff"
+          ? { staff_id: user.id, status: { in: ["open", "resolved"] } }
+          : { customer_id: user.id, status: { in: ["open", "resolved"] } },
+        select: { id: true },
+      });
+      for (const c of convs) {
+        client.join(c.id);
+        //console.log("JOIN (auto-connect)", client.id, c.id);
+      }
+    } catch {
+      // Non-critical — room join is just pub/sub routing
+    }
+  }
+
+  hasOnlineStaff(): boolean {
+    return this.onlineStaffCount > 0;
+  }
+
+  private onlineStaffCount = 0;
+
+  handleDisconnect(client: AuthSocket) {
+    const user = client.data.user;
+    if (!user) {
+      //console.log("DISCONNECT no user", client.id);
+      return;
+    }
+
+    const userSockets = this.onlineUsers.get(user.userId);
+    const remaining = userSockets ? (userSockets.delete(client.id), userSockets.size) : 0;
+    if (remaining === 0) {
+      this.onlineUsers.delete(user.userId);
+    }
+    //console.log("DISCONNECT", client.id, user.userId, user.role, "remainingSockets:", remaining);
+
+    if (user.role === "staff") {
+      if (remaining === 0) {
+        this.onlineStaffCount--;
+        //console.log("DISCONNECT staff last socket, onlineStaffCount:", this.onlineStaffCount);
+      }
+      this.scheduleStaffDisconnectRelease(client.id, user.userId);
+    }
+  }
+
+  @SubscribeMessage("join_room")
+  async handleJoinRoom(@MessageBody() body: { conversationId: string }, @ConnectedSocket() client: AuthSocket) {
+    if (!body?.conversationId) {
+      return;
+    }
+
+    const user = client.data.user;
+    if (!user) {
+      return;
+    }
+
+    try {
+      await this.chatService.ensureCustomerOrStaffParticipant({
+        id: user.userId,
+        email: "",
+        role: user.role,
+        isActive: true,
+        fullName: user.fullName,
+        phone: null,
+      }, body.conversationId);
+    } catch {
+      // Room join is pub/sub routing — auth is at message level
+    }
+
+    client.join(body.conversationId);
+    //console.log("JOIN ROOM SUCCESS", client.id, body.conversationId, Array.from(client.rooms));
+  }
+
+  @SubscribeMessage("open_conversation")
+  async handleOpenConversation(@MessageBody() body: { conversationId: string }, @ConnectedSocket() client: AuthSocket) {
+    const user = client.data.user;
+    if (!user || user.role !== "staff" || !body?.conversationId) {
+      client.emit("open_conversation_result", { conversationId: body?.conversationId, canReply: false, reason: "unauthorized" });
+      return;
+    }
+
+    let conversation;
+    try {
+      conversation = await this.chatService.getConversationById(body.conversationId);
+    } catch {
+      client.emit("open_conversation_result", { conversationId: body.conversationId, canReply: false, reason: "not_found" });
+      return;
+    }
+
+    const existingLock = this.activeReplier.get(body.conversationId);
+
+    // Zombie lock: DB has staff_id but in-memory lock is gone (e.g. server restart)
+    // Don't clear reopened conversations — keep original staff assigned
+    if (conversation.staff_id && conversation.staff_id !== user.userId && !existingLock && !conversation.reopened_from_resolved) {
+      conversation = await this.chatService.releaseStaffAssignment(body.conversationId);
+    }
+
+    // Reopen resolved conversation when staff clicks it
+    if (conversation.status === "resolved") {
+      if (conversation.staff_id && conversation.staff_id !== user.userId) {
+        client.emit("open_conversation_result", { conversationId: body.conversationId, canReply: false, lockedBy: "staff cũ" });
+        return;
+      }
+      conversation = await this.chatService.reopenConversation(body.conversationId, user.userId);
+    }
+
+    if (conversation.staff_id && conversation.staff_id !== user.userId) {
+      client.emit("open_conversation_result", { conversationId: body.conversationId, canReply: false, lockedBy: "nhân viên khác" });
+      return;
+    }
+
+    if (!conversation.staff_id) {
+      conversation = await this.chatService.assignStaffToConversationIfEmpty(body.conversationId, user.userId);
+      if (conversation.staff_id !== user.userId) {
+        client.emit("open_conversation_result", { conversationId: body.conversationId, canReply: false, lockedBy: "nhân viên khác" });
+        return;
+      }
+    }
+
+    if (existingLock?.staffId === user.userId) {
+      this.clearDisconnectReleaseForSocket(existingLock.socketId);
+    }
+    this.clearDisconnectReleaseForSocket(client.id);
+
+    const lockInfo: ActiveReplier = {
+      staffId: user.userId,
+      name: user.fullName,
+      socketId: client.id,
+      lockedAt: existingLock?.staffId === user.userId ? existingLock.lockedAt : new Date(),
+    };
+
+    this.activeReplier.set(body.conversationId, lockInfo);
+    if (!existingLock || existingLock.staffId !== user.userId) {
+      this.scheduleLockExpiration(body.conversationId);
+    }
+
+    client.emit("open_conversation_result", {
+      conversationId: body.conversationId,
+      canReply: true,
+      staffId: user.userId,
+      staffName: user.fullName,
+      status: conversation.status,
+    });
+    client.broadcast.to("staff").emit("chat_locked", {
+      conversationId: body.conversationId,
+      staffName: user.fullName,
+    });
+  }
+
+  @SubscribeMessage("delete_message")
+  async handleDeleteMessage(
+    @MessageBody() body: { conversationId: string; messageId: string },
+    @ConnectedSocket() client: AuthSocket,
+  ) {
+    const user = client.data.user;
+    if (!user || !body?.conversationId || !body?.messageId) {
+      return;
+    }
+
+    try {
+      const result = await this.chatService.deleteMessage(user.userId, user.role, body.messageId);
+      console.log("BEFORE EMIT ROOM", body.conversationId, (this.server as any).adapter?.rooms?.get(body.conversationId));
+      this.server.to(body.conversationId).emit("message_deleted", {
+        conversationId: body.conversationId,
+        messageId: body.messageId,
+        deletedBy: user.userId,
+        deletedAt: result.deleted_at,
+      });
+    } catch {
+      client.emit("delete_error", { conversationId: body.conversationId, messageId: body.messageId, reason: "cannot_delete" });
+    }
+  }
+
+  @SubscribeMessage("send_message")
+  async handleSendMessage(
+    @MessageBody() body: { conversationId: string; content: string; tempId?: string },
+    @ConnectedSocket() client: AuthSocket,
+  ): Promise<{ success: boolean; error?: string; tempId?: string }> {
+    const user = client.data.user;
+    if (!user || !body?.conversationId || !body?.content?.trim()) {
+      return { success: false, error: "invalid_payload" };
+    }
+
+    const content = body.content.trim();
+
+    // Validate message length (max 2000 characters)
+    if (content.length > ChatGateway.MAX_MESSAGE_LENGTH) {
+      client.emit("send_error", {
+        conversationId: body.conversationId,
+        reason: "message_too_long",
+        tempId: body.tempId,
+      });
+      return { success: false, error: "message_too_long" };
+    }
+
+    // Reject direct client attempts to send product_card payloads
+    if (this.isProductCardPayload(content)) {
+      client.emit("send_error", {
+        conversationId: body.conversationId,
+        reason: "forbidden_payload",
+        tempId: body.tempId,
+      });
+      return { success: false, error: "forbidden_payload" };
+    }
+
+    // Rate limiting: max 5 messages per 10 seconds per user
+    if (!this.checkRateLimit(user.userId)) {
+      client.emit("send_error", {
+        conversationId: body.conversationId,
+        reason: "rate_limited",
+        tempId: body.tempId,
+      });
+      return { success: false, error: "rate_limited" };
+    }
+
+    if (user.role === "staff") {
+      const conversation = await this.chatService.getConversationById(body.conversationId);
+      if (conversation.staff_id !== user.userId) {
+        client.emit("send_error", { conversationId: body.conversationId, reason: "conversation_locked", tempId: body.tempId });
+        return { success: false, error: "conversation_locked" };
+      }
+
+      this.activeReplier.set(body.conversationId, {
+        staffId: user.userId,
+        name: user.fullName,
+        socketId: client.id,
+        lockedAt: new Date(),
+      });
+      this.scheduleLockExpiration(body.conversationId);
+    }
+
+    const message = await this.chatService.sendMessage(user.userId, user.role, body.conversationId, body.content);
+    const updatedConv = await this.chatService.getConversationById(body.conversationId);
+
+    console.log(
+      "EMIT MESSAGE",
+      body.conversationId,
+      message?.id,
+      message?.content,
+    );
+    if (!client.rooms.has(body.conversationId)) {
+      client.join(body.conversationId);
+      console.log("JOIN (auto)", client.id, body.conversationId);
+    }
+    const beforeEmitRoom = (this.server as any).adapter?.rooms?.get(body.conversationId);
+    console.log("BEFORE EMIT ROOM", body.conversationId, beforeEmitRoom);
+    this.server.to(body.conversationId).emit("message_received", {
+      conversationId: body.conversationId,
+      message,
+      staffId: updatedConv.staff_id,
+      status: updatedConv.status,
+    });
+
+    if (user.role === "customer") {
+      if (!updatedConv.staff_id && updatedConv.status === "open") {
+        this.server.to("staff").emit("new_unassigned_message", {
+          conversationId: body.conversationId,
+          customerName: user.fullName,
+          content: body.content,
+        });
+      }
+
+      void this.chatService.maybeAutoReply(body.conversationId, body.content, this.hasOnlineStaff()).then((aiMsgs) => {
+        for (const aiMsg of aiMsgs) {
+          console.log(
+            "EMIT AI",
+            aiMsg.id,
+            aiMsg.content,
+          );
+          const aiEmitRoom = (this.server as any).adapter?.rooms?.get(body.conversationId);
+          console.log("BEFORE EMIT ROOM", body.conversationId, aiEmitRoom);
+          this.server.to(body.conversationId).emit("message_received", {
+            conversationId: body.conversationId,
+            message: aiMsg,
+            staffId: null,
+            status: "open",
+          });
+        }
+      });
+    }
+
+    return { success: true, tempId: body.tempId };
+  }
+
+  @SubscribeMessage("resolve_conversation")
+  async handleResolveConversation(@MessageBody() body: { conversationId: string }, @ConnectedSocket() client: AuthSocket) {
+    const user = client.data.user;
+    if (!user || user.role !== "staff" || !body?.conversationId) {
+      return;
+    }
+
+    try {
+      const conversation = await this.chatService.resolveConversation(body.conversationId, user.userId);
+      this.clearActiveLock(body.conversationId);
+      const resolveRoom = (this.server as any).adapter?.rooms?.get(body.conversationId);
+      console.log("BEFORE EMIT ROOM", body.conversationId, resolveRoom);
+      this.server.to(body.conversationId).emit("conversation_resolved", {
+        conversationId: body.conversationId,
+        status: conversation.status,
+      });
+      this.server.to("staff").emit("chat_unlocked", { conversationId: body.conversationId, status: conversation.status });
+    } catch {
+      client.emit("resolve_error", { conversationId: body.conversationId, reason: "cannot_resolve" });
+    }
+  }
+
+  @SubscribeMessage("read_conversation")
+  async handleReadConversation(
+    @MessageBody() body: { conversationId: string },
+    @ConnectedSocket() client: AuthSocket,
+  ) {
+    const user = client.data.user;
+    if (!user || !body?.conversationId) {
+      return;
+    }
+
+    await this.chatService.markConversationRead(user.userId, user.role, body.conversationId);
+    const readRoom = (this.server as any).adapter?.rooms?.get(body.conversationId);
+    console.log("BEFORE EMIT ROOM", body.conversationId, readRoom);
+    this.server.to(body.conversationId).emit("conversation_read", {
+      conversationId: body.conversationId,
+      readerId: user.userId,
+    });
+  }
+
+  @SubscribeMessage("typing")
+  async handleTyping(
+    @MessageBody() body: { conversationId: string; isTyping: boolean },
+    @ConnectedSocket() client: AuthSocket,
+  ) {
+    const user = client.data.user;
+    if (!user || !body?.conversationId || typeof body.isTyping !== "boolean") {
+      return;
+    }
+
+    client.to(body.conversationId).emit("typing", {
+      conversationId: body.conversationId,
+      isTyping: body.isTyping,
+      userId: user.userId,
+    });
+  }
+
+  getLockStatus(conversationId: string) {
+    const activeLock = this.activeReplier.get(conversationId);
+    if (!activeLock) {
+      return {
+        isLocked: false,
+        lockedBy: null,
+        lockedAt: null,
+        expiresAt: null,
+      };
+    }
+
+    const expiresAt = new Date(activeLock.lockedAt.getTime() + 20 * 60 * 1000);
+    return {
+      isLocked: true,
+      lockedBy: { staffId: activeLock.staffId, name: activeLock.name },
+      lockedAt: activeLock.lockedAt,
+      expiresAt,
+    };
+  }
+
+  private scheduleStaffDisconnectRelease(socketId: string, staffId: string) {
+    const existing = this.disconnectReleaseTimeouts.get(socketId);
+    if (existing) {
+      clearTimeout(existing);
+    }
+
+    const timeout = setTimeout(() => {
+      this.disconnectReleaseTimeouts.delete(socketId);
+      this.releaseStaffLocksBySocket(socketId);
+      const hasOnline = this.onlineUsers.has(staffId);
+      //console.log("TIMER FIRE", socketId, staffId, "onlineUsers.has?", hasOnline);
+      if (!hasOnline) {
+        //console.log("CLEAR DB staff_id for", staffId);
+        void this.chatService.autoReplyReleasedConversations(staffId).then((results) => {
+          for (const { conversationId, messages: aiMsgs } of results) {
+            for (const aiMsg of aiMsgs) {
+              //console.log("EMIT AI (post-release)", aiMsg.id, aiMsg.content);
+              this.server.to(conversationId).emit("message_received", {
+                conversationId,
+                message: aiMsg,
+                staffId: null,
+                status: "open",
+              });
+            }
+          }
+        });
+      }
+    }, 30 * 1000);
+    this.disconnectReleaseTimeouts.set(socketId, timeout);
+  }
+
+  private clearDisconnectReleaseForSocket(socketId: string) {
+    const timeout = this.disconnectReleaseTimeouts.get(socketId);
+    if (!timeout) {
+      return;
+    }
+
+    clearTimeout(timeout);
+    this.disconnectReleaseTimeouts.delete(socketId);
+  }
+
+  private releaseStaffLocksBySocket(socketId: string) {
+    const locksToRelease = Array.from(this.activeReplier.entries())
+      .filter(([, lock]) => lock.socketId === socketId)
+      .map(([conversationId]) => conversationId);
+
+    locksToRelease.forEach((conversationId) => this.releaseLock(conversationId));
+  }
+
+  private clearActiveLock(conversationId: string) {
+    this.activeReplier.delete(conversationId);
+    const timeout = this.lockTimeouts.get(conversationId);
+    if (timeout) {
+      clearTimeout(timeout);
+      this.lockTimeouts.delete(conversationId);
+    }
+  }
+
+  private releaseLock(conversationId: string) {
+    const lock = this.activeReplier.get(conversationId);
+    if (!lock) {
+      return;
+    }
+
+    this.clearActiveLock(conversationId);
+
+    void this.chatService.releaseConversationLock(conversationId, lock.staffId).then((status) => {
+      this.server?.to("staff").emit("chat_unlocked", { conversationId, status });
+    });
+  }
+
+  private scheduleLockExpiration(conversationId: string) {
+    const existingTimeout = this.lockTimeouts.get(conversationId);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+    }
+
+    const timeout = setTimeout(() => {
+      const lock = this.activeReplier.get(conversationId);
+      if (!lock) {
+        return;
+      }
+
+      this.releaseLock(conversationId);
+      if (this.server) {
+        const holdingSocket = this.server.sockets?.sockets?.get?.(lock.socketId) ?? null;
+        if (holdingSocket) {
+          holdingSocket.emit("lock_expired", { conversationId });
+        }
+      }
+    }, 20 * 60 * 1000);
+
+    this.lockTimeouts.set(conversationId, timeout);
+  }
+
+  private getTokenFromHandshake(client: Socket) {
+    const authToken = client.handshake.auth?.token;
+    if (typeof authToken === "string" && authToken.trim().length > 0) {
+      return authToken.replace(/^Bearer\s+/i, "").trim();
+    }
+
+    const authorizationHeader = client.handshake.headers?.authorization as string | undefined;
+    if (!authorizationHeader) {
+      return undefined;
+    }
+
+    const [scheme, token] = authorizationHeader.trim().split(" ");
+    if (scheme !== "Bearer" || !token) {
+      return undefined;
+    }
+
+    return token;
+  }
+}

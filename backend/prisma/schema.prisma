@@ -7,6 +7,497 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model UserAccount {
+  id                                                     String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                                                  String                  @unique
+  passwordHash                                           String                  @map("password_hash")
+  role                                                   AppRole                 @default(customer)
+  isActive                                               Boolean                 @default(true) @map("is_active")
+  createdAt                                              DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                                              DateTime                @default(now()) @map("updated_at") @db.Timestamptz(6)
+  isEmailVerified                                        Boolean                 @default(false) @map("is_email_verified")
+  addresses                                              Address[]
+  auditLogs                                              AuditLog[]
+  statusHistories                                        BookingStatusHistory[]  @relation("StatusChangedBy")
+  bookings                                               Booking[]               @relation("BookingCustomer")
+  conversations_conversations_customer_idTouser_accounts conversations[]         @relation("conversations_customer_idTouser_accounts")
+  conversations_conversations_staff_idTouser_accounts    conversations[]         @relation("conversations_staff_idTouser_accounts")
+  measurements                                           CustomerMeasurement[]
+  emailVerifications                                     EmailVerificationCode[]
+  inspections                                            InspectionSession[]     @relation("InspectedBy")
+  messages                                               messages[]
+  notifications                                          Notification[]
+  penaltiesCreated                                       Penalty[]
+  profile                                                Profile?
+  refunds                                                Refund[]
+  tryonRequests                                          TryonRequest[]
+
+  @@map("user_accounts")
+}
+
+model EmailVerificationCode {
+  id        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String      @map("user_id") @db.Uuid
+  code      String
+  expiresAt DateTime    @map("expires_at") @db.Timestamptz(6)
+  used      Boolean     @default(false)
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("email_verification_codes")
+}
+
+model Profile {
+  id        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String      @unique @map("user_id") @db.Uuid
+  fullName  String?     @map("full_name")
+  phone     String?
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime    @default(now()) @map("updated_at") @db.Timestamptz(6)
+  user      UserAccount @relation(fields: [userId], references: [id])
+
+  @@map("profiles")
+}
+
+model CustomerMeasurement {
+  id         String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId String      @map("customer_id") @db.Uuid
+  heightCm   Decimal?    @map("height_cm") @db.Decimal(5, 2)
+  weightKg   Decimal?    @map("weight_kg") @db.Decimal(5, 2)
+  bustCm     Decimal?    @map("bust_cm") @db.Decimal(5, 2)
+  waistCm    Decimal?    @map("waist_cm") @db.Decimal(5, 2)
+  hipCm      Decimal?    @map("hip_cm") @db.Decimal(5, 2)
+  usualSize  String?     @map("usual_size")
+  createdAt  DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  customer   UserAccount @relation(fields: [customerId], references: [id])
+
+  @@map("customer_measurements")
+}
+
+model Address {
+  id           String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId   String      @map("customer_id") @db.Uuid
+  receiverName String      @map("receiver_name")
+  phone        String
+  line1        String
+  ward         String?
+  district     String?
+  city         String?
+  latitude     Float?
+  longitude    Float?
+  isDefault    Boolean     @default(false) @map("is_default")
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  customer     UserAccount @relation(fields: [customerId], references: [id])
+  bookings     Booking[]   @relation("DeliveryAddress")
+
+  @@map("addresses")
+}
+
+model GarmentCategory {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String         @unique
+  description   String?
+  isActive      Boolean        @default(true) @map("is_active")
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  tryonCategory TryonCategory? @map("tryon_category")
+  garments      Garment[]
+
+  @@map("garment_categories")
+}
+
+model Garment {
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  categoryId        String?          @map("category_id") @db.Uuid
+  name              String
+  description       String?
+  color             String?
+  isActive          Boolean          @default(true) @map("is_active")
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  tryonReferenceUrl String?          @map("tryon_reference_url")
+  deletedAt         DateTime?        @map("deleted_at") @db.Timestamptz(6)
+  bookingItems      BookingItem[]
+  assets            GarmentAsset[]
+  images            GarmentImage[]
+  garment_sizes     garment_sizes[]
+  category          GarmentCategory? @relation(fields: [categoryId], references: [id])
+  tryonRequests     TryonRequest[]
+
+  @@map("garments")
+}
+
+model GarmentImage {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  garmentId String   @map("garment_id") @db.Uuid
+  imageUrl  String   @map("image_url")
+  altText   String?  @map("alt_text")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  garment   Garment  @relation(fields: [garmentId], references: [id], onDelete: Cascade)
+
+  @@map("garment_images")
+}
+
+model GarmentAsset {
+  id              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  garmentId       String              @map("garment_id") @db.Uuid
+  assetCode       String              @unique @map("asset_code")
+  status          AssetStatus         @default(available)
+  conditionNote   String?             @map("condition_note")
+  purchaseCost    Decimal?            @map("purchase_cost") @db.Decimal(12, 2)
+  createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime            @default(now()) @map("updated_at") @db.Timestamptz(6)
+  garment_size_id String?             @db.Uuid
+  bookingItems    BookingItem[]
+  garment         Garment             @relation(fields: [garmentId], references: [id])
+  garment_sizes   garment_sizes?      @relation(fields: [garment_size_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  inspections     InspectionSession[]
+  laundryTickets  LaundryTicket[]
+  maintenanceJobs MaintenanceJob[]
+
+  @@map("garment_assets")
+}
+
+model Booking {
+  id                    String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId            String                 @map("customer_id") @db.Uuid
+  status                BookingStatus          @default(pending_confirmation)
+  rentalStartDate       DateTime               @map("rental_start_date") @db.Date
+  rentalEndDate         DateTime               @map("rental_end_date") @db.Date
+  pickupMethod          String                 @default("store_pickup") @map("pickup_method")
+  rentalTotal           Decimal                @default(0) @map("rental_total") @db.Decimal(12, 2)
+  depositTotal          Decimal                @default(0) @map("deposit_total") @db.Decimal(12, 2)
+  shippingFee           Decimal                @default(0) @map("shipping_fee") @db.Decimal(12, 2)
+  penaltyTotal          Decimal                @default(0) @map("penalty_total") @db.Decimal(12, 2)
+  note                  String?
+  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime               @default(now()) @map("updated_at") @db.Timestamptz(6)
+  deliveryAddressId     String?                @map("delivery_address_id") @db.Uuid
+  paymentDueAt          DateTime?              @map("payment_due_at") @db.Timestamptz(6)
+  paymentMethod         String                 @default("cash") @map("payment_method")
+  items                 BookingItem[]
+  statusHistory         BookingStatusHistory[]
+  customer              UserAccount            @relation("BookingCustomer", fields: [customerId], references: [id])
+  deliveryAddress       Address?               @relation("DeliveryAddress", fields: [deliveryAddressId], references: [id])
+  deliveryRecords       DeliveryRecord[]
+  financialTransactions FinancialTransaction[]
+  inspections           InspectionSession[]
+  laundryTickets        LaundryTicket[]
+  payments              Payment[]
+  penalties             Penalty[]
+  refunds               Refund[]
+
+  @@map("bookings")
+}
+
+model BookingItem {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId       String         @map("booking_id") @db.Uuid
+  garmentId       String         @map("garment_id") @db.Uuid
+  garmentAssetId  String?        @map("garment_asset_id") @db.Uuid
+  dailyPrice      Decimal        @default(0) @map("daily_price") @db.Decimal(12, 2)
+  depositAmount   Decimal        @default(0) @map("deposit_amount") @db.Decimal(12, 2)
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  garment_size_id String?        @db.Uuid
+  booking         Booking        @relation(fields: [bookingId], references: [id])
+  garmentAsset    GarmentAsset?  @relation(fields: [garmentAssetId], references: [id])
+  garment         Garment        @relation(fields: [garmentId], references: [id])
+  garment_sizes   garment_sizes? @relation(fields: [garment_size_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("booking_items")
+}
+
+model BookingStatusHistory {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId     String         @map("booking_id") @db.Uuid
+  fromStatus    BookingStatus? @map("from_status")
+  toStatus      BookingStatus  @map("to_status")
+  changedBy     String?        @map("changed_by") @db.Uuid
+  note          String?
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  booking       Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  changedByUser UserAccount?   @relation("StatusChangedBy", fields: [changedBy], references: [id])
+
+  @@map("booking_status_history")
+}
+
+model DeliveryRecord {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId       String    @map("booking_id") @db.Uuid
+  method          String
+  addressSnapshot String?   @map("address_snapshot")
+  deliveredAt     DateTime? @map("delivered_at") @db.Timestamptz(6)
+  receivedAt      DateTime? @map("received_at") @db.Timestamptz(6)
+  note            String?
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  booking         Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@map("delivery_records")
+}
+
+model Payment {
+  id                    String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId             String                 @map("booking_id") @db.Uuid
+  provider              String                 @default("mock")
+  providerTransactionId String?                @map("provider_transaction_id")
+  amount                Decimal                @db.Decimal(12, 2)
+  status                PaymentStatus          @default(pending)
+  paidAt                DateTime?              @map("paid_at") @db.Timestamptz(6)
+  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  depositAmount         Decimal                @default(0) @map("deposit_amount") @db.Decimal(12, 2)
+  paymentMethod         String?                @map("payment_method")
+  financialTransactions FinancialTransaction[]
+  booking               Booking                @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  refunds               Refund[]
+
+  @@map("payments")
+}
+
+model Penalty {
+  id                    String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId             String                 @map("booking_id") @db.Uuid
+  reason                String
+  amount                Decimal                @db.Decimal(12, 2)
+  createdBy             String?                @map("created_by") @db.Uuid
+  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  financialTransactions FinancialTransaction[]
+  booking               Booking                @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  createdByUser         UserAccount?           @relation(fields: [createdBy], references: [id])
+
+  @@map("penalties")
+}
+
+model Refund {
+  id                    String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId             String                 @map("booking_id") @db.Uuid
+  paymentId             String?                @map("payment_id") @db.Uuid
+  amount                Decimal                @db.Decimal(12, 2)
+  status                PaymentStatus          @default(pending)
+  reason                String?
+  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  bank_account_holder   String?
+  bank_account_number   String?
+  bank_name             String?
+  processed_by          String?                @db.Uuid
+  proof_image_url       String?
+  refund_method         String                 @default("cash")
+  updated_at            DateTime               @default(now()) @db.Timestamptz(6)
+  financialTransactions FinancialTransaction[]
+  booking               Booking                @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  payment               Payment?               @relation(fields: [paymentId], references: [id])
+  user_accounts         UserAccount?           @relation(fields: [processed_by], references: [id])
+
+  @@map("refunds")
+}
+
+model FinancialTransaction {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId       String?  @map("booking_id") @db.Uuid
+  paymentId       String?  @map("payment_id") @db.Uuid
+  refundId        String?  @map("refund_id") @db.Uuid
+  penaltyId       String?  @map("penalty_id") @db.Uuid
+  transactionType String   @map("transaction_type")
+  amount          Decimal  @db.Decimal(12, 2)
+  note            String?
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  booking         Booking? @relation(fields: [bookingId], references: [id])
+  payment         Payment? @relation(fields: [paymentId], references: [id])
+  penalty         Penalty? @relation(fields: [penaltyId], references: [id])
+  refund          Refund?  @relation(fields: [refundId], references: [id])
+
+  @@map("financial_transactions")
+}
+
+model InspectionSession {
+  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId      String              @map("booking_id") @db.Uuid
+  garmentAssetId String              @map("garment_asset_id") @db.Uuid
+  status         InspectionStatus    @default(pending)
+  inspectedBy    String?             @map("inspected_by") @db.Uuid
+  note           String?
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt    DateTime?           @map("completed_at") @db.Timestamptz(6)
+  findings       InspectionFinding[]
+  photos         InspectionPhoto[]
+  booking        Booking             @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  garmentAsset   GarmentAsset        @relation(fields: [garmentAssetId], references: [id])
+  inspector      UserAccount?        @relation("InspectedBy", fields: [inspectedBy], references: [id])
+
+  @@map("inspection_sessions")
+}
+
+model InspectionFinding {
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  inspectionSessionId String            @map("inspection_session_id") @db.Uuid
+  findingType         String            @map("finding_type")
+  severity            String            @default("low")
+  description         String?
+  penaltyAmount       Decimal           @default(0) @map("penalty_amount") @db.Decimal(12, 2)
+  createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  inspectionSession   InspectionSession @relation(fields: [inspectionSessionId], references: [id], onDelete: Cascade)
+  maintenanceJobs     MaintenanceJob[]
+
+  @@map("inspection_findings")
+}
+
+model InspectionPhoto {
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  inspectionSessionId String            @map("inspection_session_id") @db.Uuid
+  imageUrl            String            @map("image_url")
+  note                String?
+  createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  inspectionSession   InspectionSession @relation(fields: [inspectionSessionId], references: [id], onDelete: Cascade)
+
+  @@map("inspection_photos")
+}
+
+model LaundryTicket {
+  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  garmentAssetId String            @map("garment_asset_id") @db.Uuid
+  bookingId      String?           @map("booking_id") @db.Uuid
+  status         MaintenanceStatus @default(open)
+  note           String?
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt    DateTime?         @map("completed_at") @db.Timestamptz(6)
+  booking        Booking?          @relation(fields: [bookingId], references: [id])
+  garmentAsset   GarmentAsset      @relation(fields: [garmentAssetId], references: [id])
+
+  @@map("laundry_tickets")
+}
+
+model MaintenanceJob {
+  id                  String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  garmentAssetId      String             @map("garment_asset_id") @db.Uuid
+  inspectionFindingId String?            @map("inspection_finding_id") @db.Uuid
+  status              MaintenanceStatus  @default(open)
+  note                String?
+  createdAt           DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt         DateTime?          @map("completed_at") @db.Timestamptz(6)
+  garmentAsset        GarmentAsset       @relation(fields: [garmentAssetId], references: [id])
+  inspectionFinding   InspectionFinding? @relation(fields: [inspectionFindingId], references: [id])
+
+  @@map("maintenance_jobs")
+}
+
+model TryonRequest {
+  id                    String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId            String        @map("customer_id") @db.Uuid
+  garmentId             String        @map("garment_id") @db.Uuid
+  status                TryonStatus   @default(pending)
+  sourceImageUrl        String?       @map("source_image_url")
+  consentAccepted       Boolean       @default(false) @map("consent_accepted")
+  createdAt             DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt           DateTime?     @map("completed_at") @db.Timestamptz(6)
+  mode                  String?
+  replicatePredictionId String?       @unique @map("replicate_prediction_id")
+  errorMessage          String?       @map("error_message")
+  customer              UserAccount   @relation(fields: [customerId], references: [id])
+  garment               Garment       @relation(fields: [garmentId], references: [id])
+  results               TryonResult[]
+
+  @@map("tryon_requests")
+}
+
+model TryonResult {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tryonRequestId String       @map("tryon_request_id") @db.Uuid
+  resultImageUrl String?      @map("result_image_url")
+  aiMetadata     Json?        @map("ai_metadata")
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  storedImageUrl String?      @map("stored_image_url")
+  hiddenAt       DateTime?    @map("hidden_at") @db.Timestamptz(6)
+  tryonRequest   TryonRequest @relation(fields: [tryonRequestId], references: [id], onDelete: Cascade)
+
+  @@map("tryon_results")
+}
+
+model Notification {
+  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String?      @map("user_id") @db.Uuid
+  title     String
+  body      String?
+  readAt    DateTime?    @map("read_at") @db.Timestamptz(6)
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      UserAccount? @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorId    String?      @map("actor_id") @db.Uuid
+  action     String
+  entityType String       @map("entity_type")
+  entityId   String?      @map("entity_id") @db.Uuid
+  metadata   Json?
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  actor      UserAccount? @relation(fields: [actorId], references: [id])
+
+  @@map("audit_logs")
+}
+
+model SystemSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("system_settings")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model garment_sizes {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  garment_id     String         @db.Uuid
+  size_label     String?        @db.VarChar
+  daily_price    Decimal?       @default(0) @db.Decimal(12, 2)
+  deposit_amount Decimal?       @default(0) @db.Decimal(12, 2)
+  is_active      Boolean?       @default(true)
+  created_at     DateTime?      @default(now()) @db.Timestamptz(6)
+  booking_items  BookingItem[]
+  garment_assets GarmentAsset[]
+  garments       Garment        @relation(fields: [garment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([garment_id, size_label])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model conversations {
+  id                                                     String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customer_id                                            String       @db.Uuid
+  staff_id                                               String?      @db.Uuid
+  status                                                 String       @default("open")
+  created_at                                             DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at                                             DateTime     @default(now()) @db.Timestamptz(6)
+  customer_last_read_at                                  DateTime?    @db.Timestamptz(6)
+  staff_last_read_at                                     DateTime?    @db.Timestamptz(6)
+  topic                                                  String       @default("general")
+  booking_id                                             String?      @db.Uuid
+  garment_id                                             String?      @db.Uuid
+  locked_by                                              String?      @db.Uuid
+  locked_at                                              DateTime?    @db.Timestamptz(6)
+  lock_expires_at                                        DateTime?    @db.Timestamptz(6)
+  reopened_from_resolved                                 Boolean      @default(false)
+  user_accounts_conversations_customer_idTouser_accounts UserAccount  @relation("conversations_customer_idTouser_accounts", fields: [customer_id], references: [id], onDelete: Cascade)
+  user_accounts_conversations_staff_idTouser_accounts    UserAccount? @relation("conversations_staff_idTouser_accounts", fields: [staff_id], references: [id])
+  messages                                               messages[]
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model messages {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversation_id String        @db.Uuid
+  sender_id       String        @db.Uuid
+  content         String
+  created_at      DateTime      @default(now()) @db.Timestamptz(6)
+  deleted_at      DateTime?     @db.Timestamptz(6)
+  deleted_by      String?       @db.Uuid
+  message_type    String        @default("text")
+  metadata        Json?
+  sender_type     String        @default("user")
+  conversations   conversations @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  user_accounts   UserAccount   @relation(fields: [sender_id], references: [id], onDelete: Cascade)
+}
+
 enum AppRole {
   customer
   staff
@@ -50,106 +541,49 @@ enum BookingStatus {
   @@map("booking_status")
 }
 
-model UserAccount {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email        String    @unique
-  passwordHash String    @map("password_hash")
-  role         AppRole   @default(customer)
-  isActive     Boolean   @default(true) @map("is_active")
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
-  profile      Profile?
-  bookings     Booking[]
+enum PaymentStatus {
+  pending
+  paid
+  failed
+  cancelled
+  refunding
+  refunded
+  partially_refunded
 
-  @@map("user_accounts")
+  @@map("payment_status")
 }
 
-model Profile {
-  id        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId    String      @unique @map("user_id") @db.Uuid
-  fullName  String?     @map("full_name")
-  phone     String?
-  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime    @default(now()) @map("updated_at") @db.Timestamptz(6)
-  user      UserAccount @relation(fields: [userId], references: [id])
+enum InspectionStatus {
+  pending
+  in_progress
+  completed
+  disputed
 
-  @@map("profiles")
+  @@map("inspection_status")
 }
 
-model GarmentCategory {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name        String    @unique
-  description String?
-  isActive    Boolean   @default(true) @map("is_active")
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  garments    Garment[]
+enum MaintenanceStatus {
+  open
+  in_progress
+  completed
+  cannot_repair
 
-  @@map("garment_categories")
+  @@map("maintenance_status")
 }
 
-model Garment {
-  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  categoryId    String?          @map("category_id") @db.Uuid
-  name          String
-  description   String?
-  sizeLabel     String?          @map("size_label")
-  color         String?
-  dailyPrice    Decimal          @default(0) @map("daily_price") @db.Decimal(12, 2)
-  depositAmount Decimal          @default(0) @map("deposit_amount") @db.Decimal(12, 2)
-  isActive      Boolean          @default(true) @map("is_active")
-  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  category      GarmentCategory? @relation(fields: [categoryId], references: [id])
-  assets        GarmentAsset[]
-  bookingItems  BookingItem[]
+enum TryonStatus {
+  pending
+  processing
+  completed
+  failed
 
-  @@map("garments")
+  @@map("tryon_status")
 }
 
-model GarmentAsset {
-  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  garmentId     String        @map("garment_id") @db.Uuid
-  assetCode     String        @unique @map("asset_code")
-  status        AssetStatus   @default(available)
-  conditionNote String?       @map("condition_note")
-  purchaseCost  Decimal?      @map("purchase_cost") @db.Decimal(12, 2)
-  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime      @default(now()) @map("updated_at") @db.Timestamptz(6)
-  garment       Garment       @relation(fields: [garmentId], references: [id])
-  bookingItems  BookingItem[]
+enum TryonCategory {
+  upper_body
+  lower_body
+  dresses
 
-  @@map("garment_assets")
-}
-
-model Booking {
-  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  customerId      String        @map("customer_id") @db.Uuid
-  status          BookingStatus @default(pending_confirmation)
-  rentalStartDate DateTime      @map("rental_start_date") @db.Date
-  rentalEndDate   DateTime      @map("rental_end_date") @db.Date
-  pickupMethod    String        @default("store_pickup") @map("pickup_method")
-  rentalTotal     Decimal       @default(0) @map("rental_total") @db.Decimal(12, 2)
-  depositTotal    Decimal       @default(0) @map("deposit_total") @db.Decimal(12, 2)
-  penaltyTotal    Decimal       @default(0) @map("penalty_total") @db.Decimal(12, 2)
-  note            String?
-  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime      @default(now()) @map("updated_at") @db.Timestamptz(6)
-  customer        UserAccount   @relation(fields: [customerId], references: [id])
-  items           BookingItem[]
-
-  @@map("bookings")
-}
-
-model BookingItem {
-  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  bookingId      String        @map("booking_id") @db.Uuid
-  garmentId      String        @map("garment_id") @db.Uuid
-  garmentAssetId String?       @map("garment_asset_id") @db.Uuid
-  dailyPrice     Decimal       @default(0) @map("daily_price") @db.Decimal(12, 2)
-  depositAmount  Decimal       @default(0) @map("deposit_amount") @db.Decimal(12, 2)
-  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  booking        Booking       @relation(fields: [bookingId], references: [id])
-  garment        Garment       @relation(fields: [garmentId], references: [id])
-  garmentAsset   GarmentAsset? @relation(fields: [garmentAssetId], references: [id])
-
-  @@map("booking_items")
+  @@map("tryon_category")
 }

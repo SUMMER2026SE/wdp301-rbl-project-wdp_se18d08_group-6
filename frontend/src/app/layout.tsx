@@ -1,18 +1,22 @@
-﻿import type { Metadata } from "next";
+import type { Metadata } from "next";
 import "./globals.css";
-import { Header } from "@/components/header";
+import { AuthProvider } from "@/components/auth/auth-provider";
+import { CustomerChatProvider } from "@/components/chat/customer-chat-provider";
 
 export const metadata: Metadata = {
-  title: "Co Phuc Rental ERP",
-  description: "ERP rental system for Vietnamese traditional costumes with AI try-on.",
+  title: "Cổ Phục Rental ERP",
+  description: "Landing page và cổng đăng nhập cho hệ thống ERP thuê cổ phục, áo dài Việt Nam có thử đồ AI.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="vi">
-      <body>
-        <Header />
-        <main>{children}</main>
+      <body className="text-ink" suppressHydrationWarning>
+        <AuthProvider>
+          <CustomerChatProvider>
+          {children}
+          </CustomerChatProvider>
+        </AuthProvider>
       </body>
     </html>
   );
