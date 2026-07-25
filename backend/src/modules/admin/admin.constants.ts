@@ -68,11 +68,25 @@ export const ADMIN_SETTING_DEFINITIONS: AdminSettingDefinition[] = [
     defaultValue: { value: "106.7009" },
   },
   {
-    key: "shipping_rate_per_km",
-    label: "Phí giao hàng mỗi km",
-    description: "Đơn giá (VND/km) để ước tính phí vận chuyển dựa trên khoảng cách.",
+    key: "shipping_fee_intra",
+    label: "Phí giao hàng nội miền",
+    description: "Cước vận chuyển (VND) khi atelier và khách cùng miền, theo bảng giá Viettel Post.",
     kind: "number",
-    defaultValue: { value: 5000 },
+    defaultValue: { value: 24000 },
+  },
+  {
+    key: "shipping_fee_adjacent",
+    label: "Phí giao hàng cận miền",
+    description: "Cước vận chuyển (VND) giữa hai miền liền kề (Bắc–Trung, Trung–Nam), theo bảng giá Viettel Post.",
+    kind: "number",
+    defaultValue: { value: 32000 },
+  },
+  {
+    key: "shipping_fee_inter",
+    label: "Phí giao hàng liên miền",
+    description: "Cước vận chuyển (VND) tuyến Bắc–Nam, theo bảng giá Viettel Post.",
+    kind: "number",
+    defaultValue: { value: 38000 },
   },
 ];
 

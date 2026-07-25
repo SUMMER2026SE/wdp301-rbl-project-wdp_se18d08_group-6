@@ -40,7 +40,9 @@ export type ShippingFeeEstimate = {
   durationMinutes: number;
   distanceText: string;
   durationText: string;
-  ratePerKm: number;
+  routeType: "intra" | "adjacent" | "inter";
+  routeLabel: string;
+  deliveryTimeText: string;
   storeLat: number;
   storeLng: number;
   customerLat: number;

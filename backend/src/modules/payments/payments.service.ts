@@ -39,7 +39,8 @@ export class PaymentsService {
       data: { status: PaymentStatus.cancelled },
     });
 
-    const totalAmount = Number(booking.rentalTotal) + Number(booking.depositTotal);
+    const shippingFee = Number(booking.shippingFee ?? 0);
+    const totalAmount = Number(booking.rentalTotal) + Number(booking.depositTotal) + shippingFee;
     const orderCode = Date.now();
 
     const frontendUrl = this.config.get<string>("FRONTEND_URL") ?? "http://localhost:3000";
@@ -53,6 +54,9 @@ export class PaymentsService {
       quantity: 1,
       price: Math.round(Number(item.dailyPrice) * days + Number(item.depositAmount)),
     }));
+    if (shippingFee > 0) {
+      items.push({ name: "Phí giao hàng", quantity: 1, price: Math.round(shippingFee) });
+    }
 
     const paymentLinkRes = await this.payos.paymentRequests.create({
       orderCode,
