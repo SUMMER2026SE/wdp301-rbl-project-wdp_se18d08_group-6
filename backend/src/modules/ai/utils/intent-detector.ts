@@ -3,12 +3,12 @@ import type { IntentResult } from "../interfaces/ai-response.interface";
 // \b does not work with Vietnamese characters (non-ASCII \W).
 // Use (?:^|(?<=\s)) as left-boundary and (?=\s|$|[.,;:!?]) as right-boundary.
 
-const PRODUCT_KEYWORDS = /(?:^|(?<=\s))(áo|váy|quần|sản phẩm|mẫu|bộ|trang phục|cổ phục|đầm|jupe|chân váy|size|cỡ)(?=\s|$|[.,;:!?])/i;
+const PRODUCT_KEYWORDS = /(?:^|(?<=\s))(áo|váy|váy cưới|quần|sản phẩm|mẫu|bộ|trang phục|cổ phục|đầm|jupe|chân váy|vest|suit|size|cỡ)(?=\s|$|[.,;:!?])/i;
 const COLOR_WORDS = /(?:^|(?<=\s))(tím|đỏ|hồng|xanh|trắng|đen|vàng|nâu|kem|be|bạc|ghi|xám|cam|chàm)(?=\s|$|[.,;:!?])/i;
 const BUDGET_PATTERN = /(?:^|(?<=\s))(dưới|trên|khoảng|từ|đến|giá|tiền|budget|ngân sách)(?=\s|$|[.,;:!?])/i;
 const SIZE_PATTERN = /(?:^|(?<=\s))(size|cỡ|số)\s*[smlxl]+(?=\s|$|[.,;:!?])/i;
 const SEARCH_QUESTION = /có\s+.+không|còn\s+.+không|có\s+.+ko|còn\s+.+ko/i;
-const CATEGORY_REFERENCE = /(?:^|(?<=\s))(áo dài|váy|quần|đầm)(?=\s|$|[.,;:!?])/i;
+const CATEGORY_REFERENCE = /(?:^|(?<=\s))(áo dài|cổ phục|váy cưới|váy|quần|đầm|vest|suit)(?=\s|$|[.,;:!?])/i;
 const RENTAL_ACTION = /(?:^|(?<=\s))(thuê|mướn|cho thuê|giá thuê)(?=\s|$|[.,;:!?])/i;
 
 const GENERAL_QUESTION = /(?:^|(?<=\s))(mấy giờ|giờ mở cửa|ở đâu|địa chỉ|liên hệ|giao hàng|vận chuyển|thanh toán|chuyển khoản|đổi trả|bảo hành|chính sách|hủy|hoàn tiền|khiếu nại)(?=\s|$|[.,;:!?])/i;

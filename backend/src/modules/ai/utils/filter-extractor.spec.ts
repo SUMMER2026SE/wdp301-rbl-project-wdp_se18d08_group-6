@@ -112,9 +112,9 @@ describe("FilterExtractor", () => {
 
   describe("extractKeyword", () => {
     it("extracts remaining text as keyword after removing filters", () => {
-      const result = extractFilters("áo dài đỏ chụp kỷ yếu");
+      const result = extractFilters("áo dài đỏ vintage caro");
       expect(result.keyword).toBeDefined();
-      expect(result.keyword!.toLowerCase()).toContain("chụp");
+      expect(result.keyword!.toLowerCase()).toContain("vintage");
     });
 
     it("returns undefined when only filters remain", () => {

@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState, type RefObject } from "react";
 import type { ChatConversation, ChatMessage, ConversationLockStatus } from "@/lib/chat";
-import { getBookingCardData, getProductCardData, uploadChatFile, getProductAdvisor, sendProductCardMessage, type AIAdvisorTopic } from "@/lib/chat";
+import { getBookingCardData, getProductCardData, uploadChatFile, getProductAdvisor, sendProductCardMessage, getChatConversationCounts, type AIAdvisorTopic } from "@/lib/chat";
 import { Paperclip } from "lucide-react";
 import type { AuthSession } from "@/lib/auth";
 import { BookingCard } from "@/components/chat/booking-card";
@@ -86,6 +86,13 @@ export function StaffChatWorkspace({
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [tabCounts, setTabCounts] = useState({ needsReply: 0, awaitingReply: 0, unassigned: 0, resolved: 0 });
+
+  useEffect(() => {
+    getChatConversationCounts().then((res) => {
+      if (res.success && res.data) setTabCounts(res.data);
+    });
+  }, [conversations]);
   const [uploading, setUploading] = useState(false);
   const [uploadToast, setUploadToast] = useState<string | null>(null);
   const uploadToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -128,11 +135,7 @@ export function StaffChatWorkspace({
     }
   }
 
-  const needsReplyConversations = conversations.filter((c) => c.staffId === session?.user.id && c.status !== "resolved" && (!c.lastMessage || c.lastMessage.sender_id !== session?.user.id));
-  const awaitingReplyConversations = conversations.filter((c) => c.staffId === session?.user.id && c.status !== "resolved" && c.lastMessage && c.lastMessage.sender_id === session?.user.id);
-  const unassignedConversations = conversations.filter((c) => c.staffId === null && c.status === "open");
-  const resolvedConversations = conversations.filter((c) => c.status === "resolved");
-  const displayedConversations = sidebarTab === "needs_reply" ? needsReplyConversations : sidebarTab === "awaiting_reply" ? awaitingReplyConversations : sidebarTab === "resolved" ? resolvedConversations : unassignedConversations;
+  const displayedConversations = conversations;
 
   // Determine the viewing mode
   const isUnassignedPreview = selectedConversation && selectedConversation.staffId === null;
@@ -254,7 +257,7 @@ export function StaffChatWorkspace({
                   : "bg-lotus/10 text-lotus"
               }`}
             >
-              {needsReplyConversations.length}
+              {tabCounts.needsReply}
             </span>
           </button>
           <button
@@ -272,7 +275,7 @@ export function StaffChatWorkspace({
                   : "bg-stone-200 text-stone-600"
               }`}
             >
-              {awaitingReplyConversations.length}
+              {tabCounts.awaitingReply}
             </span>
           </button>
           <button
@@ -290,7 +293,7 @@ export function StaffChatWorkspace({
                   : "bg-amber-100 text-amber-800"
               }`}
             >
-              {unassignedConversations.length}
+              {tabCounts.unassigned}
             </span>
           </button>
           <button
@@ -308,7 +311,7 @@ export function StaffChatWorkspace({
                   : "bg-stone-200 text-stone-600"
               }`}
             >
-              {resolvedConversations.length}
+              {tabCounts.resolved}
             </span>
           </button>
         </div>

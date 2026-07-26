@@ -36,6 +36,7 @@ export interface ProductFilters {
   size?: string[];
   budgetMin?: number;
   budgetMax?: number;
+  occasion?: string[];
   keyword?: string;
 }
 

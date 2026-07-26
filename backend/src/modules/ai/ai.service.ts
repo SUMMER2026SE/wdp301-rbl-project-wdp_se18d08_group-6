@@ -525,6 +525,8 @@ export class AiService {
     console.log("Filters:", JSON.stringify(filters, null, 2));
 
     let catalog: AdvisorProduct[] = [];
+    let droppedKeyword: string | undefined;
+    let droppedOccasion: string[] | undefined;
 
     if (intent !== "other") {
       catalog = await this.queryCatalog(filters);
@@ -533,9 +535,20 @@ export class AiService {
         console.log("First 3 products:", catalog.slice(0, 3).map((p) => ({ id: p.garmentId, name: p.name, color: p.color, size: p.size, price: p.dailyPrice, inStock: p.inStock })));
       }
 
+      if (catalog.length === 0 && filters?.occasion) {
+        droppedOccasion = filters.occasion;
+        console.log("→ 0 results with occasion, retrying without occasion");
+        catalog = await this.queryCatalog({ ...filters, occasion: undefined });
+        console.log("Catalog count (no occasion):", catalog.length);
+        if (catalog.length > 0) {
+          console.log("First 3 products (no occasion):", catalog.slice(0, 3).map((p) => ({ id: p.garmentId, name: p.name, color: p.color, size: p.size, price: p.dailyPrice, inStock: p.inStock })));
+        }
+      }
+
       if (catalog.length === 0 && filters?.keyword) {
+        droppedKeyword = filters.keyword;
         console.log("→ 0 results with keyword, retrying without keyword");
-        catalog = await this.queryCatalog({ ...filters, keyword: undefined });
+        catalog = await this.queryCatalog({ ...filters, occasion: undefined, keyword: undefined });
         console.log("Catalog count (no keyword):", catalog.length);
         if (catalog.length > 0) {
           console.log("First 3 products (no keyword):", catalog.slice(0, 3).map((p) => ({ id: p.garmentId, name: p.name, color: p.color, size: p.size, price: p.dailyPrice, inStock: p.inStock })));
@@ -543,17 +556,14 @@ export class AiService {
       }
 
       if (catalog.length === 0) {
-        if (intent === "search" && filters && isAutoReply) {
-          return ok({ topics: [{ title: "Không tìm thấy", assistantReply: "Hiện tại chưa có sản phẩm phù hợp với yêu cầu của bạn. Bạn có thể thử thay đổi tiêu chí hoặc liên hệ staff để được tư vấn thêm.", recommendedProductIds: [], reasons: {}, products: [] }] });
-        }
-        return ok({ topics: [] });
+        return ok({ topics: [{ title: "Không tìm thấy", assistantReply: "Hiện tại chưa có sản phẩm phù hợp với yêu cầu của bạn. Bạn có thể thử thay đổi tiêu chí hoặc liên hệ staff để được tư vấn thêm.", recommendedProductIds: [], reasons: {}, products: [] }] });
       }
     } else {
       console.log("→ Other intent, skip catalog query");
-      return ok({ topics: [] });
+      return ok({ topics: [{ title: "Bạn cần tìm gì?", assistantReply: "Bạn có thể mô tả trang phục bạn đang tìm kiếm (ví dụ: áo dài đỏ, áo dài trắng size M, có ngân sách dưới 200k/ngày), em sẽ gợi ý sản phẩm phù hợp.", recommendedProductIds: [], reasons: {}, products: [] }] });
     }
 
-    const systemPrompt = this.buildAdvisorPrompt(catalog, isAutoReply);
+    const systemPrompt = this.buildAdvisorPrompt(catalog, isAutoReply, droppedKeyword, droppedOccasion);
     const userContent = this.buildUserMessage(dto.message, dto.history, dto.rentalStartDate, dto.rentalEndDate);
     const raw = await this.callOpenRouter(systemPrompt, userContent);
     return ok(this.parseAdvisorResponse(raw, catalog));
@@ -575,13 +585,31 @@ export class AiService {
       });
     }
 
-    if (filters?.keyword) {
+    if (filters?.occasion?.length) {
       andConds.push({
-        OR: [
-          { name: { contains: filters.keyword, mode: "insensitive" } },
-          { description: { contains: filters.keyword, mode: "insensitive" } },
-        ],
+        OR: filters.occasion.map((occ) => ({ description: { contains: occ, mode: "insensitive" } })),
       });
+    }
+
+    if (filters?.keyword) {
+      const words = filters.keyword.split(/\s+/).filter((w) => w.length >= 2);
+      const ngrams: string[] = [];
+      if (words.length === 1) {
+        ngrams.push(words[0]);
+      } else {
+        for (let i = 0; i < words.length - 1; i++) {
+          ngrams.push(words[i] + " " + words[i + 1]);
+        }
+      }
+      const meaningful = [...new Set(ngrams.filter((g) => g.length >= 3))];
+      if (meaningful.length > 0) {
+        andConds.push({
+          OR: meaningful.flatMap((phrase) => [
+            { name: { contains: phrase, mode: "insensitive" } },
+            { description: { contains: phrase, mode: "insensitive" } },
+          ]),
+        });
+      }
     }
 
     if (andConds.length > 0) {
@@ -646,8 +674,10 @@ export class AiService {
     });
   }
 
-  private buildAdvisorPrompt(catalog: AdvisorProduct[], isAutoReply = false): string {
-    const productLines = catalog.map((p, i) =>
+  private buildAdvisorPrompt(catalog: AdvisorProduct[], isAutoReply = false, droppedKeyword?: string, droppedOccasion?: string[]): string {
+    const MAX_PRODUCTS = 30;
+    const limited = catalog.slice(0, MAX_PRODUCTS);
+    const productLines = limited.map((p, i) =>
       `${i + 1}. ID: ${p.garmentId} | Tên: ${p.name} | Loại: ${p.category} | Màu: ${p.color} | Size: ${p.size} | Giá: ${p.dailyPrice.toLocaleString()}đ/ngày | Cọc: ${p.depositAmount.toLocaleString()}đ | Còn hàng: ${p.inStock ? "Có" : "Không"}`,
     ).join("\n");
 
@@ -661,7 +691,14 @@ Bạn đang tự động trả lời khách hàng khi staff offline.
 - Không thêm thông tin ngoài danh sách sản phẩm.`
       : "";
 
-    return `Bạn là trợ lý AI tư vấn sản phẩm cho cửa hàng cho thuê áo dài và trang phục truyền thống Việt Nam. Bạn phân tích lịch sử chat và catalogue để tư vấn.${autoReplySection}
+    const droppedNote = droppedKeyword
+      ? `\n\n### LƯU Ý: KHÔNG TÌM THẤY KEYWORD CHÍNH XÁC\nKhông có sản phẩm nào khớp với từ khóa "${droppedKeyword}" mà khách yêu cầu. Các sản phẩm bên dưới CHỈ khớp với các tiêu chí còn lại.\nKhi trả lời:\n- Giải thích RÕ rằng chưa có mẫu đúng theo yêu cầu "${droppedKeyword}".\n- Sau đó gợi ý sản phẩm đáp ứng được các tiêu chí còn lại, kèm lý do tại sao sản phẩm đó phù hợp.\n- VÍ DỤ: "Shop hiện chưa có mẫu đúng họa tiết hoa cúc. Tuy nhiên có sản phẩm [tên] màu [màu] size [size] đáp ứng các tiêu chí về màu sắc, kích cỡ và loại nên em gợi ý mẫu này ạ."`
+      : "";
+    const droppedOccNote = droppedOccasion
+      ? `\n\n### LƯU Ý: KHÔNG CÓ SẢN PHẨM CHO DỊP NÀY\nKhông có sản phẩm nào phù hợp cho ${droppedOccasion.join(", ")} theo yêu cầu của khách. Các sản phẩm bên dưới KHÔNG đúng dịp này, chỉ khớp tiêu chí còn lại (loại, màu, size, budget).\nKhi trả lời:\n- Nói rõ rằng shop chưa có mẫu phù hợp cho dịp "${droppedOccasion.join(", ")}".\n- Gợi ý sản phẩm đáp ứng các tiêu chí khác và giải thích lý do.\n- VÍ DỤ: "Shop chưa có mẫu phù hợp chụp kỷ yếu. Tuy nhiên sản phẩm [tên] màu [màu] size [size] đáp ứng màu sắc và loại nên em gợi ý mẫu này."`
+      : "";
+
+    return `Bạn là trợ lý AI tư vấn sản phẩm cho cửa hàng cho thuê áo dài và trang phục truyền thống Việt Nam. Bạn phân tích lịch sử chat và catalogue để tư vấn.${autoReplySection}${droppedNote}${droppedOccNote}
 
 Dưới đây là danh sách sản phẩm hiện có trong cửa hàng:
 
@@ -753,6 +790,7 @@ Tối đa 3 topics.`;
           { role: "system", content: systemPrompt },
           { role: "user", content: userMessage },
         ],
+        max_tokens: 512,
         response_format: { type: "json_object" },
       }),
     });
