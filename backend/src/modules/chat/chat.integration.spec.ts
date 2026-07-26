@@ -54,7 +54,7 @@ function createFakePrisma() {
         return msg;
       },
       findMany: async () => messages.slice(),
-      findFirst: async ({ where, orderBy }: any) => {
+      findFirst: async ({ where }: any) => {
         const sorted = [...messages].sort((a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         return sorted.find((m) => m.conversation_id === where.conversation_id) ?? null;
