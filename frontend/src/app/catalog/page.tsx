@@ -137,7 +137,7 @@ export default function CatalogPage() {
   }
 
   function findAiProductSizeId(product: AIAdvisorProduct): string | undefined {
-    const group = groups.find((g) => g.garmentId === product.garmentId);
+    const group = groups.find((g) => g.name === product.name || g.garmentId === product.garmentId);
     if (!group?.sizes.length) return undefined;
     const sizeLabels = (product.size ?? "").split(/[-,/\s]+/).filter(Boolean).map((s) => s.toUpperCase());
     const matched = group.sizes.find((s) => s.sizeLabel && sizeLabels.includes(s.sizeLabel.toUpperCase()));
