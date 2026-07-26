@@ -12,7 +12,11 @@ describe("ChatGateway (unit)", () => {
   } as any;
 
   const mockJwtService = {} as any;
-  const mockPrisma = {} as any;
+  const mockPrisma = {
+    conversations: {
+      findUnique: vi.fn().mockResolvedValue({ staff_id: null, status: "open" }),
+    },
+  } as any;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -36,6 +40,7 @@ describe("ChatGateway (unit)", () => {
       emit: vi.fn(),
       broadcast: { to: () => ({ emit: vi.fn() }) },
       join: vi.fn(),
+      rooms: new Set<string>(),
     } as any;
 
     await gateway.handleOpenConversation({ conversationId: "conv-1" }, client);
@@ -55,6 +60,7 @@ describe("ChatGateway (unit)", () => {
       emit: vi.fn(),
       broadcast: { to: () => ({ emit: vi.fn() }) },
       join: vi.fn(),
+      rooms: new Set<string>(),
     } as any;
 
     await gateway.handleOpenConversation({ conversationId: "conv-2" }, client);
@@ -76,6 +82,7 @@ describe("ChatGateway (unit)", () => {
         emit: vi.fn(),
         broadcast: { to: () => ({ emit: vi.fn() }) },
         join: vi.fn(),
+        rooms: new Set<string>(),
       } as any;
     }
 

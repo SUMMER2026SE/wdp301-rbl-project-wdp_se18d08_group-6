@@ -102,8 +102,12 @@ export type GarmentGrouped = {
   }>;
 };
 
-export async function getGarmentsGrouped() {
-  return apiRequest<GarmentGrouped[]>("/garments/grouped");
+export async function getGarmentsGrouped(search?: string, category?: string) {
+  const params = new URLSearchParams();
+  if (search) params.append("search", search);
+  if (category) params.append("category", category);
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return apiRequest<GarmentGrouped[]>(`/garments/grouped${query}`);
 }
 
 export async function getGarments() {

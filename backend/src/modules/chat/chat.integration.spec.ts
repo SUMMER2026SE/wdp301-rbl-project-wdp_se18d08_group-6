@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { ChatGateway } from "./chat.gateway";
 import { ChatService } from "./chat.service";
 import { PrismaService } from "../../prisma/prisma.service";
+import { AiService } from "../ai/ai.service";
 import { JwtModule, JwtService } from "@nestjs/jwt";
 import { io } from "socket.io-client";
 
@@ -21,7 +22,9 @@ function createFakePrisma() {
         return conversations.find((c) => c.customer_id === where.customer_id || c.id === where.id) ?? null;
       },
       findMany: async () => conversations.slice(),
-      findUnique: undefined,
+      findUnique: async ({ where }: any) => {
+        return conversations.find((c) => c.id === where.id) ?? null;
+      },
       create: async ({ data }: any) => {
         const conv = { id: `conv-${conversations.length + 1}`, ...data, messages: [], created_at: new Date(), updated_at: new Date() };
         conversations.push(conv);
@@ -51,6 +54,11 @@ function createFakePrisma() {
         return msg;
       },
       findMany: async () => messages.slice(),
+      findFirst: async ({ where, orderBy }: any) => {
+        const sorted = [...messages].sort((a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        return sorted.find((m) => m.conversation_id === where.conversation_id) ?? null;
+      },
       count: async () => messages.length,
     },
     // helper to seed users/conversations
@@ -72,7 +80,12 @@ describe("Chat integration (live sockets)", () => {
 
     const moduleRef = await Test.createTestingModule({
       imports: [JwtModule.register({ secret: "test-secret" })],
-      providers: [ChatService, ChatGateway, { provide: PrismaService, useValue: fakePrisma }],
+      providers: [
+        ChatService,
+        ChatGateway,
+        { provide: PrismaService, useValue: fakePrisma },
+        { provide: AiService, useValue: { productAdvisor: vi.fn(), callOpenRouter: vi.fn() } },
+      ],
     }).compile();
 
     app = moduleRef.createNestApplication();
