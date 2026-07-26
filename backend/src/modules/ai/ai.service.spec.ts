@@ -83,14 +83,16 @@ describe("AiService", () => {
   });
 
   describe("productAdvisor", () => {
-    it("returns empty topics when catalog is empty", async () => {
+    it("returns 'Không tìm thấy' topic when catalog is empty", async () => {
       prisma.garment.findMany.mockResolvedValue([]);
 
       const result = await service.productAdvisor({
         message: "Em muốn tìm áo dài đỏ",
       });
 
-      expect(result.data?.topics).toEqual([]);
+      expect(result.data?.topics).toHaveLength(1);
+      expect(result.data?.topics[0].title).toBe("Không tìm thấy");
+      expect(result.data?.topics[0].products).toEqual([]);
     });
 
     it("returns parsed topics from OpenRouter response", async () => {
@@ -151,19 +153,14 @@ describe("AiService", () => {
       expect(result.data?.topics[0].recommendedProductIds).toEqual(["g-1"]);
     });
 
-    it("returns empty topics on invalid AI JSON", async () => {
-      prisma.garment.findMany.mockResolvedValue(MOCK_CATALOG as any);
-
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        text: () => Promise.resolve(JSON.stringify(createMockOpenRouterResponse("Tôi không hiểu câu hỏi của bạn."))),
-      } as Response);
-
+    it("returns helper topic when intent is not search (other)", async () => {
       const result = await service.productAdvisor({
         message: "Câu hỏi kỳ lạ",
       });
 
-      expect(result.data?.topics).toEqual([]);
+      expect(result.data?.topics).toHaveLength(1);
+      expect(result.data?.topics[0].title).toBe("Bạn cần tìm gì?");
+      expect(result.data?.topics[0].products).toEqual([]);
     });
 
     it("limits topics to 3", async () => {

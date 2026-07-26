@@ -7,6 +7,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from "@nestjs/common";
 import { Roles } from "../auth/decorators/roles.decorator";
@@ -32,7 +33,10 @@ export class GarmentsController {
   }
 
   @Get("grouped")
-  findAllGrouped() { return this.garmentsService.findAllGrouped(); }
+  findAllGrouped(
+    @Query("search") search?: string,
+    @Query("category") category?: string,
+  ) { return this.garmentsService.findAllGrouped(search, category); }
 
   @Get("categories")
   findAllCategories() {

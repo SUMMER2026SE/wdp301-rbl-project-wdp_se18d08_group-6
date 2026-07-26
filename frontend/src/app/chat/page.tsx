@@ -92,6 +92,7 @@ export default function ChatPage() {
     const conv = () => selectedConversationRef.current;
 
     const onMessageReceived = (payload: { conversationId: string; message: ChatMessage; staffId?: string | null; status?: string }) => {
+
       // If the message is from current user, remove only the first matching optimistic message (fallback)
       if (payload.message.sender_id === session?.user.id) {
         setMessages((prev) => {
@@ -372,8 +373,8 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!session) return;
-    void loadConversations();
-  }, [session]);
+    void loadConversations(isStaff ? sidebarTab : undefined);
+  }, [session, sidebarTab]);
 
   useEffect(() => {
     if (isHydrated && status !== "loading" && session && !isStaff) {
@@ -452,7 +453,7 @@ export default function ChatPage() {
     // Refresh messages to fill any gap while disconnected (merge instead of replace)
     void refreshMessages(conv.id);
     // Refresh conversation list to update unreadCount and new conversations
-    void loadConversations();
+    void loadConversations(isStaff ? sidebarTab : undefined);
   };
   const onDisconnect = (reason: string) => {
     setConnected(false);
@@ -477,12 +478,12 @@ export default function ChatPage() {
   };
   }, [socket, isStaff, session, authSignOut, refreshUser]);
 
-  async function loadConversations() {
+  async function loadConversations(tab?: string) {
     if (!session) return;
     setLoadingConversations(true);
 
     if (isStaff) {
-      const result = await getChatConversations();
+      const result = await getChatConversations(tab);
       if (result.success && result.data) {
         setConversations(result.data);
       }

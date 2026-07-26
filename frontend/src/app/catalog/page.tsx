@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CustomerNavbar } from "@/components/customer/navbar";
 import { CustomerFooter } from "@/components/customer/footer";
-import { getGarmentsGrouped, type GarmentGrouped } from "@/lib/api";
+import { getGarmentCategories, getGarmentsGrouped, type GarmentCategory, type GarmentGrouped } from "@/lib/api";
 import { addToCart, cartCount, removeFromCart, getCart } from "@/lib/cart";
 import { getProductAdvisor, type AIAdvisorTopic, type AIAdvisorProduct } from "@/lib/chat";
 
@@ -16,32 +16,62 @@ export default function CatalogPage() {
   const [groups, setGroups] = useState<GarmentGrouped[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string>("all");
+  const [categories, setCategories] = useState<string[]>(["all"]);
   const [cartCountVal, setCartCountVal] = useState(0);
   const [selectedSizes, setSelectedSizes] = useState<Record<string, string>>({});
   const [addedMsg, setAddedMsg] = useState<string | null>(null);
   const [showCart, setShowCart] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchDebounced, setSearchDebounced] = useState("");
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [aiQuery, setAiQuery] = useState("");
   const [aiTopics, setAiTopics] = useState<AIAdvisorTopic[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
+  const fetchParamsRef = useRef({ search: "", category: "all" });
+
+  function fetchGroups(search?: string, category?: string) {
+    fetchParamsRef.current = { search: search ?? "", category: category ?? "all" };
+    setLoading(true);
+    getGarmentsGrouped(
+      search || undefined,
+      category && category !== "all" ? category : undefined,
+    ).then((res) => {
+      if (res.success && res.data) setGroups(res.data);
+    }).finally(() => setLoading(false));
+  }
+
+  // Initial fetch: groups + categories
   useEffect(() => {
-    function fetchGroups() {
-      getGarmentsGrouped().then((res) => {
-        if (res.success && res.data) setGroups(res.data);
-      }).finally(() => setLoading(false));
-    }
-
     fetchGroups();
-
-    // Re-fetch when the tab becomes visible so manager image updates
-    // are reflected without a full page reload.
+    getGarmentCategories().then((res) => {
+      if (res.success && res.data) {
+        setCategories(["all", ...res.data.map((c: GarmentCategory) => c.name)]);
+      }
+    });
     function handleVisibilityChange() {
-      if (document.visibilityState === "visible") fetchGroups();
+      if (document.visibilityState === "visible") {
+        const { search, category } = fetchParamsRef.current;
+        fetchGroups(search || undefined, category);
+      }
     }
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
+
+  // Debounce search
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => setSearchDebounced(searchQuery), 300);
+    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
+  }, [searchQuery]);
+
+  // Re-fetch when search or category changes
+  useEffect(() => {
+    fetchGroups(searchDebounced || undefined, activeCategory);
+  }, [searchDebounced, activeCategory]);
 
   // Sync cart count
   useEffect(() => {
@@ -49,17 +79,6 @@ export default function CatalogPage() {
     const interval = setInterval(() => setCartCountVal(cartCount()), 500);
     return () => clearInterval(interval);
   }, []);
-
-  const categories = useMemo(() => {
-    const set = new Set<string>();
-    groups.forEach((g) => { if (g.categoryName) set.add(g.categoryName); });
-    return ["all", ...Array.from(set)];
-  }, [groups]);
-
-  const filtered = useMemo(
-    () => activeCategory === "all" ? groups : groups.filter((g) => g.categoryName === activeCategory),
-    [groups, activeCategory],
-  );
 
   function handleSelectSize(groupSlug: string, garmentId: string) {
     setSelectedSizes((prev) => ({ ...prev, [groupSlug]: garmentId }));
@@ -118,9 +137,10 @@ export default function CatalogPage() {
   }
 
   function findAiProductSizeId(product: AIAdvisorProduct): string | undefined {
-    const group = groups.find((g) => g.name === product.name);
+    const group = groups.find((g) => g.garmentId === product.garmentId);
     if (!group?.sizes.length) return undefined;
-    const matched = group.sizes.find((s) => s.sizeLabel === product.size);
+    const sizeLabels = (product.size ?? "").split(/[-,/\s]+/).filter(Boolean).map((s) => s.toUpperCase());
+    const matched = group.sizes.find((s) => s.sizeLabel && sizeLabels.includes(s.sizeLabel.toUpperCase()));
     return (matched ?? group.sizes[0])?.garmentSizeId;
   }
 
@@ -141,7 +161,7 @@ export default function CatalogPage() {
     setTimeout(() => setAddedMsg(null), 2000);
   }
 
-  const featured = filtered[0];
+  const featured = groups[0];
   const cartItems = getCart();
 
   return (
@@ -241,18 +261,54 @@ export default function CatalogPage() {
               ))}
             </div>
             <div className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">
-              Hiển thị <span className="font-semibold text-oxblood">{filtered.length}</span> trang phục
+              Hiển thị <span className="font-semibold text-oxblood">{groups.length}</span> trang phục
             </div>
+          </div>
+        </section>
+
+        {/* Search bar */}
+        <section className="mb-6">
+          <div className="relative">
+            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-lg text-stone-400">search</span>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Tìm kiếm trang phục theo tên, thể loại, màu sắc..."
+              className="w-full rounded-xl border border-sand bg-white py-3.5 pl-11 pr-4 text-sm outline-none transition focus:border-lotus focus:ring-1 focus:ring-lotus/30"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600"
+              >
+                <span className="material-symbols-outlined text-lg">close</span>
+              </button>
+            )}
           </div>
         </section>
 
         {/* AI Product Advisor */}
         <section className="mb-12 rounded-lg border border-sand/70 bg-white p-6 shadow-sm">
-          <h2 className="font-display text-2xl text-ink mb-2">Bạn cần tìm trang phục gì?</h2>
-          <p className="text-sm text-stone-500 mb-4">
-            Mô tả nhu cầu của bạn, AI sẽ gợi ý sản phẩm phù hợp.
-          </p>
-          <div className="flex gap-3">
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className="font-display text-2xl text-ink mb-1">Bạn cần tìm trang phục gì?</h2>
+              <p className="text-sm text-stone-500">Mô tả nhu cầu của bạn, AI sẽ gợi ý sản phẩm phù hợp.</p>
+            </div>
+            {aiTopics.length > 0 && (
+              <button
+                type="button"
+                onClick={() => { setAiTopics([]); setAiQuery(""); setAiError(null); }}
+                className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-100 hover:border-red-300"
+                aria-label="Đóng gợi ý"
+              >
+                <span className="material-symbols-outlined text-[18px]">close</span>
+                Bỏ qua
+              </button>
+            )}
+          </div>
+          <div className="flex gap-3 mt-4">
             <input
               type="text"
               value={aiQuery}
@@ -436,14 +492,14 @@ export default function CatalogPage() {
               </div>
             ))}
           </div>
-        ) : filtered.length === 0 ? (
+        ) : groups.length === 0 ? (
           <div className="py-20 text-center text-stone-400">
             <span className="material-symbols-outlined text-[48px]">checkroom</span>
             <p className="mt-4">Chưa có trang phục nào.</p>
           </div>
         ) : (
           <section className="grid gap-8 md:grid-cols-2 xl:grid-cols-4">
-            {filtered.slice(featured ? 1 : 0).map((group) => {
+            {groups.slice(featured ? 1 : 0).map((group) => {
               const selectedGarmentId = selectedSizes[group.slug] ?? group.sizes[0]?.garmentSizeId;
               const selectedSize = group.sizes.find((s) => s.garmentSizeId === selectedGarmentId) ?? group.sizes[0];
               return (

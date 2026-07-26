@@ -7,7 +7,7 @@ import { AiService } from "../ai/ai.service";
 
 const AI_USER_ID = "00000000-0000-0000-0000-000000000000";
 const QUESTION_KEYWORDS = /[?？]|(?:^|(?<=\s))(gì|nào|ko|không|bao nhiêu|có|sao|thế nào|khi nào|mấy|à|nhỉ|hả)(?=\s|$|[.,;:!?])/i;
-const AI_DEBOUNCE_MS = 3000;
+const AI_DEBOUNCE_MS = 1000;
 
 @Injectable()
 export class ChatService {
@@ -89,20 +89,29 @@ export class ChatService {
     });
 
     // Update conversation timestamps and topic context
+    const productUpdateData: Record<string, unknown> =
+      role === "customer" && conversation.status === "resolved"
+        ? { status: "open", staff_id: null, topic: "product_advice", garment_id: garmentId, customer_last_read_at: now, updated_at: now }
+        : {
+            ...(role === "customer"
+              ? { customer_last_read_at: now, topic: "product_advice", garment_id: garmentId }
+              : { staff_last_read_at: now }),
+            updated_at: now,
+          };
+
+    if (role === "customer") {
+      productUpdateData.reopened_from_resolved = false;
+    }
+
     if (role === "customer" && conversation.status === "resolved") {
       await this.prisma.conversations.updateMany({
         where: { id: conversationId, status: "resolved" },
-        data: { status: "open", staff_id: null, topic: "product_advice", garment_id: garmentId, customer_last_read_at: now, updated_at: now },
+        data: productUpdateData as any,
       });
     } else {
       await this.prisma.conversations.update({
         where: { id: conversationId },
-        data: {
-          ...(role === "customer"
-            ? { customer_last_read_at: now, topic: "product_advice", garment_id: garmentId }
-            : { staff_last_read_at: now }),
-          updated_at: now,
-        },
+        data: productUpdateData as any,
       });
     }
 
@@ -219,7 +228,7 @@ export class ChatService {
     if (role === "customer" && conversation.status === "resolved") {
       await this.prisma.conversations.updateMany({
         where: { id: conversationId, status: "resolved" },
-        data: { status: "open", topic, booking_id: bookingId, garment_id: null, customer_last_read_at: now, updated_at: now },
+        data: { status: "open", topic, booking_id: bookingId, garment_id: null, customer_last_read_at: now, updated_at: now, reopened_from_resolved: false },
       });
     } else {
       const updateData: Record<string, unknown> = {
@@ -230,6 +239,7 @@ export class ChatService {
       };
       if (role === "customer") {
         updateData.customer_last_read_at = now;
+        updateData.reopened_from_resolved = false;
       } else {
         updateData.staff_last_read_at = now;
       }
@@ -295,75 +305,59 @@ export class ChatService {
       throw new ForbiddenException("Message content exceeds maximum length of 2000 characters.");
     }
 
-    let conversation;
+    // let conversation;
+    if (trimmed.startsWith("{")) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch {
+        parsed = null;
+      }
+      if (parsed && typeof parsed === "object" && (parsed as { type?: unknown }).type === "product_card") {
+        throw new ForbiddenException("Product cards must be created by server");
+      }
+    }
 
-    if (role === "customer") {
-      conversation = await this.findConversationForParticipant(userId, conversationId);
-      if (!conversation) {
-        throw new ForbiddenException("You are not part of this conversation.");
-      }
-    } else {
-      // some tests/mocks provide findFirst instead of findUnique – tolerate both
-      if (typeof this.prisma.conversations.findUnique === "function") {
-        conversation = await this.prisma.conversations.findUnique({ where: { id: conversationId } });
-      } else {
-        conversation = await this.prisma.conversations.findFirst({ where: { id: conversationId } });
-      }
+    const conversationPromise = role === "customer"
+      ? this.findConversationForParticipant(userId, conversationId)
+      : (typeof this.prisma.conversations.findUnique === "function"
+          ? this.prisma.conversations.findUnique({ where: { id: conversationId } })
+          : this.prisma.conversations.findFirst({ where: { id: conversationId } }));
 
-      if (!conversation) {
-        throw new NotFoundException("Conversation not found.");
-      }
+    const messagePromise = this.prisma.messages.create({
+      data: { conversation_id: conversationId, sender_id: userId, content },
+      ...(typeof this.prisma.messages.findUnique === "function"
+        ? { include: { user_accounts: { select: { id: true, email: true, role: true, profile: { select: { fullName: true } } } } } }
+        : {}),
+    });
 
-      if (conversation.staff_id !== userId) {
-        throw new ForbiddenException("Only the assigned staff can send messages in this conversation.");
-      }
+    const [conversation, message] = await Promise.all([conversationPromise, messagePromise]);
+
+    if (!conversation) {
+      throw role === "customer"
+        ? new ForbiddenException("You are not part of this conversation.")
+        : new NotFoundException("Conversation not found.");
+    }
+    if (role === "staff" && conversation.staff_id !== userId) {
+      throw new ForbiddenException("Only the assigned staff can send messages in this conversation.");
     }
 
     const now = new Date();
-    const message = await this.prisma.messages.create({
-      data: {
-        conversation_id: conversationId,
-        sender_id: userId,
-        content,
-      },
-    });
+    const updateData: Record<string, unknown> =
+      role === "customer" && conversation.status === "resolved"
+        ? { status: "open", staff_id: null, customer_last_read_at: now, updated_at: now }
+        : { ...(role === "customer" ? { customer_last_read_at: now } : { staff_last_read_at: now }), updated_at: now };
+
+    if (role === "customer") {
+      updateData.reopened_from_resolved = false;
+    }
 
     if (role === "customer" && conversation.status === "resolved") {
-      await this.prisma.conversations.updateMany({
-        where: { id: conversationId, status: "resolved" },
-        data: { status: "open", staff_id: null, customer_last_read_at: now, updated_at: now },
-      });
+      await this.prisma.conversations.updateMany({ where: { id: conversationId, status: "resolved" }, data: updateData });
     } else {
-      await this.prisma.conversations.update({
-        where: { id: conversationId },
-        data: {
-          ...(role === "customer" ? { customer_last_read_at: now } : { staff_last_read_at: now }),
-          updated_at: now,
-        },
-      });
+      await this.prisma.conversations.update({ where: { id: conversationId }, data: updateData });
     }
 
-    // Return message with user_accounts for real-time display
-    // some tests/mocks provide findFirst instead of findUnique – tolerate both
-    if (typeof this.prisma.messages.findUnique === "function") {
-      return this.prisma.messages.findUnique({
-        where: { id: message.id },
-        include: {
-          user_accounts: {
-            select: {
-              id: true,
-              email: true,
-              role: true,
-              profile: {
-                select: { fullName: true },
-              },
-            },
-          },
-        },
-      });
-    }
-
-    // Fallback for tests: just return the created message  
     return message;
   }
 
@@ -605,11 +599,35 @@ export class ChatService {
     return this.getConversationById(conversationId);
   }
 
-  async clearAllStaffAssignments() {
-    await this.prisma.conversations.updateMany({
-      where: { status: "open", staff_id: { not: null } },
-      data: { staff_id: null, updated_at: new Date() },
+  async releaseStaleStaffAssignments() {
+    // Clear staff_id only for conversations where last message is NOT from staff
+    // (Cần trả lời → Chờ tiếp nhận). Keep staff_id for Chờ phản hồi (last message from staff).
+    const conversations = await this.prisma.conversations.findMany({
+      where: { status: "open", staff_id: { not: null }, reopened_from_resolved: false },
+      select: {
+        id: true,
+        staff_id: true,
+        messages: {
+          orderBy: { created_at: "desc" },
+          take: 1,
+          select: { sender_id: true },
+        },
+      },
     });
+
+    const toRelease = conversations
+      .filter((c) => {
+        const lastMsg = c.messages[0] ?? null;
+        return !lastMsg || lastMsg.sender_id !== c.staff_id;
+      })
+      .map((c) => c.id);
+
+    if (toRelease.length > 0) {
+      await this.prisma.conversations.updateMany({
+        where: { id: { in: toRelease } },
+        data: { staff_id: null, updated_at: new Date() },
+      });
+    }
   }
 
   //async releaseStaffAssignmentsByStaffId(staffId: string) {
@@ -693,12 +711,35 @@ export class ChatService {
     });
   }
 
+  async releaseStaffAssignmentIfStale(conversationId: string, staffId: string): Promise<boolean> {
+    // Only release if last message is NOT from the assigned staff (not Chờ phản hồi)
+    const lastMsg = await this.prisma.messages.findFirst({
+      where: { conversation_id: conversationId },
+      orderBy: { created_at: "desc" },
+      select: { sender_id: true },
+    });
+    if (lastMsg && lastMsg.sender_id === staffId) return false;
+    await this.releaseStaffAssignment(conversationId, staffId);
+    return true;
+  }
+
   async releaseConversationLock(conversationId: string, staffId: string) {
     const conversation = await this.getConversationById(conversationId);
     if (conversation.reopened_from_resolved) {
       await this.resolveConversation(conversationId, staffId);
       return "resolved";
     }
+    // Check last message sender
+    const lastMsg = await this.prisma.messages.findFirst({
+      where: { conversation_id: conversationId },
+      orderBy: { created_at: "desc" },
+      select: { sender_id: true },
+    });
+    // If last message is from the same staff → Chờ phản hồi → keep assignment
+    if (lastMsg && lastMsg.sender_id === staffId) {
+      return "open";
+    }
+    // Otherwise → clear staff_id → về Chờ tiếp nhận
     await this.releaseStaffAssignment(conversationId, staffId);
     return "open";
   }
@@ -765,11 +806,31 @@ export class ChatService {
     } as Record<string, unknown>);
   }
 
-  async listConversations(user: AuthenticatedUser) {
+  async listConversations(user: AuthenticatedUser, tab?: string) {
     const isCustomer = user.role === "customer";
 
+    let where: Record<string, unknown> = {};
+    if (isCustomer) {
+      where = { customer_id: user.id };
+    } else if (tab) {
+      switch (tab) {
+        case "unassigned":
+          where = { staff_id: null, status: "open" };
+          break;
+        case "needs_reply":
+          where = { staff_id: user.id, status: { not: "resolved" } };
+          break;
+        case "awaiting_reply":
+          where = { staff_id: user.id, status: { not: "resolved" } };
+          break;
+        case "resolved":
+          where = { status: "resolved" };
+          break;
+      }
+    }
+
     const conversations = await this.prisma.conversations.findMany({
-      where: isCustomer ? { customer_id: user.id } : undefined,
+      where,
       orderBy: { updated_at: "desc" },
       include: {
         messages: {
@@ -803,7 +864,15 @@ export class ChatService {
       },
     });
 
-    return Promise.all(conversations.map(async (conversation) => {
+    const filtered = !isCustomer && tab ? conversations.filter((c) => {
+      const lastMsg = c.messages[0] ?? null;
+      if (tab === "unassigned") return lastMsg != null;
+      if (tab === "needs_reply") return !lastMsg || lastMsg.sender_id !== user.id;
+      if (tab === "awaiting_reply") return lastMsg && lastMsg.sender_id === user.id;
+      return true;
+    }) : conversations;
+
+    return Promise.all(filtered.map(async (conversation) => {
       const lastMessage = conversation.messages[0] ?? null;
 
       // After
@@ -890,6 +959,43 @@ export class ChatService {
       };
     })
     );
+  }
+
+  async getConversationCounts(user: AuthenticatedUser) {
+    const all = await this.prisma.conversations.findMany({
+      where: user.role === "customer" ? { customer_id: user.id } : undefined,
+      select: {
+        staff_id: true,
+        status: true,
+        messages: {
+          orderBy: { created_at: "desc" },
+          take: 1,
+          select: { sender_id: true },
+        },
+      },
+    });
+
+    let needsReply = 0;
+    let awaitingReply = 0;
+    let unassigned = 0;
+    let resolved = 0;
+
+    for (const c of all) {
+      const lastMsg = c.messages[0] ?? null;
+      if (c.status === "resolved") {
+        resolved++;
+      } else if (c.staff_id === null) {
+        if (lastMsg != null) unassigned++;
+      } else if (c.staff_id === user.id) {
+        if (!lastMsg || lastMsg.sender_id !== user.id) {
+          needsReply++;
+        } else {
+          awaitingReply++;
+        }
+      }
+    }
+
+    return { needsReply, awaitingReply, unassigned, resolved };
   }
 
   async getConversationById(conversationId: string) {
@@ -989,6 +1095,7 @@ export class ChatService {
     const updateData: Record<string, unknown> = { updated_at: now };
     if (role === "customer") {
       updateData.customer_last_read_at = now;
+      updateData.reopened_from_resolved = false;
       if (conversation.status === "resolved") { updateData.status = "open"; updateData.staff_id = null; }
     } else {
       updateData.staff_last_read_at = now;
