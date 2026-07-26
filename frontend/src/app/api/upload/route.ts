@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabase';
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     
     const bucketName = process.env.SUPABASE_ASSETS_BUCKET || 'products';
 
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await getSupabaseAdmin().storage
       .from(bucketName)
       .upload(filename, buffer, {
         contentType: file.type || 'image/png',
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'Supabase upload failed' }, { status: 500 });
     }
 
-    const { data: publicUrlData } = supabase.storage
+    const { data: publicUrlData } = getSupabaseAdmin().storage
       .from(bucketName)
       .getPublicUrl(filename);
 
@@ -56,7 +56,7 @@ export async function DELETE(req: NextRequest) {
     
     if (matchIndex !== -1) {
       const objectPath = url.substring(matchIndex + prefix.length);
-      const { error } = await supabase.storage.from(bucketName).remove([objectPath]);
+      const { error } = await getSupabaseAdmin().storage.from(bucketName).remove([objectPath]);
       if (error) {
         console.error('Supabase delete error:', error);
         return NextResponse.json({ success: false, message: 'Delete failed' }, { status: 500 });
