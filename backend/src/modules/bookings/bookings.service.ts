@@ -1,8 +1,9 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import { AppRole, AssetStatus, BookingStatus, PaymentStatus } from "@prisma/client";
+import { AppRole, AssetStatus, BookingStatus, PaymentStatus, Prisma } from "@prisma/client";
 import { ok } from "../../common/api-response";
 import { PrismaService } from "../../prisma/prisma.service";
 import { NotificationsService } from "../notifications/notifications.service";
+import { LocationsService } from "../locations/locations.service";
 import type { CheckAvailabilityDto } from "./dto/check-availability.dto";
 import type { CreateBookingDto } from "./dto/create-booking.dto";
 import type { UpdateBookingStatusDto } from "./dto/update-booking-status.dto";
@@ -75,6 +76,7 @@ export class BookingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
+    private readonly locations: LocationsService,
   ) { }
 
   private parseDateRange(startDate: string, endDate: string) {
@@ -103,6 +105,40 @@ export class BookingsService {
 
   // ── Availability ───────────────────────────────────────────────────────────
 
+  /**
+   * Nguồn chân lý duy nhất về tồn kho cho một size trong một khoảng ngày.
+   * Đếm theo NHU CẦU (booking item của các đơn còn hiệu lực, trùng ngày — gồm cả
+   * đơn chưa gán asset) so với SỨC CHỨA (asset chưa retired/lost). Cả endpoint
+   * checkAvailability lẫn create() đều dùng hàm này để không lệch cách tính.
+   * Nhận `client` để chạy được cả với prisma thường lẫn transaction client.
+   */
+  private async computeSizeAvailability(
+    client: Prisma.TransactionClient,
+    garmentSizeId: string,
+    startDay: Date,
+    endDay: Date,
+  ) {
+    const capacity = await client.garmentAsset.count({
+      where: {
+        garment_size_id: garmentSizeId,
+        status: { notIn: [AssetStatus.retired, AssetStatus.lost] },
+      },
+    });
+
+    const committed = await client.bookingItem.count({
+      where: {
+        garment_size_id: garmentSizeId,
+        booking: {
+          status: { notIn: RELEASED_STATUSES },
+          rentalStartDate: { lte: endDay },
+          rentalEndDate: { gte: startDay },
+        },
+      },
+    });
+
+    return { capacity, committed, available: Math.max(0, capacity - committed) };
+  }
+
   async checkAvailability(dto: CheckAvailabilityDto) {
     const size = await this.prisma.garment_sizes.findFirst({
       where: { id: dto.garmentSizeId, is_active: true },
@@ -111,39 +147,18 @@ export class BookingsService {
 
     const { startDay, endDay } = this.parseDateRange(dto.startDate, dto.endDate);
 
-    const availableCount = await this.prisma.garmentAsset.count({
-      where: { garment_size_id: dto.garmentSizeId, status: AssetStatus.available },
-    });
-
-    const freeReservedCount = await this.prisma.garmentAsset.count({
-      where: {
-        garment_size_id: dto.garmentSizeId,
-        status: { in: [AssetStatus.reserved, AssetStatus.rented] },
-        bookingItems: {
-          none: {
-            booking: {
-              status: { notIn: RELEASED_STATUSES },
-              rentalStartDate: { lte: endDay },
-              rentalEndDate: { gte: startDay },
-            },
-          },
-        },
-      },
-    });
-
-    const totalAvailable = availableCount + freeReservedCount;
-    const totalValidAssets = await this.prisma.garmentAsset.count({
-      where: {
-        garment_size_id: dto.garmentSizeId,
-        status: { notIn: [AssetStatus.retired, AssetStatus.lost] },
-      },
-    });
+    const { capacity, available } = await this.computeSizeAvailability(
+      this.prisma,
+      dto.garmentSizeId,
+      startDay,
+      endDay,
+    );
 
     return ok({
       garmentSizeId: dto.garmentSizeId,
-      available: totalAvailable > 0,
-      availableCount: totalAvailable,
-      totalAssets: totalValidAssets,
+      available: available > 0,
+      availableCount: available,
+      totalAssets: capacity,
     });
   }
 
@@ -163,21 +178,15 @@ export class BookingsService {
       throw new NotFoundException(`Không tìm thấy size: ${missing.join(", ")}`);
     }
 
+    // Số lượng yêu cầu cho mỗi size trong chính đơn này (garmentSizeIds có thể trùng).
+    const requestedQtyBySize = new Map<string, number>();
     for (const sizeId of dto.garmentSizeIds) {
-      const avail = await this.checkAvailability({
-        garmentSizeId: sizeId,
-        startDate: dto.startDate,
-        endDate: dto.endDate,
-      } as CheckAvailabilityDto);
-      if (!avail.data?.available) {
-        const s = sizes.find((sz) => sz.id === sizeId)!;
-        throw new BadRequestException(
-          `"${s.garments.name}" (${s.size_label ?? "—"}) không còn sản phẩm khả dụng.`,
-        );
-      }
+      requestedQtyBySize.set(sizeId, (requestedQtyBySize.get(sizeId) ?? 0) + 1);
     }
 
     let deliveryAddressSnapshot: string | null = null;
+    // Phí ship luôn được tính lại ở server theo địa chỉ giao — không tin giá trị client gửi.
+    let shippingFee = 0;
     if (dto.pickupMethod === "delivery") {
       if (dto.paymentMethod && dto.paymentMethod !== "qr_code") {
         throw new BadRequestException("Đơn giao tận nơi phải thanh toán bằng chuyển khoản QR.");
@@ -191,6 +200,13 @@ export class BookingsService {
       });
       if (!address) {
         throw new BadRequestException("Địa chỉ giao nhận không hợp lệ.");
+      }
+
+      try {
+        const estimate = await this.locations.estimateShippingFee(dto.deliveryAddressId);
+        shippingFee = Number(estimate.estimatedFee) || 0;
+      } catch {
+        throw new BadRequestException("Không thể tính phí giao hàng cho địa chỉ này. Vui lòng thử lại.");
       }
 
       deliveryAddressSnapshot = [
@@ -213,37 +229,60 @@ export class BookingsService {
       return { garmentId: size.garment_id, garment_size_id: sizeId, dailyPrice: dp, depositAmount: da };
     });
 
-    const booking = await this.prisma.booking.create({
-      data: {
-        customerId,
-        status: BookingStatus.pending_confirmation,
-        rentalStartDate: startDay,
-        rentalEndDate: endDay,
-        pickupMethod: dto.pickupMethod ?? "store_pickup",
-        deliveryAddressId: dto.pickupMethod === "delivery" ? dto.deliveryAddressId : null,
-        rentalTotal,
-        depositTotal,
-        shippingFee: dto.shippingFee ?? 0,
-        note: [
-          dto.note,
-          deliveryAddressSnapshot ? `Địa chỉ giao/nhận:\n${deliveryAddressSnapshot}` : null,
-          dto.shippingFee ? `Phí giao hàng: ${dto.shippingFee.toLocaleString("vi-VN")} VND` : null,
-        ]
-          .filter(Boolean)
-          .join("\n\n") || null,
-        items: { create: itemsData },
-        paymentMethod: dto.pickupMethod === "delivery" ? "qr_code" : (dto.paymentMethod ?? "cash"),
-      },
-      include: {
-        items: {
-          include: {
-            garment_sizes: { include: { garments: true } },
-            garmentAsset: true,
+    // Kiểm tra tồn kho + tạo đơn trong cùng một transaction Serializable để tránh
+    // oversell khi hai khách đặt đồng thời cho size gần hết hàng.
+    const booking = await this.prisma.$transaction(
+      async (tx) => {
+        for (const [sizeId, requestedQty] of requestedQtyBySize) {
+          const { capacity, committed } = await this.computeSizeAvailability(
+            tx,
+            sizeId,
+            startDay,
+            endDay,
+          );
+
+          if (committed + requestedQty > capacity) {
+            const s = sizeMap.get(sizeId)!;
+            throw new BadRequestException(
+              `"${s.garments.name}" (${s.size_label ?? "—"}) không còn đủ sản phẩm khả dụng cho khoảng thời gian đã chọn.`,
+            );
+          }
+        }
+
+        return tx.booking.create({
+          data: {
+            customerId,
+            status: BookingStatus.pending_confirmation,
+            rentalStartDate: startDay,
+            rentalEndDate: endDay,
+            pickupMethod: dto.pickupMethod ?? "store_pickup",
+            deliveryAddressId: dto.pickupMethod === "delivery" ? dto.deliveryAddressId : null,
+            rentalTotal,
+            depositTotal,
+            shippingFee,
+            note: [
+              dto.note,
+              deliveryAddressSnapshot ? `Địa chỉ giao/nhận:\n${deliveryAddressSnapshot}` : null,
+              shippingFee ? `Phí giao hàng: ${shippingFee.toLocaleString("vi-VN")} VND` : null,
+            ]
+              .filter(Boolean)
+              .join("\n\n") || null,
+            items: { create: itemsData },
+            paymentMethod: dto.pickupMethod === "delivery" ? "qr_code" : (dto.paymentMethod ?? "cash"),
           },
-        },
-        deliveryAddress: true,
+          include: {
+            items: {
+              include: {
+                garment_sizes: { include: { garments: true } },
+                garmentAsset: true,
+              },
+            },
+            deliveryAddress: true,
+          },
+        });
       },
-    });
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
     await this.notificationsService.sendBookingNotification({
       userId: booking.customerId,
       templateKey: "booking.created",

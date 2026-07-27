@@ -585,7 +585,7 @@ export default function ManagerDashboardPage() {
       active={tab as any}
       title={meta.title}
       subtitle={meta.subtitle}
-      onTabChange={(key) => { if (key !== "chat") goToTab(key); }}
+      onTabChange={(key) => { if (key !== "reviews") (key) => { if (key !== "chat") goToTab(key); }(key); }}
       managerName={hasMounted ? (user?.fullName ?? user?.email?.split("@")[0] ?? "Quản lý cửa hàng") : "Quản lý cửa hàng"}
       managerEmail={hasMounted ? (user?.email ?? null) : null}
       currentDateLabel={hasMounted ? currentDateLabel : ""}
@@ -1580,17 +1580,19 @@ function GarmentFormModal({
                 )}
               </div>
               {addingSize ? (
-                <div className="flex gap-2">
+                <div className="space-y-2">
                   <input
                     autoFocus
                     value={newSizeLabel}
                     onChange={(e) => setNewSizeLabel(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddSize(); } if (e.key === "Escape") { setAddingSize(false); setNewSizeLabel(""); } }}
-                    className="flex-1 rounded-lg border border-antique px-3 py-2 text-sm outline-none focus:border-lotus"
+                    className="w-full rounded-lg border border-antique px-3 py-2 text-sm outline-none focus:border-lotus"
                     placeholder="VD: XS, 3XL, 90cm"
                   />
-                  <button type="button" onClick={handleAddSize} disabled={savingSize || !newSizeLabel.trim()} className="rounded-lg bg-lotus px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 hover:bg-oxblood">{savingSize ? "..." : "Lưu"}</button>
-                  <button type="button" onClick={() => { setAddingSize(false); setNewSizeLabel(""); }} className="rounded-lg border border-sand px-3 py-2 text-xs text-stone-500 hover:bg-stone-50">Huỷ</button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={handleAddSize} disabled={savingSize || !newSizeLabel.trim()} className="rounded-lg bg-lotus px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 hover:bg-oxblood">{savingSize ? "..." : "Lưu"}</button>
+                    <button type="button" onClick={() => { setAddingSize(false); setNewSizeLabel(""); }} className="rounded-lg border border-sand px-3 py-2 text-xs font-semibold text-stone-500 hover:bg-stone-50">Huỷ</button>
+                  </div>
                 </div>
               ) : (
                 <select value={sizeLabel} onChange={(e) => setSizeLabel(e.target.value)} className={`w-full rounded-lg border ${errors.sizeLabel ? 'border-red-500' : 'border-sand'} bg-white px-3 py-2 text-sm outline-none focus:border-antique`}>

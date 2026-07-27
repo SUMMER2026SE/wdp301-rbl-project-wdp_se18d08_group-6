@@ -179,7 +179,9 @@ export class InspectionsService {
           });
 
           const depositTotal = Number(session.booking.depositTotal);
-          const penaltyTotal = Number(session.booking.penaltyTotal);
+          // session.booking.penaltyTotal là giá trị TRƯỚC khi increment ở trên,
+          // nên phải cộng thêm khoản phạt vừa ghi nhận trong lần kiểm tra này.
+          const penaltyTotal = Number(session.booking.penaltyTotal) + totalPenalty;
           const refundAmount = depositTotal - penaltyTotal;
           if (refundAmount > 0) {
             const existingRefunds = await tx.refund.count({ where: { bookingId } });

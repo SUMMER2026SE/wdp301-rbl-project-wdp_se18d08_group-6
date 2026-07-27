@@ -1174,6 +1174,11 @@ export type ReviewResponse = {
     name: string;
     images: { imageUrl: string }[];
   };
+  customer?: {
+    id: string;
+    email?: string;
+    profile?: { fullName: string | null } | null;
+  } | null;
 };
 
 export async function createReview(payload: { garmentId: string; bookingId?: string; rating: number; comment?: string; images?: string[]; video?: string; }) {
