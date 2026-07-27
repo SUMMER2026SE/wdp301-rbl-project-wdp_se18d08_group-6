@@ -2,12 +2,13 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { StaffChatNavBadge } from "@/components/chat/staff-chat-nav-badge";
+import { ManagerReviewsNavBadge } from "@/components/dashboard/manager-reviews-nav-badge";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { bookingFlowSteps } from "@/lib/heritage-mock-data";
 
 type BookingStepKey = (typeof bookingFlowSteps)[number]["key"];
-type StaffNavKey = "overview" | "inspection"| "chat";
-type ManagerNavKey = "overview" | "inventory" | "inspection-log" | "laundry" | "damaged" | "finance" | "assets" | "refunds" | "chat";
+type StaffNavKey = "overview" | "inspection"| "chat" | "reviews";
+type ManagerNavKey = "overview" | "inventory" | "inspection-log" | "laundry" | "damaged" | "finance" | "assets" | "reviews" | "refunds" | "chat";
 type AdminNavKey = "overview" | "roles" | "config" | "notification-config" | "logs";
 
 export function BookingFlowShell({
@@ -116,6 +117,7 @@ export function StaffPortalShell({
   const items = [
     { key: "overview", label: "Tổng quan", icon: "dashboard", href: "/dashboard/staff" },
     { key: "inspection", label: "Kiểm tra", icon: "search_check", href: "/dashboard/staff/inspection" },
+    { key: "reviews", label: "Đánh giá", icon: "reviews", href: "/dashboard/staff/reviews" },
     { key: "chat", label: "CSKH", icon: "chat", href: "/chat" },
   ] as const;
 
@@ -219,6 +221,7 @@ export function ManagerPortalShell({
     { key: "laundry", label: "Giặt sấy", icon: "dry_cleaning", href: "/dashboard/manager#laundry" },
     { key: "damaged", label: "Hư hỏng & Mất", icon: "report_problem", href: "/dashboard/manager#damaged" },
     { key: "finance", label: "Tài chính", icon: "payments", href: "/dashboard/manager#finance" },
+    { key: "reviews", label: "Đánh giá", icon: "reviews", href: "/dashboard/manager/reviews" },
     { key: "refunds", label: "Duyệt hoàn cọc", icon: "currency_exchange", href: "/dashboard/manager#refunds" },
     { key: "chat", label: "CSKH", icon: "chat", href: "/chat" },
   ] as const;
@@ -255,10 +258,12 @@ export function ManagerPortalShell({
                 key={item.key}
                 href={item.href}
                 onClick={(e) => {
-                  // CSKH là trang riêng (/chat) — điều hướng thẳng, không xử lý theo hash tab
+                  if (item.href.includes('#') || item.href === '/dashboard/manager') {
+                    // CSKH là trang riêng (/chat) — điều hướng thẳng, không xử lý theo hash tab
                   if (item.key === "chat") return;
                   e.preventDefault();
-                  onTabChange?.(item.key);
+                    onTabChange?.(item.key);
+                  }
                 }}
                 className={isActive
                   ? "flex items-center gap-3 rounded-xl bg-lotus/10 px-4 py-3 text-sm font-semibold text-lotus"
@@ -266,6 +271,7 @@ export function ManagerPortalShell({
               >
                 <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
                 <span>{item.label}</span>
+                {item.key === "reviews" && <ManagerReviewsNavBadge />}
                 {item.key === "chat" && <StaffChatNavBadge />}
               </a>
             );

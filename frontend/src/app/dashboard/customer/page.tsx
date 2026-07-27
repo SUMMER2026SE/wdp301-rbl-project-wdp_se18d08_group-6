@@ -9,6 +9,7 @@ import { readStoredSession } from "@/lib/auth";
 import { getMyChatConversation, sendBookingCardMessage } from "@/lib/chat";
 import { customerWidgets } from "@/lib/heritage-mock-data";
 import { STATUS_LABELS, statusBadgeClass, statusOf, ACTIVE_BOOKING_STATUSES, CANCELLABLE_STATUSES } from "@/lib/status-labels";
+import { ReviewModal } from "@/components/customer/review-modal";
 
 const HISTORY_PAGE_SIZE = 5;
 
@@ -64,6 +65,7 @@ export default function CustomerDashboardPage() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [sendingBookingId, setSendingBookingId] = useState<string | null>(null);
   const [historyPage, setHistoryPage] = useState(1);
+  const [reviewingItem, setReviewingItem] = useState<{ bookingId: string; garmentId: string; garmentName: string } | null>(null);
 
   useEffect(() => {
     const session = readStoredSession();
@@ -312,6 +314,19 @@ export default function CustomerDashboardPage() {
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex gap-1.5">
+                              {(b.status === "completed" || b.status === "returned") && (
+                                <button
+                                  type="button"
+                                  onClick={() => setReviewingItem({
+                                    bookingId: b.id,
+                                    garmentId: b.items[0]?.garmentId ?? "",
+                                    garmentName: b.items[0]?.garmentName ?? "Trang phục",
+                                  })}
+                                  className="rounded-lg bg-yellow-500 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-yellow-600 disabled:opacity-40"
+                                >
+                                  Đánh giá
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 disabled={sendingBookingId === b.id}
@@ -402,6 +417,18 @@ export default function CustomerDashboardPage() {
           ))}
         </aside>
       </div>
+
+      {reviewingItem && (
+        <ReviewModal
+          bookingId={reviewingItem.bookingId}
+          garmentId={reviewingItem.garmentId}
+          garmentName={reviewingItem.garmentName}
+          onClose={() => setReviewingItem(null)}
+          onSuccess={() => {
+            // Optional: Show a success toast or indicator here
+          }}
+        />
+      )}
     </div>
   );
 }

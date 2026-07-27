@@ -6,10 +6,11 @@ import { use, useEffect, useState } from "react";
 import { CustomerNavbar } from "@/components/customer/navbar";
 import { CustomerFooter } from "@/components/customer/footer";
 import { useAuth } from "@/components/auth/auth-provider";
-import { getGarmentsGrouped, type GarmentGrouped } from "@/lib/api";
+import { getGarmentsGrouped, getGarmentReviews, type GarmentGrouped, type ReviewResponse } from "@/lib/api";
 import { addToCart, cartCount } from "@/lib/cart";
 import { garmentSpecs, pairingItems } from "@/lib/heritage-mock-data";
 import { getMyChatConversation, sendProductCardMessage } from "@/lib/chat";
+import { ReviewModal } from "@/components/customer/review-modal";
 
 function formatVND(amount: number) {
   return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
@@ -36,11 +37,15 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
   const [addedMsg, setAddedMsg] = useState<string | null>(null);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
   const [consultMsg, setConsultMsg] = useState<string | null>(null);
+  const [reviewsData, setReviewsData] = useState<{ reviews: ReviewResponse[]; averageRating: number; total: number } | null>(null);
+  const [showReviewModal, setShowReviewModal] = useState(false);
 
   const today = todayIso();
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(addDays(today, 2));
   const { user } = useAuth();
+  
+  const hasPublicReview = Boolean(user && reviewsData?.reviews.some((r) => r.customerId === user.id));
 
   useEffect(() => {
     // Tìm garment trong danh sách grouped
@@ -52,6 +57,15 @@ export default function GarmentDetailPage({ params }: { params: Promise<{ slug: 
             setGroup(g);
             setSelectedGarmentId(garmentId);
             setLoading(false);
+            
+            // Lấy reviews
+            if (g.garmentId) {
+              getGarmentReviews(g.garmentId).then((revRes) => {
+                if (revRes.success && revRes.data) {
+                  setReviewsData(revRes.data);
+                }
+              });
+            }
             return;
           }
         }
@@ -373,6 +387,113 @@ async function handleConsult() {
               </div>
             </div>
           </section>
+        )}
+
+        {/* Reviews Section */}
+        {group && (
+          <section className="mt-24">
+            <div className="mb-10 flex items-end justify-between border-b border-sand pb-4">
+              <div>
+                <h2 className="font-display text-4xl text-ink">Đánh giá từ khách hàng</h2>
+                {reviewsData && reviewsData.total > 0 ? (
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-xl font-bold text-yellow-500">{reviewsData.averageRating.toFixed(1)}</span>
+                    <span className="material-symbols-outlined text-yellow-500" style={{ fontVariationSettings: '"FILL" 1' }}>star</span>
+                    <span className="text-stone-500">({reviewsData.total} đánh giá)</span>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-stone-500">Chưa có đánh giá nào cho sản phẩm này.</p>
+                )}
+              </div>
+              {user && (
+                <button
+                  onClick={() => setShowReviewModal(true)}
+                  className="rounded-xl border border-lotus text-lotus px-6 py-2.5 font-semibold transition hover:bg-lotus hover:text-white"
+                >
+                  {hasPublicReview ? "Chỉnh sửa đánh giá" : "Viết đánh giá"}
+                </button>
+              )}
+            </div>
+
+            {reviewsData && reviewsData.reviews.length > 0 && (
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {reviewsData.reviews.map((review) => (
+                  <div key={review.id} className="rounded-xl border border-sand bg-white p-6 shadow-sm">
+                    <div className="mb-4 flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-lotus/10 text-lotus font-semibold">
+                        {review.customer?.profile?.fullName?.[0]?.toUpperCase() || "K"}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-ink">{review.customer?.profile?.fullName || "Khách hàng"}</p>
+                        <p className="text-xs text-stone-400">{new Date(review.createdAt).toLocaleDateString("vi-VN")}</p>
+                      </div>
+                    </div>
+                    <div className="mb-3 flex">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <span 
+                          key={i} 
+                          className={`material-symbols-outlined text-[18px] ${
+                            i < review.rating ? "text-yellow-500 [font-variation-settings:'FILL'1]" : "text-stone-300"
+                          }`}
+                        >
+                          star
+                        </span>
+                      ))}
+                    </div>
+                    {review.comment && (
+                      <p className="text-sm leading-relaxed text-stone-600 mb-3">{review.comment}</p>
+                    )}
+                    
+                    {/* Media */}
+                    {(review.images?.length > 0 || review.video) && (
+                      <div className="mb-4 flex flex-wrap gap-2">
+                        {review.images?.map((img, idx) => (
+                          <div key={idx} className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg border border-sand">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={img} alt="Review image" className="h-full w-full object-cover" />
+                          </div>
+                        ))}
+                        {review.video && (
+                          <div className="h-20 w-32 flex-shrink-0 overflow-hidden rounded-lg border border-sand bg-black">
+                            <video src={review.video} controls className="h-full w-full object-contain" />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {review.staffReply && (
+                      <div className="mt-4 rounded-lg bg-stone-50 p-4 border border-sand">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="material-symbols-outlined text-[16px] text-lotus">storefront</span>
+                          <span className="text-xs font-semibold uppercase tracking-wider text-lotus">
+                            Shop phản hồi
+                          </span>
+                        </div>
+                        <p className="text-sm text-stone-600">{review.staffReply}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {showReviewModal && group?.garmentId && (
+          <ReviewModal
+            garmentId={group.garmentId}
+            garmentName={group.name}
+            onClose={() => setShowReviewModal(false)}
+            onSuccess={() => {
+              setShowReviewModal(false);
+              // Refresh reviews
+              getGarmentReviews(group.garmentId!).then((revRes) => {
+                if (revRes.success && revRes.data) {
+                  setReviewsData(revRes.data);
+                }
+              });
+            }}
+          />
         )}
       </main>
       <CustomerFooter />
