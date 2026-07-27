@@ -1,12 +1,14 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { StaffChatNavBadge } from "@/components/chat/staff-chat-nav-badge";
+import { ManagerReviewsNavBadge } from "@/components/dashboard/manager-reviews-nav-badge";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 import { bookingFlowSteps } from "@/lib/heritage-mock-data";
 
 type BookingStepKey = (typeof bookingFlowSteps)[number]["key"];
-type StaffNavKey = "overview" | "inspection"| "chat";
-type ManagerNavKey = "overview" | "inventory" | "inspection-log" | "laundry" | "damaged" | "finance" | "assets";
+type StaffNavKey = "overview" | "inspection"| "chat" | "reviews";
+type ManagerNavKey = "overview" | "inventory" | "inspection-log" | "laundry" | "damaged" | "finance" | "assets" | "reviews" | "refunds" | "chat";
 type AdminNavKey = "overview" | "roles" | "config" | "notification-config" | "logs";
 
 export function BookingFlowShell({
@@ -115,6 +117,7 @@ export function StaffPortalShell({
   const items = [
     { key: "overview", label: "Tổng quan", icon: "dashboard", href: "/dashboard/staff" },
     { key: "inspection", label: "Kiểm tra", icon: "search_check", href: "/dashboard/staff/inspection" },
+    { key: "reviews", label: "Đánh giá", icon: "reviews", href: "/dashboard/staff/reviews" },
     { key: "chat", label: "CSKH", icon: "chat", href: "/chat" },
   ] as const;
 
@@ -160,11 +163,7 @@ export function StaffPortalShell({
             <p className="text-xs uppercase tracking-[0.18em] text-stone-500">{subtitle}</p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="hidden items-center gap-3 md:flex">
-              <button type="button" className="rounded-full p-2 text-lotus transition hover:bg-lotus/10">
-                <span className="material-symbols-outlined text-[22px]">notifications</span>
-              </button>
-            </div>
+            <NotificationBell />
             <LogoutButton className="inline-flex items-center gap-2 rounded-full border border-oxblood/30 bg-white px-3 py-2 text-sm font-semibold text-oxblood transition hover:bg-oxblood hover:text-white">
               <span className="material-symbols-outlined text-[18px]">logout</span>
               <span className="hidden sm:inline">Đăng xuất</span>
@@ -222,6 +221,9 @@ export function ManagerPortalShell({
     { key: "laundry", label: "Giặt sấy", icon: "dry_cleaning", href: "/dashboard/manager#laundry" },
     { key: "damaged", label: "Hư hỏng & Mất", icon: "report_problem", href: "/dashboard/manager#damaged" },
     { key: "finance", label: "Tài chính", icon: "payments", href: "/dashboard/manager#finance" },
+    { key: "reviews", label: "Đánh giá", icon: "reviews", href: "/dashboard/manager/reviews" },
+    { key: "refunds", label: "Duyệt hoàn cọc", icon: "currency_exchange", href: "/dashboard/manager#refunds" },
+    { key: "chat", label: "CSKH", icon: "chat", href: "/chat" },
   ] as const;
 
   return (
@@ -256,8 +258,12 @@ export function ManagerPortalShell({
                 key={item.key}
                 href={item.href}
                 onClick={(e) => {
+                  if (item.href.includes('#') || item.href === '/dashboard/manager') {
+                    // CSKH là trang riêng (/chat) — điều hướng thẳng, không xử lý theo hash tab
+                  if (item.key === "chat") return;
                   e.preventDefault();
-                  onTabChange?.(item.key);
+                    onTabChange?.(item.key);
+                  }
                 }}
                 className={isActive
                   ? "flex items-center gap-3 rounded-xl bg-lotus/10 px-4 py-3 text-sm font-semibold text-lotus"
@@ -265,6 +271,8 @@ export function ManagerPortalShell({
               >
                 <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
                 <span>{item.label}</span>
+                {item.key === "reviews" && <ManagerReviewsNavBadge />}
+                {item.key === "chat" && <StaffChatNavBadge />}
               </a>
             );
           })}
@@ -287,6 +295,7 @@ export function ManagerPortalShell({
             <div className="rounded-lg border border-sand bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
               {currentDateLabel || "Đang đồng bộ"}
             </div>
+            <NotificationBell />
             <button type="button" onClick={() => onTabChange?.("assets")} className="inline-flex items-center gap-2 rounded-lg bg-lotus px-3 py-2 text-sm font-semibold text-white transition hover:bg-oxblood">
               <span className="material-symbols-outlined text-[18px]">priority_high</span>
               Cần xử lý
@@ -433,6 +442,52 @@ export function AdminPortalShell({
           </div>
           {children}
         </main>
+      </div>
+    </div>
+  );
+}
+
+export function ConfirmModal({
+  open,
+  title,
+  message,
+  confirmLabel = "Xác nhận",
+  cancelLabel = "Hủy",
+  onConfirm,
+  onCancel,
+  danger = false,
+}: {
+  open: boolean;
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  danger?: boolean;
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onCancel}>
+      <div className="w-full max-w-sm rounded-xl border border-sand bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-display text-2xl text-ink">{title}</h3>
+        <p className="mt-3 text-sm leading-7 text-stone-600">{message}</p>
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-lg border border-sand px-4 py-2.5 text-sm font-semibold text-stone-600 transition hover:bg-stone-50"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className={`rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition ${danger ? "bg-red-600 hover:bg-red-700" : "bg-lotus hover:bg-oxblood"}`}
+          >
+            {confirmLabel}
+          </button>
+        </div>
       </div>
     </div>
   );

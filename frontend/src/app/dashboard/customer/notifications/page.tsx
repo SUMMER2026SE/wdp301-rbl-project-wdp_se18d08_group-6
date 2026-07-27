@@ -11,6 +11,7 @@ import {
   type NotificationItem,
   type NotificationPreferences,
 } from "@/lib/api";
+import { normalizeStatusInText } from "@/lib/status-labels";
 
 type ViewFilter = "all" | "unread" | "read";
 
@@ -300,12 +301,12 @@ export default function CustomerNotificationsPage() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="font-semibold text-ink">{item.title}</h3>
+                          <h3 className="font-semibold text-ink">{normalizeStatusInText(item.title)}</h3>
                           {!item.isRead ? (
                             <span className="rounded-full bg-lotus/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-lotus">Mới</span>
                           ) : null}
                         </div>
-                        <p className="mt-2 whitespace-pre-line text-sm leading-7 text-stone-600">{item.body ?? "(Không có nội dung)"}</p>
+                        <p className="mt-2 whitespace-pre-line text-sm leading-7 text-stone-600">{normalizeStatusInText(item.body ?? "(Không có nội dung)")}</p>
                         <p className="mt-3 text-xs uppercase tracking-[0.14em] text-stone-400">{formatDateTime(item.createdAt)}</p>
                       </div>
                       <button

@@ -9,6 +9,7 @@ import type {
   ShippingFeeEstimate,
   StoreInfo,
 } from "./locations.types";
+import { classifyRoute, detectRegion, type ShippingRegion } from "./shipping-regions";
 
 const DEFAULT_GOGODUK_BASE_URL = "https://api.gogoduk.com";
 
@@ -180,32 +181,63 @@ export class LocationsService {
     const storeLat = (await this.getSettingNumber("store_lat")) ?? 10.7769;
     const storeLng = (await this.getSettingNumber("store_lng")) ?? 106.7009;
 
-    // 4. Get shipping rate (fall back to 5000 VND/km)
-    const ratePerKm = (await this.getSettingNumber("shipping_rate_per_km")) ?? 5000;
+    // 4. Determine regions and Viettel Post route pricing
+    const customerRegion =
+      detectRegion(address.city) ??
+      detectRegion([address.line1, address.ward, address.district, address.city].filter(Boolean).join(", ")) ??
+      (await this.regionFromCoordinates(customerLat, customerLng));
+    const storeRegion =
+      detectRegion(await this.getSettingText("store_address")) ??
+      (await this.regionFromCoordinates(storeLat, storeLng)) ??
+      "south";
 
-    // 5. Call directions API
-    const dir = await this.directions(
-      `${storeLat},${storeLng}`,
-      `${customerLat},${customerLng}`,
-    );
+    // Không xác định được miền của khách → tính theo tuyến xa nhất cho an toàn
+    const route = customerRegion && storeRegion
+      ? classifyRoute(storeRegion, customerRegion)
+      : classifyRoute("north", "south");
 
-    // 6. Calculate
-    const distanceKm = dir.distanceMeters ? dir.distanceMeters / 1000 : 0;
-    const estimatedFee = Math.round(distanceKm * ratePerKm);
-    const durationMinutes = dir.durationSeconds ? Math.round(dir.durationSeconds / 60) : 0;
+    // Cho phép quản lý ghi đè mức cước qua cài đặt hệ thống
+    const feeSettingKey = { intra: "shipping_fee_intra", adjacent: "shipping_fee_adjacent", inter: "shipping_fee_inter" }[route.type];
+    const fee = (await this.getSettingNumber(feeSettingKey)) ?? route.fee;
+
+    // 5. Call directions API for map display (fee no longer depends on distance)
+    let distanceKm = 0;
+    let durationMinutes = 0;
+    let distanceText: string | null = null;
+    let durationText: string | null = null;
+    try {
+      const dir = await this.directions(`${storeLat},${storeLng}`, `${customerLat},${customerLng}`);
+      distanceKm = dir.distanceMeters ? dir.distanceMeters / 1000 : 0;
+      durationMinutes = dir.durationSeconds ? Math.round(dir.durationSeconds / 60) : 0;
+      distanceText = dir.distanceText;
+      durationText = dir.durationText;
+    } catch {
+      // bản đồ/khoảng cách chỉ để hiển thị — thiếu cũng không chặn việc báo phí
+    }
 
     return {
       distanceKm: Math.round(distanceKm * 100) / 100,
-      estimatedFee,
+      estimatedFee: fee,
       durationMinutes,
-      distanceText: dir.distanceText ?? `${distanceKm.toFixed(1)} km`,
-      durationText: dir.durationText ?? `${durationMinutes} phút`,
-      ratePerKm,
+      distanceText: distanceText ?? `${distanceKm.toFixed(1)} km`,
+      durationText: durationText ?? `${durationMinutes} phút`,
+      routeType: route.type,
+      routeLabel: route.label,
+      deliveryTimeText: route.deliveryTimeText,
       storeLat,
       storeLng,
       customerLat,
       customerLng,
     };
+  }
+
+  private async regionFromCoordinates(latitude: number, longitude: number): Promise<ShippingRegion | null> {
+    try {
+      const admin = await this.reverseGeocode(latitude, longitude);
+      return detectRegion(admin.city) ?? detectRegion(admin.district);
+    } catch {
+      return null;
+    }
   }
 
   async getStoreInfo(): Promise<StoreInfo> {

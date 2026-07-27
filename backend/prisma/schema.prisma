@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model UserAccount {
@@ -31,6 +32,9 @@ model UserAccount {
   profile                                                Profile?
   refunds                                                Refund[]
   tryonRequests                                          TryonRequest[]
+  customerReviews                                        Review[]                @relation("CustomerReviews")
+  staffRepliedReviews                                    Review[]                @relation("StaffRepliedReviews")
+  staffReportedReviews                                   Review[]                @relation("StaffReportedReviews")
 
   @@map("user_accounts")
 }
@@ -121,6 +125,7 @@ model Garment {
   garment_sizes     garment_sizes[]
   category          GarmentCategory? @relation(fields: [categoryId], references: [id])
   tryonRequests     TryonRequest[]
+  reviews           Review[]         @relation("GarmentReviews")
 
   @@map("garments")
 }
@@ -185,6 +190,7 @@ model Booking {
   payments              Payment[]
   penalties             Penalty[]
   refunds               Refund[]
+  reviews               Review[]               @relation("BookingReviews")
 
   @@map("bookings")
 }
@@ -537,6 +543,7 @@ enum BookingStatus {
   cancelled
   rejected
   overdue
+  refund_pending
 
   @@map("booking_status")
 }
@@ -586,4 +593,47 @@ enum TryonCategory {
   dresses
 
   @@map("tryon_category")
+}
+
+enum ReviewStatus {
+  public
+  hidden
+
+  @@map("review_status")
+}
+
+model Review {
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId String       @map("customer_id") @db.Uuid
+  garmentId  String       @map("garment_id") @db.Uuid
+  bookingId  String       @map("booking_id") @db.Uuid
+  rating     Int          @default(5)
+  comment    String?
+  status     ReviewStatus @default(public)
+
+  staffReply     String?   @map("staff_reply")
+  staffReplyAt   DateTime? @map("staff_reply_at") @db.Timestamptz(6)
+  staffRepliedBy String?   @map("staff_replied_by") @db.Uuid
+
+  isReported     Boolean   @default(false) @map("is_reported")
+  reportedReason String?   @map("reported_reason")
+  reportedAt     DateTime? @map("reported_at") @db.Timestamptz(6)
+  reportedBy     String?   @map("reported_by") @db.Uuid
+
+  editCount      Int       @default(0) @map("edit_count")
+  isLocked       Boolean   @default(false) @map("is_locked")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  images    String[] @default([]) @map("images")
+  video     String?  @map("video")
+
+  customer       UserAccount  @relation("CustomerReviews", fields: [customerId], references: [id], onDelete: Cascade)
+  garment        Garment      @relation("GarmentReviews", fields: [garmentId], references: [id], onDelete: Cascade)
+  booking        Booking      @relation("BookingReviews", fields: [bookingId], references: [id], onDelete: Cascade)
+  repliedByUser  UserAccount? @relation("StaffRepliedReviews", fields: [staffRepliedBy], references: [id])
+  reportedByUser UserAccount? @relation("StaffReportedReviews", fields: [reportedBy], references: [id])
+
+  @@unique([customerId, garmentId, bookingId])
+  @@map("reviews")
 }

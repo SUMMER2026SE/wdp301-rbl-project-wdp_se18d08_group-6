@@ -18,12 +18,12 @@ export function StaffChatNavBadge() {
 
     async function load() {
       const session = readStoredSession();
-      if (!session || session.user.role !== "staff") return;
+      if (!session || (session.user.role !== "staff" && session.user.role !== "manager_owner")) return;
 
-      const res = await getChatConversations();
+      const res = await getChatConversations("unassigned");
       if (cancelled || !res.success || !res.data) return;
 
-      const unassigned = res.data.filter((c) => c.staffId === null && c.status === "open").length;
+      const unassigned = res.data?.length ?? 0;
       setCount(unassigned);
     }
 

@@ -15,7 +15,9 @@ function createFakePrisma() {
       findMany: vi.fn(async () => {
         return conversations.slice().sort((a, b) => b.updated_at - a.updated_at);
       }),
-      findUnique: undefined,
+      findUnique: vi.fn(async (opts: any) => {
+        return conversations.find((c) => c.id === opts.where.id) ?? null;
+      }),
       create: vi.fn(async (opts: any) => {
         const conv = { id: `conv-${conversations.length + 1}`, ...opts.data, messages: [], created_at: new Date(), updated_at: new Date() };
         conversations.push(conv);
@@ -46,6 +48,11 @@ function createFakePrisma() {
         return msg;
       }),
       findMany: vi.fn(async () => messages.slice()),
+      findFirst: vi.fn(async ({ where }: any) => {
+        const sorted = [...messages].sort((a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        return sorted.find((m) => m.conversation_id === where.conversation_id) ?? null;
+      }),
       count: vi.fn(async () => messages.length),
     },
   } as any;
@@ -86,11 +93,11 @@ describe("Chat E2E - in-memory simulation", () => {
     const conv = await chatService.getOrCreateConversationForCustomer(customerId);
 
     // Simulate customer socket joining
-    const customerSocket = { id: "s-cust", data: { user: { userId: customerId, role: "customer", fullName: "Cust One" } }, join: vi.fn(), emit: vi.fn() } as any;
+    const customerSocket = { id: "s-cust", data: { user: { userId: customerId, role: "customer", fullName: "Cust One" } }, join: vi.fn(), emit: vi.fn(), rooms: new Set<string>() } as any;
     await gateway.handleJoinRoom({ conversationId: conv.id }, customerSocket);
 
     // Staff connects and claims conversation
-    const staffSocket = { id: "s-staff", data: { user: { userId: "staff-1", role: "staff", fullName: "Staff One" } }, emit: vi.fn(), broadcast: { to: () => ({ emit: vi.fn() }) }, join: vi.fn() } as any;
+    const staffSocket = { id: "s-staff", data: { user: { userId: "staff-1", role: "staff", fullName: "Staff One" } }, emit: vi.fn(), broadcast: { to: () => ({ emit: vi.fn() }) }, join: vi.fn(), rooms: new Set<string>() } as any;
     await gateway.handleOpenConversation({ conversationId: conv.id }, staffSocket);
 
     // staff should have lock

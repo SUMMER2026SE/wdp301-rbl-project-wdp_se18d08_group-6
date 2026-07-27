@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { Throttle, ThrottlerGuard } from "@nestjs/throttler";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import type { AuthenticatedUser } from "../auth/auth-user";
@@ -35,6 +36,8 @@ export class AiController {
   }
 
   @Post("product-advisor")
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   productAdvisor(@Body() body: ProductAdvisorDto) {
     return this.aiService.productAdvisor(body);
   }

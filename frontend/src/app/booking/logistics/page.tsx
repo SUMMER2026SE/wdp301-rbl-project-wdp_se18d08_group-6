@@ -248,7 +248,10 @@ function BookingLogisticsInner() {
                           Phí giao hàng ước tính:{" "}
                           {new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(shippingFee.estimatedFee)}
                         </p>
-                        <p className="mt-1 text-xs text-stone-600">Khoảng cách: {shippingFee.distanceText} ({shippingFee.durationText})</p>
+                        <p className="mt-1 text-xs text-stone-600">
+                          Tuyến {shippingFee.routeLabel} (Viettel Post) · Giao dự kiến {shippingFee.deliveryTimeText}
+                        </p>
+                        <p className="mt-1 text-xs text-stone-600">Khoảng cách: {shippingFee.distanceText}</p>
                       </div>
                       {shippingFee.storeLat && shippingFee.customerLat && (
                         <ShippingMap

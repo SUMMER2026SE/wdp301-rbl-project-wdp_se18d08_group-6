@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ManagerPortalShell } from "@/components/heritage/ui";
+import { ManagerPortalShell, ConfirmModal } from "@/components/heritage/ui";
 import { useAuth } from "@/components/auth/auth-provider";
 import { STATUS_LABELS, statusBadgeClass } from "@/lib/status-labels";
 import {
   getStaffAllBookings,
+  getStaffCompletedRefundBookings,
   getAvailableAssets,
   assignAssetToBookingItem,
   getPendingManagerRefunds,
@@ -115,8 +116,24 @@ export default function ManagerDashboardPage() {
   const [currentDateLabel, setCurrentDateLabel] = useState("");
   const [tab, setTab] = useState<Tab>("overview");
   const [bookings, setBookings] = useState<StaffBookingResponse[]>([]);
+  // Đơn completed còn cọc (kèm trạng thái refund) — dùng để tính "tiền cọc đang giữ"
+  const [completedRefundBookings, setCompletedRefundBookings] = useState<StaffBookingResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successAssignId, setSuccessAssignId] = useState<string | null>(null);
+  const [successAssignMsg, setSuccessAssignMsg] = useState<string | null>(null);
+  const successAssignTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showSuccessAssign(id: string, message: string) {
+    setSuccessAssignId(id);
+    setSuccessAssignMsg(message);
+    if (successAssignTimerRef.current) clearTimeout(successAssignTimerRef.current);
+    successAssignTimerRef.current = setTimeout(() => { setSuccessAssignId(null); setSuccessAssignMsg(null); }, 4000);
+  }
+
+  useEffect(() => () => {
+    if (successAssignTimerRef.current) clearTimeout(successAssignTimerRef.current);
+  }, []);
 
   // Refund approval state
   const [pendingRefunds, setPendingRefunds] = useState<RefundResponse[]>([]);
@@ -199,6 +216,7 @@ export default function ManagerDashboardPage() {
     setErrorMsg(null);
     Promise.all([
       getStaffAllBookings().then(res => { if (res.success && res.data) setBookings(res.data); }),
+      getStaffCompletedRefundBookings().then(res => { if (res.success && res.data) setCompletedRefundBookings(res.data); }),
       getGarments().then(res => { if (res.success && res.data) setGarments(res.data); }),
       getAllAssets().then(res => { if (res.success && res.data) setAllAssets(res.data); }),
       getGarmentCategories().then(res => { if (res.success && res.data) setCategories(res.data); }),
@@ -416,6 +434,9 @@ export default function ManagerDashboardPage() {
     setApprovingId(null);
     if (res.success) {
       setPendingRefunds((prev) => prev.filter((r) => r.id !== refundId));
+      // Tải lại danh sách đơn completed để "tiền cọc đang giữ" trừ ngay cọc vừa hoàn
+      const refreshed = await getStaffCompletedRefundBookings();
+      if (refreshed.success && refreshed.data) setCompletedRefundBookings(refreshed.data);
     } else {
       setErrorMsg(res.message ?? "Không thể duyệt hoàn cọc.");
     }
@@ -451,13 +472,22 @@ export default function ManagerDashboardPage() {
     const res = await assignAssetToBookingItem(bookingId, itemId, state.selected);
     setActioningId(null);
     if (res.success) {
-      const listRes = await getStaffAllBookings();
-      if (listRes.success && listRes.data) setBookings(listRes.data);
       setAssetAssignState((prev) => {
         const next = { ...prev };
         delete next[itemKey];
         return next;
       });
+      const bookingCode = bookingId.slice(0, 8).toUpperCase();
+      showSuccessAssign(bookingId, `Đơn #${bookingCode} đã gắn sản phẩm thành công.`);
+      setTimeout(() => {
+        setBookings((prev) =>
+          prev.map((b) =>
+            b.id === bookingId
+              ? { ...b, items: b.items.map((i) => (i.id === itemId ? { ...i, garmentAssetId: state.selected } : i)) }
+              : b,
+          ),
+        );
+      }, 4500);
     } else {
       setErrorMsg(res.message ?? "Không thể gán tài sản.");
     }
@@ -544,7 +574,20 @@ export default function ManagerDashboardPage() {
   const totalRentalRevenue = bookings
     .filter((b) => REVENUE_STATUSES.includes(b.status))
     .reduce((sum, b) => sum + b.rentalTotal, 0);
-  const totalDepositHeld = activeBookings.reduce((sum, b) => sum + b.depositTotal, 0);
+  // Tiền cọc đang giữ = cọc đã thu và CHƯA hoàn cho khách.
+  // - Đơn từ lúc thanh toán (paid) đến khi kiểm tra xong: đang giữ cọc.
+  // - Đơn completed: vẫn giữ cọc cho đến khi yêu cầu hoàn cọc được DUYỆT.
+  // - Khi duyệt hoàn: trừ TRỌN tiền cọc của đơn (tiền phạt hạch toán riêng, không liên quan).
+  const DEPOSIT_HOLDING_STATUSES = ["paid", "preparing", "ready_for_pickup", "delivering", "renting", "returned", "inspection_pending", "overdue"];
+  const depositHoldingActive = bookings.filter((b) => DEPOSIT_HOLDING_STATUSES.includes(b.status));
+  const depositHoldingCompleted = completedRefundBookings.filter((b) => {
+    const refund = (b as StaffBookingResponse & { refunds?: Array<{ status: string }> }).refunds?.[0];
+    return !(refund && (refund.status === "refunded" || refund.status === "partially_refunded"));
+  });
+  const depositHoldingCount = depositHoldingActive.length + depositHoldingCompleted.length;
+  const totalDepositHeld =
+    depositHoldingActive.reduce((sum, b) => sum + b.depositTotal, 0) +
+    depositHoldingCompleted.reduce((sum, b) => sum + b.depositTotal, 0);
   const totalPenalties = bookings.reduce((sum, b) => sum + (b.penaltyTotal ?? 0), 0);
   const rentedItemCount = bookings
     .filter((b) => b.status === "renting")
@@ -565,7 +608,7 @@ export default function ManagerDashboardPage() {
       active={tab as any}
       title={meta.title}
       subtitle={meta.subtitle}
-      onTabChange={goToTab}
+      onTabChange={(key) => { if (key !== "reviews" && key !== "chat") goToTab(key); }}
       managerName={hasMounted ? (user?.fullName ?? user?.email?.split("@")[0] ?? "Quản lý cửa hàng") : "Quản lý cửa hàng"}
       managerEmail={hasMounted ? (user?.email ?? null) : null}
       currentDateLabel={hasMounted ? currentDateLabel : ""}
@@ -577,7 +620,6 @@ export default function ManagerDashboardPage() {
           {errorMsg}
         </div>
       )}
-
       {loading ? (
         <div className="py-20 text-center text-stone-400">Đang tải dữ liệu...</div>
       ) : tab === "overview" ? (
@@ -586,6 +628,7 @@ export default function ManagerDashboardPage() {
           totalDepositHeld={totalDepositHeld}
           bookings={bookings}
           activeBookings={activeBookings}
+          depositHoldingCount={depositHoldingCount}
           utilizationPct={utilizationPct}
           rentedItemCount={rentedItemCount}
           utilizationDenominator={utilizationDenominator}
@@ -603,6 +646,8 @@ export default function ManagerDashboardPage() {
           bookingsNeedingAssets={bookingsNeedingAssets}
           assetAssignState={assetAssignState}
           actioningId={actioningId}
+          successAssignId={successAssignId}
+          successAssignMsg={successAssignMsg}
           onOpenPicker={openAssetPicker}
           onAssign={handleAssignAsset}
           onClosePicker={closeAssetPicker}
@@ -692,7 +737,7 @@ export default function ManagerDashboardPage() {
           totalRentalRevenue={totalRentalRevenue}
           totalDepositHeld={totalDepositHeld}
           totalPenalties={totalPenalties}
-          activeBookings={activeBookings}
+          depositHoldingCount={depositHoldingCount}
           bookings={bookings}
         />
       )}
@@ -733,6 +778,8 @@ function AssetsAssignTab({
   bookingsNeedingAssets,
   assetAssignState,
   actioningId,
+  successAssignId,
+  successAssignMsg,
   onOpenPicker,
   onAssign,
   onClosePicker,
@@ -746,6 +793,8 @@ function AssetsAssignTab({
     open: boolean;
   }>;
   actioningId: string | null;
+  successAssignId: string | null;
+  successAssignMsg: string | null;
   onOpenPicker: (itemKey: string, garmentId: string) => void;
   onAssign: (bookingId: string, itemId: string, itemKey: string) => void;
   onClosePicker: (itemKey: string) => void;
@@ -763,7 +812,14 @@ function AssetsAssignTab({
           const s = STATUS_LABELS[booking.status] ?? { label: booking.status, color: "bg-stone-100 text-stone-600" };
           const unassignedItems = booking.items.filter((item) => !item.garmentAssetId);
           return (
-            <div key={booking.id} className="overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
+            <div key={booking.id}>
+              {successAssignId === booking.id && (
+                <div className="mb-2 flex items-center gap-2 rounded-lg border border-jade/30 bg-jade/5 p-4 text-sm text-jade">
+                  <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                  <span>{successAssignMsg}</span>
+                </div>
+              )}
+              <div className="overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand bg-mist px-6 py-3">
                 <div className="flex items-center gap-3">
                   <span className="font-semibold text-ink">#{booking.id.slice(0, 8).toUpperCase()}</span>
@@ -824,6 +880,7 @@ function AssetsAssignTab({
                 })}
               </div>
             </div>
+            </div>
           );
         })
       )}
@@ -836,7 +893,7 @@ function AssetsAssignTab({
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function OverviewTab({
-  totalRentalRevenue, totalDepositHeld, bookings, activeBookings,
+  totalRentalRevenue, totalDepositHeld, bookings, activeBookings, depositHoldingCount,
   utilizationPct, rentedItemCount, utilizationDenominator,
   countBy, garments, onGoToTab, bookingsNeedingAssets, allAssets, laundryTickets, maintenanceJobs, assets,
 }: {
@@ -844,6 +901,7 @@ function OverviewTab({
   totalDepositHeld: number;
   bookings: StaffBookingResponse[];
   activeBookings: StaffBookingResponse[];
+  depositHoldingCount: number;
   utilizationPct: number;
   rentedItemCount: number;
   utilizationDenominator: number;
@@ -873,7 +931,7 @@ function OverviewTab({
     <div className="space-y-8">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         <SnapshotCard label="Doanh thu (đang phát sinh)" value={formatVND(totalRentalRevenue)} hint="Từ đơn completed + đang thuê" icon="payments" tone="lotus" />
-        <SnapshotCard label="Tiền cọc đang giữ" value={formatVND(totalDepositHeld)} hint={`${activeBookings.length} đơn đang hoạt động`} icon="account_balance_wallet" tone="antique" />
+        <SnapshotCard label="Tiền cọc đang giữ" value={formatVND(totalDepositHeld)} hint={`${depositHoldingCount} đơn đang giữ cọc — trừ khi duyệt hoàn`} icon="account_balance_wallet" tone="antique" />
         <SnapshotCard label="Đơn đặt chỗ hiện tại" value={String(activeBookings.length)} hint="Đang trong luồng vận hành" icon="calendar_month" tone="jade" />
         <SnapshotCard label="Hiệu suất lấp đầy" value={garments.length === 0 ? "—" : `${utilizationPct}%`} hint={`${rentedItemCount} đang thuê / ${utilizationDenominator} khả dụng`} icon="pie_chart" tone="bronze" progress={garments.length === 0 ? null : utilizationPct} />
       </div>
@@ -1558,17 +1616,19 @@ function GarmentFormModal({
                 )}
               </div>
               {addingSize ? (
-                <div className="flex gap-2">
+                <div className="space-y-2">
                   <input
                     autoFocus
                     value={newSizeLabel}
                     onChange={(e) => setNewSizeLabel(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddSize(); } if (e.key === "Escape") { setAddingSize(false); setNewSizeLabel(""); } }}
-                    className="flex-1 rounded-lg border border-antique px-3 py-2 text-sm outline-none focus:border-lotus"
+                    className="w-full rounded-lg border border-antique px-3 py-2 text-sm outline-none focus:border-lotus"
                     placeholder="VD: XS, 3XL, 90cm"
                   />
-                  <button type="button" onClick={handleAddSize} disabled={savingSize || !newSizeLabel.trim()} className="rounded-lg bg-lotus px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 hover:bg-oxblood">{savingSize ? "..." : "Lưu"}</button>
-                  <button type="button" onClick={() => { setAddingSize(false); setNewSizeLabel(""); }} className="rounded-lg border border-sand px-3 py-2 text-xs text-stone-500 hover:bg-stone-50">Huỷ</button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={handleAddSize} disabled={savingSize || !newSizeLabel.trim()} className="rounded-lg bg-lotus px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 hover:bg-oxblood">{savingSize ? "..." : "Lưu"}</button>
+                    <button type="button" onClick={() => { setAddingSize(false); setNewSizeLabel(""); }} className="rounded-lg border border-sand px-3 py-2 text-xs font-semibold text-stone-500 hover:bg-stone-50">Huỷ</button>
+                  </div>
                 </div>
               ) : (
                 <select value={sizeLabel} onChange={(e) => setSizeLabel(e.target.value)} className={`w-full rounded-lg border ${errors.sizeLabel ? 'border-red-500' : 'border-sand'} bg-white px-3 py-2 text-sm outline-none focus:border-antique`}>
@@ -1896,6 +1956,7 @@ function DamagedTab({
   actioningId: string | null;
   onComplete: (id: string, status: string) => Promise<void>;
 }) {
+  const [confirmDialog, setConfirmDialog] = useState<{title:string; message:string; danger?:boolean; onConfirm:()=>void} | null>(null);
   return (
     <div className="space-y-4">
       {loading ? (
@@ -1926,7 +1987,12 @@ function DamagedTab({
                     <button
                       type="button"
                       disabled={actioningId === j.id}
-                      onClick={() => onComplete(j.id, "completed")}
+                      onClick={() => setConfirmDialog({
+                        title: "Hoàn tất bảo trì",
+                        message: "Xác nhận hoàn tất bảo trì?",
+                        danger: false,
+                        onConfirm: () => onComplete(j.id, "completed"),
+                      })}
                       className="rounded-lg bg-jade px-3 py-2 text-xs font-semibold text-white transition hover:bg-forest disabled:opacity-50"
                     >
                       {actioningId === j.id ? "..." : "Hoàn tất"}
@@ -1934,7 +2000,12 @@ function DamagedTab({
                     <button
                       type="button"
                       disabled={actioningId === j.id}
-                      onClick={() => onComplete(j.id, "cannot_repair")}
+                      onClick={() => setConfirmDialog({
+                        title: "Không thể sửa",
+                        message: "Xác nhận không thể sửa được? Hành động này không thể hoàn tác.",
+                        danger: true,
+                        onConfirm: () => onComplete(j.id, "cannot_repair"),
+                      })}
                       className="rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-50"
                     >
                       Không sửa được
@@ -1946,6 +2017,8 @@ function DamagedTab({
           ))}
         </div>
       )}
+
+      <ConfirmModal open={!!confirmDialog} title={confirmDialog?.title??""} message={confirmDialog?.message??""} danger={confirmDialog?.danger} onConfirm={() => { confirmDialog?.onConfirm(); setConfirmDialog(null); }} onCancel={() => setConfirmDialog(null)} />
     </div>
   );
 }
@@ -1956,12 +2029,12 @@ function DamagedTab({
 
 function FinanceTab({
   totalRentalRevenue, totalDepositHeld, totalPenalties,
-  activeBookings, bookings,
+  depositHoldingCount, bookings,
 }: {
   totalRentalRevenue: number;
   totalDepositHeld: number;
   totalPenalties: number;
-  activeBookings: StaffBookingResponse[];
+  depositHoldingCount: number;
   bookings: StaffBookingResponse[];
 }) {
   return (
@@ -1975,7 +2048,7 @@ function FinanceTab({
         <div className="rounded-xl border border-sand bg-white p-6 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Tiền cọc đang giữ</p>
           <p className="mt-2 font-display text-3xl text-amber-700">{formatVND(totalDepositHeld)}</p>
-          <p className="mt-1 text-sm text-stone-500">{activeBookings.length} đơn đang active</p>
+          <p className="mt-1 text-sm text-stone-500">{depositHoldingCount} đơn đang giữ cọc — trừ khi duyệt hoàn</p>
         </div>
         <div className="rounded-xl border border-sand bg-white p-6 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Tiền phạt phát sinh</p>
@@ -2445,7 +2518,14 @@ function RefundCard({
             onChange={(e) => setApproveNote(e.target.value)}
           />
         </div>
-        <div className="flex justify-end">
+        <div className="flex flex-wrap justify-end gap-2">
+          <a
+            href="/chat"
+            className="inline-flex items-center gap-2 rounded-lg border border-sand px-5 py-3 text-sm font-semibold text-stone-600 transition hover:border-lotus hover:text-lotus"
+          >
+            <span className="material-symbols-outlined text-[18px]">chat</span>
+            Nhắn khách xin thông tin chuyển khoản
+          </a>
           <button
             type="button"
             disabled={approvingId === refund.id || !proofImageUrl.trim()}
