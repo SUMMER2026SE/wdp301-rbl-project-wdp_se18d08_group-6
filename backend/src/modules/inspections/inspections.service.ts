@@ -169,6 +169,20 @@ export class InspectionsService {
         if (pendingCount === 0) {
           const previousStatus = session.booking.status;
 
+          await tx.booking.update({
+            where: { id: bookingId },
+            data: { status: BookingStatus.completed },
+          });
+
+          await tx.garmentAsset.updateMany({
+            where: { id: { in: assignedAssetIds } },
+            data: { status: AssetStatus.available },
+          });
+
+          await tx.bookingStatusHistory.create({
+            data: { bookingId, fromStatus: previousStatus, toStatus: BookingStatus.completed, changedBy: staffId, note: "All items inspected" },
+          });
+
           const depositTotal = Number(session.booking.depositTotal);
           // session.booking.penaltyTotal là giá trị TRƯỚC khi increment ở trên,
           // nên phải cộng thêm khoản phạt vừa ghi nhận trong lần kiểm tra này.

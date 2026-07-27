@@ -40,6 +40,8 @@ const RELEASED_STATUSES: BookingStatus[] = [
   // refund_pending: đồ đã trả & kiểm tra xong, chỉ còn chờ hoàn cọc — không giữ hàng nữa.
   BookingStatus.refund_pending,
   BookingStatus.completed,
+  BookingStatus.returned,
+  BookingStatus.inspection_pending,
 ];
 
 const CANCELLABLE_STATUSES: BookingStatus[] = [
