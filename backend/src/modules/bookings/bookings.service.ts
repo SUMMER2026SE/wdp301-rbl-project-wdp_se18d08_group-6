@@ -10,6 +10,9 @@ import type { AssignAssetDto } from "./dto/assign-asset.dto";
 import type { MarkPaidDto } from "./dto/mark-paid.dto";
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
+const VN_UTC_OFFSET_MS = 7 * 60 * 60 * 1000;
+const OVERDUE_FEE_PER_DAY = 10_000;
+const OVERDUE_PENALTY_REASON = "Phí quá hạn trả đồ (10.000đ/ngày)";
 
 const RELEASED_STATUSES: BookingStatus[] = [
   BookingStatus.cancelled,
@@ -67,6 +70,17 @@ export class BookingsService {
     if (endDay < startDay) throw new BadRequestException("End date must be on or after start date.");
     const days = Math.round((endDay.getTime() - startDay.getTime()) / MS_PER_DAY) + 1;
     return { startDay, endDay, days };
+  }
+
+  // Ngày hiện tại theo giờ Việt Nam, dạng "YYYY-MM-DD"
+  private vnTodayStr(): string {
+    return new Date(Date.now() + VN_UTC_OFFSET_MS).toISOString().slice(0, 10);
+  }
+
+  // Số ngày quá hạn so với rentalEndDate (0 nếu chưa quá hạn)
+  private overdueDays(rentalEndDate: Date): number {
+    const endStr = new Date(rentalEndDate).toISOString().slice(0, 10);
+    return Math.max(0, Math.round((Date.parse(this.vnTodayStr()) - Date.parse(endStr)) / MS_PER_DAY));
   }
 
   // ── Availability ───────────────────────────────────────────────────────────
@@ -601,6 +615,11 @@ export class BookingsService {
       });
     }
 
+    // Chốt phí quá hạn (10.000đ/ngày) tại thời điểm khách trả đồ
+    if (targetStatus === BookingStatus.returned) {
+      await this.applyOverdueFee(id);
+    }
+
     const assetIds = booking.items
       .map((item) => item.garmentAssetId)
       .filter((assetId): assetId is string => Boolean(assetId));
@@ -798,6 +817,116 @@ export class BookingsService {
 
     }
     return ok({ expiredCount: results.length, releasedAssets: results.reduce((s, r) => s + r.released, 0), bookings: results.map((r) => r.bookingId) });
+  }
+
+  // ── Overdue & phí phạt quá hạn ─────────────────────────────────────────────
+
+  // Ghi nhận phí quá hạn 10.000đ/ngày cho một booking (idempotent — gọi lại chỉ
+  // cập nhật số tiền theo số ngày quá hạn hiện tại, không tạo bản ghi trùng).
+  async applyOverdueFee(bookingId: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { penalties: true },
+    });
+    if (!booking) return null;
+
+    const days = this.overdueDays(booking.rentalEndDate);
+    const amount = days * OVERDUE_FEE_PER_DAY;
+    if (amount <= 0) return null;
+
+    const existing = booking.penalties.find((p) => p.reason === OVERDUE_PENALTY_REASON);
+    const previous = existing ? Number(existing.amount) : 0;
+    if (previous !== amount) {
+      await this.prisma.$transaction(async (tx) => {
+        if (existing) {
+          await tx.penalty.update({ where: { id: existing.id }, data: { amount } });
+        } else {
+          await tx.penalty.create({ data: { bookingId, reason: OVERDUE_PENALTY_REASON, amount } });
+        }
+        await tx.booking.update({
+          where: { id: bookingId },
+          data: { penaltyTotal: { increment: amount - previous } },
+        });
+      });
+    }
+    return { bookingId, days, amount };
+  }
+
+  // Chạy lúc 12h00 ngày cuối của kỳ thuê: nhắc khách trả đồ trước 00h00 hôm sau.
+  async sendReturnReminders() {
+    const today = new Date(this.vnTodayStr());
+    const bookings = await this.prisma.booking.findMany({
+      where: { status: BookingStatus.renting, rentalEndDate: today },
+      include: { items: { include: { garment_sizes: { include: { garments: true } } } } },
+    });
+
+    for (const booking of bookings) {
+      await this.notificationsService.sendBookingNotification({
+        userId: booking.customerId,
+        templateKey: "booking.return_reminder",
+        bookingId: booking.id,
+        garmentName: booking.items[0]?.garment_sizes?.garments?.name ?? null,
+        startDate: booking.rentalStartDate.toISOString().slice(0, 10),
+        endDate: booking.rentalEndDate.toISOString().slice(0, 10),
+      });
+    }
+
+    return ok({ remindedCount: bookings.length, bookings: bookings.map((b) => b.id) });
+  }
+
+  // Chạy lúc 00h00 hằng ngày: đánh dấu quá hạn các đơn đang thuê đã qua ngày trả,
+  // đồng thời cộng dồn phí phạt 10.000đ/ngày cho mọi đơn đang quá hạn.
+  async markOverdueBookings() {
+    const today = new Date(this.vnTodayStr());
+    const toMark = await this.prisma.booking.findMany({
+      where: { status: BookingStatus.renting, rentalEndDate: { lt: today } },
+      include: { items: { include: { garment_sizes: { include: { garments: true } } } } },
+    });
+
+    for (const booking of toMark) {
+      await this.prisma.$transaction([
+        this.prisma.bookingStatusHistory.create({
+          data: {
+            bookingId: booking.id,
+            fromStatus: BookingStatus.renting,
+            toStatus: BookingStatus.overdue,
+            note: "Tự động đánh dấu quá hạn — khách chưa trả đồ sau ngày kết thúc thuê",
+          },
+        }),
+        this.prisma.booking.update({ where: { id: booking.id }, data: { status: BookingStatus.overdue } }),
+      ]);
+    }
+
+    // Cộng dồn phí phạt cho tất cả đơn đang quá hạn (kể cả đơn staff đánh dấu tay)
+    const overdueBookings = await this.prisma.booking.findMany({
+      where: { status: BookingStatus.overdue },
+      select: { id: true },
+    });
+    const fees = new Map<string, { days: number; amount: number }>();
+    for (const { id } of overdueBookings) {
+      const fee = await this.applyOverdueFee(id);
+      if (fee) fees.set(id, { days: fee.days, amount: fee.amount });
+    }
+
+    // Chỉ thông báo cho các đơn vừa bị đánh dấu quá hạn
+    for (const booking of toMark) {
+      const fee = fees.get(booking.id);
+      await this.notificationsService.sendBookingNotification({
+        userId: booking.customerId,
+        templateKey: "booking.overdue",
+        bookingId: booking.id,
+        garmentName: booking.items[0]?.garment_sizes?.garments?.name ?? null,
+        startDate: booking.rentalStartDate.toISOString().slice(0, 10),
+        endDate: booking.rentalEndDate.toISOString().slice(0, 10),
+        amount: (fee?.amount ?? OVERDUE_FEE_PER_DAY).toLocaleString("vi-VN") + " đ",
+      });
+    }
+
+    return ok({
+      markedCount: toMark.length,
+      accruedCount: fees.size,
+      bookings: toMark.map((b) => b.id),
+    });
   }
 
   // ── Serialization ──────────────────────────────────────────────────────────

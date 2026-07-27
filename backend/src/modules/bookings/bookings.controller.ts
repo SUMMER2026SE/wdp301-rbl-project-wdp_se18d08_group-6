@@ -112,4 +112,14 @@ export class BookingsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("manager_owner", "admin")
   cancelExpiredAwaitingPayments() { return this.bookingsService.cancelExpiredAwaitingPayments(); }
+
+  @Post("run-return-reminders")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("staff", "manager_owner", "admin")
+  runReturnReminders() { return this.bookingsService.sendReturnReminders(); }
+
+  @Post("run-overdue-scan")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("staff", "manager_owner", "admin")
+  runOverdueScan() { return this.bookingsService.markOverdueBookings(); }
 }

@@ -6,7 +6,7 @@ import { bookingFlowSteps } from "@/lib/heritage-mock-data";
 
 type BookingStepKey = (typeof bookingFlowSteps)[number]["key"];
 type StaffNavKey = "overview" | "inspection"| "chat";
-type ManagerNavKey = "overview" | "inventory" | "inspection-log" | "laundry" | "damaged" | "finance" | "assets";
+type ManagerNavKey = "overview" | "inventory" | "inspection-log" | "laundry" | "damaged" | "finance" | "assets" | "refunds" | "chat";
 type AdminNavKey = "overview" | "roles" | "config" | "notification-config" | "logs";
 
 export function BookingFlowShell({
@@ -222,6 +222,8 @@ export function ManagerPortalShell({
     { key: "laundry", label: "Giặt sấy", icon: "dry_cleaning", href: "/dashboard/manager#laundry" },
     { key: "damaged", label: "Hư hỏng & Mất", icon: "report_problem", href: "/dashboard/manager#damaged" },
     { key: "finance", label: "Tài chính", icon: "payments", href: "/dashboard/manager#finance" },
+    { key: "refunds", label: "Duyệt hoàn cọc", icon: "currency_exchange", href: "/dashboard/manager#refunds" },
+    { key: "chat", label: "CSKH", icon: "chat", href: "/chat" },
   ] as const;
 
   return (
@@ -256,6 +258,8 @@ export function ManagerPortalShell({
                 key={item.key}
                 href={item.href}
                 onClick={(e) => {
+                  // CSKH là trang riêng (/chat) — điều hướng thẳng, không xử lý theo hash tab
+                  if (item.key === "chat") return;
                   e.preventDefault();
                   onTabChange?.(item.key);
                 }}
@@ -265,6 +269,7 @@ export function ManagerPortalShell({
               >
                 <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
                 <span>{item.label}</span>
+                {item.key === "chat" && <StaffChatNavBadge />}
               </a>
             );
           })}

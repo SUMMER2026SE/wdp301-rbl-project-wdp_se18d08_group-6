@@ -134,7 +134,7 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
     };
 
     let userSockets = this.onlineUsers.get(user.id);
-    const isNewStaff = dbRole === "staff" && (!userSockets || userSockets.size === 0);
+    const isNewStaff = this.isStaffSide(dbRole) && (!userSockets || userSockets.size === 0);
     if (!userSockets) {
       userSockets = new Set();
       this.onlineUsers.set(user.id, userSockets);
@@ -144,7 +144,7 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
       this.onlineStaffCount++;
       //console.log("CONNECT staff", client.id, user.id, "onlineStaffCount:", this.onlineStaffCount, "totalSockets:", userSockets.size);
     }
-    if (dbRole === "staff") {
+    if (this.isStaffSide(dbRole)) {
       client.join("staff");
     } else {
       client.join("customers");
@@ -153,7 +153,7 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
     // Auto-join user to their active conversation rooms
     try {
       const convs = await this.prisma.conversations.findMany({
-        where: dbRole === "staff"
+        where: this.isStaffSide(dbRole)
           ? { staff_id: user.id, status: { in: ["open", "resolved"] } }
           : { customer_id: user.id, status: { in: ["open", "resolved"] } },
         select: { id: true },
@@ -169,6 +169,12 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
 
   hasOnlineStaff(): boolean {
     return this.onlineStaffCount > 0;
+  }
+
+  // Staff và Quản lý/Chủ cửa hàng đều thao tác phía "nhân viên" trong chat
+  // (manager cần chat với khách để xin thông tin chuyển khoản hoàn cọc).
+  private isStaffSide(role?: string): boolean {
+    return role === "staff" || role === "manager_owner";
   }
 
   private onlineStaffCount = 0;
@@ -187,7 +193,7 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
     }
     //console.log("DISCONNECT", client.id, user.userId, user.role, "remainingSockets:", remaining);
 
-    if (user.role === "staff") {
+    if (this.isStaffSide(user.role)) {
       if (remaining === 0) {
         this.onlineStaffCount--;
         //console.log("DISCONNECT staff last socket, onlineStaffCount:", this.onlineStaffCount);
@@ -227,7 +233,7 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
   @SubscribeMessage("open_conversation")
   async handleOpenConversation(@MessageBody() body: { conversationId: string }, @ConnectedSocket() client: AuthSocket) {
     const user = client.data.user;
-    if (!user || user.role !== "staff" || !body?.conversationId) {
+    if (!user || !this.isStaffSide(user.role) || !body?.conversationId) {
       client.emit("open_conversation_result", { conversationId: body?.conversationId, canReply: false, reason: "unauthorized" });
       return;
     }
@@ -366,7 +372,7 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
       return { success: false, error: "rate_limited" };
     }
 
-    if (user.role === "staff") {
+    if (this.isStaffSide(user.role)) {
       const conversation = await this.chatService.getConversationById(body.conversationId);
       if (conversation.staff_id !== user.userId) {
         client.emit("send_error", { conversationId: body.conversationId, reason: "conversation_locked", tempId: body.tempId });
@@ -438,7 +444,7 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
   @SubscribeMessage("resolve_conversation")
   async handleResolveConversation(@MessageBody() body: { conversationId: string }, @ConnectedSocket() client: AuthSocket) {
     const user = client.data.user;
-    if (!user || user.role !== "staff" || !body?.conversationId) {
+    if (!user || !this.isStaffSide(user.role) || !body?.conversationId) {
       return;
     }
 

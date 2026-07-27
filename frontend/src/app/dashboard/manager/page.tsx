@@ -7,6 +7,7 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { STATUS_LABELS, statusBadgeClass } from "@/lib/status-labels";
 import {
   getStaffAllBookings,
+  getStaffCompletedRefundBookings,
   getAvailableAssets,
   assignAssetToBookingItem,
   getPendingManagerRefunds,
@@ -115,6 +116,8 @@ export default function ManagerDashboardPage() {
   const [currentDateLabel, setCurrentDateLabel] = useState("");
   const [tab, setTab] = useState<Tab>("overview");
   const [bookings, setBookings] = useState<StaffBookingResponse[]>([]);
+  // Đơn completed còn cọc (kèm trạng thái refund) — dùng để tính "tiền cọc đang giữ"
+  const [completedRefundBookings, setCompletedRefundBookings] = useState<StaffBookingResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -199,6 +202,7 @@ export default function ManagerDashboardPage() {
     setErrorMsg(null);
     Promise.all([
       getStaffAllBookings().then(res => { if (res.success && res.data) setBookings(res.data); }),
+      getStaffCompletedRefundBookings().then(res => { if (res.success && res.data) setCompletedRefundBookings(res.data); }),
       getGarments().then(res => { if (res.success && res.data) setGarments(res.data); }),
       getAllAssets().then(res => { if (res.success && res.data) setAllAssets(res.data); }),
       getGarmentCategories().then(res => { if (res.success && res.data) setCategories(res.data); }),
@@ -416,6 +420,9 @@ export default function ManagerDashboardPage() {
     setApprovingId(null);
     if (res.success) {
       setPendingRefunds((prev) => prev.filter((r) => r.id !== refundId));
+      // Tải lại danh sách đơn completed để "tiền cọc đang giữ" trừ ngay cọc vừa hoàn
+      const refreshed = await getStaffCompletedRefundBookings();
+      if (refreshed.success && refreshed.data) setCompletedRefundBookings(refreshed.data);
     } else {
       setErrorMsg(res.message ?? "Không thể duyệt hoàn cọc.");
     }
@@ -544,7 +551,20 @@ export default function ManagerDashboardPage() {
   const totalRentalRevenue = bookings
     .filter((b) => REVENUE_STATUSES.includes(b.status))
     .reduce((sum, b) => sum + b.rentalTotal, 0);
-  const totalDepositHeld = activeBookings.reduce((sum, b) => sum + b.depositTotal, 0);
+  // Tiền cọc đang giữ = cọc đã thu và CHƯA hoàn cho khách.
+  // - Đơn từ lúc thanh toán (paid) đến khi kiểm tra xong: đang giữ cọc.
+  // - Đơn completed: vẫn giữ cọc cho đến khi yêu cầu hoàn cọc được DUYỆT.
+  // - Khi duyệt hoàn: trừ TRỌN tiền cọc của đơn (tiền phạt hạch toán riêng, không liên quan).
+  const DEPOSIT_HOLDING_STATUSES = ["paid", "preparing", "ready_for_pickup", "delivering", "renting", "returned", "inspection_pending", "overdue"];
+  const depositHoldingActive = bookings.filter((b) => DEPOSIT_HOLDING_STATUSES.includes(b.status));
+  const depositHoldingCompleted = completedRefundBookings.filter((b) => {
+    const refund = (b as StaffBookingResponse & { refunds?: Array<{ status: string }> }).refunds?.[0];
+    return !(refund && (refund.status === "refunded" || refund.status === "partially_refunded"));
+  });
+  const depositHoldingCount = depositHoldingActive.length + depositHoldingCompleted.length;
+  const totalDepositHeld =
+    depositHoldingActive.reduce((sum, b) => sum + b.depositTotal, 0) +
+    depositHoldingCompleted.reduce((sum, b) => sum + b.depositTotal, 0);
   const totalPenalties = bookings.reduce((sum, b) => sum + (b.penaltyTotal ?? 0), 0);
   const rentedItemCount = bookings
     .filter((b) => b.status === "renting")
@@ -565,7 +585,7 @@ export default function ManagerDashboardPage() {
       active={tab as any}
       title={meta.title}
       subtitle={meta.subtitle}
-      onTabChange={goToTab}
+      onTabChange={(key) => { if (key !== "chat") goToTab(key); }}
       managerName={hasMounted ? (user?.fullName ?? user?.email?.split("@")[0] ?? "Quản lý cửa hàng") : "Quản lý cửa hàng"}
       managerEmail={hasMounted ? (user?.email ?? null) : null}
       currentDateLabel={hasMounted ? currentDateLabel : ""}
@@ -586,6 +606,7 @@ export default function ManagerDashboardPage() {
           totalDepositHeld={totalDepositHeld}
           bookings={bookings}
           activeBookings={activeBookings}
+          depositHoldingCount={depositHoldingCount}
           utilizationPct={utilizationPct}
           rentedItemCount={rentedItemCount}
           utilizationDenominator={utilizationDenominator}
@@ -692,7 +713,7 @@ export default function ManagerDashboardPage() {
           totalRentalRevenue={totalRentalRevenue}
           totalDepositHeld={totalDepositHeld}
           totalPenalties={totalPenalties}
-          activeBookings={activeBookings}
+          depositHoldingCount={depositHoldingCount}
           bookings={bookings}
         />
       )}
@@ -836,7 +857,7 @@ function AssetsAssignTab({
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function OverviewTab({
-  totalRentalRevenue, totalDepositHeld, bookings, activeBookings,
+  totalRentalRevenue, totalDepositHeld, bookings, activeBookings, depositHoldingCount,
   utilizationPct, rentedItemCount, utilizationDenominator,
   countBy, garments, onGoToTab, bookingsNeedingAssets, allAssets, laundryTickets, maintenanceJobs, assets,
 }: {
@@ -844,6 +865,7 @@ function OverviewTab({
   totalDepositHeld: number;
   bookings: StaffBookingResponse[];
   activeBookings: StaffBookingResponse[];
+  depositHoldingCount: number;
   utilizationPct: number;
   rentedItemCount: number;
   utilizationDenominator: number;
@@ -873,7 +895,7 @@ function OverviewTab({
     <div className="space-y-8">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         <SnapshotCard label="Doanh thu (đang phát sinh)" value={formatVND(totalRentalRevenue)} hint="Từ đơn completed + đang thuê" icon="payments" tone="lotus" />
-        <SnapshotCard label="Tiền cọc đang giữ" value={formatVND(totalDepositHeld)} hint={`${activeBookings.length} đơn đang hoạt động`} icon="account_balance_wallet" tone="antique" />
+        <SnapshotCard label="Tiền cọc đang giữ" value={formatVND(totalDepositHeld)} hint={`${depositHoldingCount} đơn đang giữ cọc — trừ khi duyệt hoàn`} icon="account_balance_wallet" tone="antique" />
         <SnapshotCard label="Đơn đặt chỗ hiện tại" value={String(activeBookings.length)} hint="Đang trong luồng vận hành" icon="calendar_month" tone="jade" />
         <SnapshotCard label="Hiệu suất lấp đầy" value={garments.length === 0 ? "—" : `${utilizationPct}%`} hint={`${rentedItemCount} đang thuê / ${utilizationDenominator} khả dụng`} icon="pie_chart" tone="bronze" progress={garments.length === 0 ? null : utilizationPct} />
       </div>
@@ -1956,12 +1978,12 @@ function DamagedTab({
 
 function FinanceTab({
   totalRentalRevenue, totalDepositHeld, totalPenalties,
-  activeBookings, bookings,
+  depositHoldingCount, bookings,
 }: {
   totalRentalRevenue: number;
   totalDepositHeld: number;
   totalPenalties: number;
-  activeBookings: StaffBookingResponse[];
+  depositHoldingCount: number;
   bookings: StaffBookingResponse[];
 }) {
   return (
@@ -1975,7 +1997,7 @@ function FinanceTab({
         <div className="rounded-xl border border-sand bg-white p-6 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Tiền cọc đang giữ</p>
           <p className="mt-2 font-display text-3xl text-amber-700">{formatVND(totalDepositHeld)}</p>
-          <p className="mt-1 text-sm text-stone-500">{activeBookings.length} đơn đang active</p>
+          <p className="mt-1 text-sm text-stone-500">{depositHoldingCount} đơn đang giữ cọc — trừ khi duyệt hoàn</p>
         </div>
         <div className="rounded-xl border border-sand bg-white p-6 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Tiền phạt phát sinh</p>
@@ -2445,7 +2467,14 @@ function RefundCard({
             onChange={(e) => setApproveNote(e.target.value)}
           />
         </div>
-        <div className="flex justify-end">
+        <div className="flex flex-wrap justify-end gap-2">
+          <a
+            href="/chat"
+            className="inline-flex items-center gap-2 rounded-lg border border-sand px-5 py-3 text-sm font-semibold text-stone-600 transition hover:border-lotus hover:text-lotus"
+          >
+            <span className="material-symbols-outlined text-[18px]">chat</span>
+            Nhắn khách xin thông tin chuyển khoản
+          </a>
           <button
             type="button"
             disabled={approvingId === refund.id || !proofImageUrl.trim()}

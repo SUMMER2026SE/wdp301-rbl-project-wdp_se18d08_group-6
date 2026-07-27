@@ -96,6 +96,20 @@ const DEFAULT_TEMPLATES: NotificationTemplateMap = {
     channels: ["inApp", "email"],
     enabled: true,
   },
+  "booking.return_reminder": {
+    subject: "Nhắc nhở: đơn thuê hết hạn hôm nay",
+    title: "Sắp hết hạn thuê",
+    body: "Đơn thuê {{bookingId}} ({{garmentName}}) sẽ hết hạn thuê vào hôm nay {{endDate}}.\nVui lòng trả trang phục trước 00h00 ngày mai. Sau thời điểm này, đơn sẽ bị đánh dấu quá hạn và tính phí phạt 10.000đ/ngày (trừ vào tiền cọc).",
+    channels: ["inApp", "email"],
+    enabled: true,
+  },
+  "booking.overdue": {
+    subject: "Đơn thuê đã quá hạn trả",
+    title: "Đơn thuê quá hạn",
+    body: "Đơn thuê {{bookingId}} ({{garmentName}}) đã quá hạn trả từ ngày {{endDate}}.\nPhí phạt hiện tại: {{amount}} (10.000đ/ngày, trừ vào tiền cọc khi hoàn). Vui lòng liên hệ cửa hàng và trả trang phục sớm nhất có thể.",
+    channels: ["inApp", "email"],
+    enabled: true,
+  },
   "notification.test": {
     subject: "Kiểm tra Notification Service",
     title: "Thông báo kiểm tra",
@@ -331,7 +345,7 @@ export class NotificationsService {
 
   async sendBookingNotification(input: {
     userId: string;
-    templateKey: "booking.created" | "booking.status_changed" | "booking.payment_received" | "booking.cancelled";
+    templateKey: "booking.created" | "booking.status_changed" | "booking.payment_received" | "booking.cancelled" | "booking.return_reminder" | "booking.overdue";
     bookingId: string;
     garmentName?: string | null;
     startDate?: string;
@@ -690,5 +704,5 @@ export class NotificationsService {
   private preferenceKey(userId: string) {
     return `notification:preferences:${userId}`;
   }
-}
-
+}
+
