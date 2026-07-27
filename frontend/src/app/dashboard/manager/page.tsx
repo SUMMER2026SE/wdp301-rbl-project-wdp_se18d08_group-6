@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ManagerPortalShell } from "@/components/heritage/ui";
+import { ManagerPortalShell, ConfirmModal } from "@/components/heritage/ui";
 import { useAuth } from "@/components/auth/auth-provider";
 import { STATUS_LABELS, statusBadgeClass } from "@/lib/status-labels";
 import {
@@ -120,6 +120,20 @@ export default function ManagerDashboardPage() {
   const [completedRefundBookings, setCompletedRefundBookings] = useState<StaffBookingResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successAssignId, setSuccessAssignId] = useState<string | null>(null);
+  const [successAssignMsg, setSuccessAssignMsg] = useState<string | null>(null);
+  const successAssignTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showSuccessAssign(id: string, message: string) {
+    setSuccessAssignId(id);
+    setSuccessAssignMsg(message);
+    if (successAssignTimerRef.current) clearTimeout(successAssignTimerRef.current);
+    successAssignTimerRef.current = setTimeout(() => { setSuccessAssignId(null); setSuccessAssignMsg(null); }, 4000);
+  }
+
+  useEffect(() => () => {
+    if (successAssignTimerRef.current) clearTimeout(successAssignTimerRef.current);
+  }, []);
 
   // Refund approval state
   const [pendingRefunds, setPendingRefunds] = useState<RefundResponse[]>([]);
@@ -458,13 +472,22 @@ export default function ManagerDashboardPage() {
     const res = await assignAssetToBookingItem(bookingId, itemId, state.selected);
     setActioningId(null);
     if (res.success) {
-      const listRes = await getStaffAllBookings();
-      if (listRes.success && listRes.data) setBookings(listRes.data);
       setAssetAssignState((prev) => {
         const next = { ...prev };
         delete next[itemKey];
         return next;
       });
+      const bookingCode = bookingId.slice(0, 8).toUpperCase();
+      showSuccessAssign(bookingId, `Đơn #${bookingCode} đã gắn sản phẩm thành công.`);
+      setTimeout(() => {
+        setBookings((prev) =>
+          prev.map((b) =>
+            b.id === bookingId
+              ? { ...b, items: b.items.map((i) => (i.id === itemId ? { ...i, garmentAssetId: state.selected } : i)) }
+              : b,
+          ),
+        );
+      }, 4500);
     } else {
       setErrorMsg(res.message ?? "Không thể gán tài sản.");
     }
@@ -597,7 +620,6 @@ export default function ManagerDashboardPage() {
           {errorMsg}
         </div>
       )}
-
       {loading ? (
         <div className="py-20 text-center text-stone-400">Đang tải dữ liệu...</div>
       ) : tab === "overview" ? (
@@ -624,6 +646,8 @@ export default function ManagerDashboardPage() {
           bookingsNeedingAssets={bookingsNeedingAssets}
           assetAssignState={assetAssignState}
           actioningId={actioningId}
+          successAssignId={successAssignId}
+          successAssignMsg={successAssignMsg}
           onOpenPicker={openAssetPicker}
           onAssign={handleAssignAsset}
           onClosePicker={closeAssetPicker}
@@ -754,6 +778,8 @@ function AssetsAssignTab({
   bookingsNeedingAssets,
   assetAssignState,
   actioningId,
+  successAssignId,
+  successAssignMsg,
   onOpenPicker,
   onAssign,
   onClosePicker,
@@ -767,6 +793,8 @@ function AssetsAssignTab({
     open: boolean;
   }>;
   actioningId: string | null;
+  successAssignId: string | null;
+  successAssignMsg: string | null;
   onOpenPicker: (itemKey: string, garmentId: string) => void;
   onAssign: (bookingId: string, itemId: string, itemKey: string) => void;
   onClosePicker: (itemKey: string) => void;
@@ -784,7 +812,14 @@ function AssetsAssignTab({
           const s = STATUS_LABELS[booking.status] ?? { label: booking.status, color: "bg-stone-100 text-stone-600" };
           const unassignedItems = booking.items.filter((item) => !item.garmentAssetId);
           return (
-            <div key={booking.id} className="overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
+            <div key={booking.id}>
+              {successAssignId === booking.id && (
+                <div className="mb-2 flex items-center gap-2 rounded-lg border border-jade/30 bg-jade/5 p-4 text-sm text-jade">
+                  <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                  <span>{successAssignMsg}</span>
+                </div>
+              )}
+              <div className="overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand bg-mist px-6 py-3">
                 <div className="flex items-center gap-3">
                   <span className="font-semibold text-ink">#{booking.id.slice(0, 8).toUpperCase()}</span>
@@ -844,6 +879,7 @@ function AssetsAssignTab({
                   );
                 })}
               </div>
+            </div>
             </div>
           );
         })
@@ -1920,6 +1956,7 @@ function DamagedTab({
   actioningId: string | null;
   onComplete: (id: string, status: string) => Promise<void>;
 }) {
+  const [confirmDialog, setConfirmDialog] = useState<{title:string; message:string; danger?:boolean; onConfirm:()=>void} | null>(null);
   return (
     <div className="space-y-4">
       {loading ? (
@@ -1950,7 +1987,12 @@ function DamagedTab({
                     <button
                       type="button"
                       disabled={actioningId === j.id}
-                      onClick={() => onComplete(j.id, "completed")}
+                      onClick={() => setConfirmDialog({
+                        title: "Hoàn tất bảo trì",
+                        message: "Xác nhận hoàn tất bảo trì?",
+                        danger: false,
+                        onConfirm: () => onComplete(j.id, "completed"),
+                      })}
                       className="rounded-lg bg-jade px-3 py-2 text-xs font-semibold text-white transition hover:bg-forest disabled:opacity-50"
                     >
                       {actioningId === j.id ? "..." : "Hoàn tất"}
@@ -1958,7 +2000,12 @@ function DamagedTab({
                     <button
                       type="button"
                       disabled={actioningId === j.id}
-                      onClick={() => onComplete(j.id, "cannot_repair")}
+                      onClick={() => setConfirmDialog({
+                        title: "Không thể sửa",
+                        message: "Xác nhận không thể sửa được? Hành động này không thể hoàn tác.",
+                        danger: true,
+                        onConfirm: () => onComplete(j.id, "cannot_repair"),
+                      })}
                       className="rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-50"
                     >
                       Không sửa được
@@ -1970,6 +2017,8 @@ function DamagedTab({
           ))}
         </div>
       )}
+
+      <ConfirmModal open={!!confirmDialog} title={confirmDialog?.title??""} message={confirmDialog?.message??""} danger={confirmDialog?.danger} onConfirm={() => { confirmDialog?.onConfirm(); setConfirmDialog(null); }} onCancel={() => setConfirmDialog(null)} />
     </div>
   );
 }

@@ -37,6 +37,8 @@ const RELEASED_STATUSES: BookingStatus[] = [
   BookingStatus.cancelled,
   BookingStatus.rejected,
   BookingStatus.completed,
+  BookingStatus.returned,
+  BookingStatus.inspection_pending,
 ];
 
 const CANCELLABLE_STATUSES: BookingStatus[] = [

@@ -174,6 +174,11 @@ export class InspectionsService {
             data: { status: BookingStatus.completed },
           });
 
+          await tx.garmentAsset.updateMany({
+            where: { id: { in: assignedAssetIds } },
+            data: { status: AssetStatus.available },
+          });
+
           await tx.bookingStatusHistory.create({
             data: { bookingId, fromStatus: previousStatus, toStatus: BookingStatus.completed, changedBy: staffId, note: "All items inspected" },
           });

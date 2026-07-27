@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { StaffPortalShell } from "@/components/heritage/ui";
+import { StaffPortalShell, ConfirmModal } from "@/components/heritage/ui";
 import {
   getStaffBooking,
   advanceBookingStatus,
@@ -80,9 +80,23 @@ export default function StaffBookingDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [actioning, setActioning] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showToast(type: "success" | "error", message: string) {
+    setToast({ type, message });
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 4000);
+  }
+
+  useEffect(() => () => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+  }, []);
+
   const [paymentDialog, setPaymentDialog] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("cash");
   const [refundDialog, setRefundDialog] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{title:string; message:string; danger?:boolean; onConfirm:()=>void} | null>(null);
   const [refundBankName, setRefundBankName] = useState("");
   const [refundBankAccount, setRefundBankAccount] = useState("");
   const [refundBankHolder, setRefundBankHolder] = useState("");
@@ -98,6 +112,8 @@ export default function StaffBookingDetailPage() {
       .finally(() => setLoading(false));
   }, [bookingId]);
 
+  const CONFIRM_REQUIRED = new Set(["cancelled", "rejected", "overdue"]);
+
   async function handleAction(status: string) {
     if (!booking) return;
     setActioning(true);
@@ -106,6 +122,9 @@ export default function StaffBookingDetailPage() {
     setActioning(false);
     if (res.success && res.data) {
       setBooking((prev) => (prev ? { ...prev, status: res.data!.status } : prev));
+      const bookingCode = booking.id.slice(0, 8).toUpperCase();
+      const statusLabel = STATUS_LABELS[res.data.status]?.label ?? res.data.status;
+      showToast("success", `Đơn #${bookingCode} đã chuyển sang trạng thái ${statusLabel}.`);
     } else {
       setActionError(res.message ?? "Thao tác thất bại.");
     }
@@ -120,6 +139,8 @@ export default function StaffBookingDetailPage() {
     setActioning(false);
     if (res.success && res.data) {
       setBooking((prev) => (prev ? { ...prev, status: res.data!.status } : prev));
+      const bookingCode = booking.id.slice(0, 8).toUpperCase();
+      showToast("success", `Đơn #${bookingCode} đã thanh toán thành công.`);
     } else {
       setActionError(res.message ?? "Không thể ghi nhận thanh toán.");
     }
@@ -133,6 +154,8 @@ export default function StaffBookingDetailPage() {
     setActioning(false);
     if (res.success && res.data) {
       setBooking((prev) => (prev ? { ...prev, status: res.data!.status } : prev));
+      const bookingCode = booking.id.slice(0, 8).toUpperCase();
+      showToast("success", `Đơn #${bookingCode} đã thanh toán thành công.`);
     } else {
       setActionError(res.message ?? "Không thể xác nhận thanh toán QR.");
     }
@@ -221,6 +244,13 @@ export default function StaffBookingDetailPage() {
       {actionError && (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           {actionError}
+        </div>
+      )}
+
+      {toast && (
+        <div className={`mb-4 flex items-center gap-2 rounded-lg border p-4 text-sm ${toast.type === "success" ? "border-jade/30 bg-jade/5 text-jade" : "border-red-200 bg-red-50 text-red-700"}`}>
+          <span className="material-symbols-outlined text-[18px]">{toast.type === "success" ? "check_circle" : "error"}</span>
+          <span>{toast.message}</span>
         </div>
       )}
 
@@ -399,17 +429,32 @@ export default function StaffBookingDetailPage() {
               </button>
             )
           )}
-          {actions.map((action) => (
-            <button
-              key={action.status}
-              type="button"
-              disabled={actioning}
-              onClick={() => handleAction(action.status)}
-              className={`rounded-lg px-5 py-2.5 text-sm font-semibold transition disabled:opacity-50 ${action.style}`}
-            >
-              {actioning ? "Đang xử lý..." : action.label}
-            </button>
-          ))}
+          {actions.map((action) => {
+            const needsConfirm = CONFIRM_REQUIRED.has(action.status);
+            return (
+              <button
+                key={action.status}
+                type="button"
+                disabled={actioning}
+                onClick={() => {
+                  if (needsConfirm) {
+                    const labels: Record<string, string> = { cancelled: "hủy", rejected: "từ chối", overdue: "đánh dấu quá hạn" };
+                    setConfirmDialog({
+                      title: "Xác nhận",
+                      message: `Bạn có chắc muốn ${labels[action.status] ?? action.status} đơn này?`,
+                      danger: true,
+                      onConfirm: () => handleAction(action.status),
+                    });
+                  } else {
+                    handleAction(action.status);
+                  }
+                }}
+                className={`rounded-lg px-5 py-2.5 text-sm font-semibold transition disabled:opacity-50 ${action.style}`}
+              >
+                {actioning ? "Đang xử lý..." : action.label}
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -477,6 +522,8 @@ export default function StaffBookingDetailPage() {
           </div>
         </div>
       )}
+
+      <ConfirmModal open={!!confirmDialog} title={confirmDialog?.title??""} message={confirmDialog?.message??""} danger={confirmDialog?.danger} onConfirm={() => { confirmDialog?.onConfirm(); setConfirmDialog(null); }} onCancel={() => setConfirmDialog(null)} />
     </StaffPortalShell>
   );
 }

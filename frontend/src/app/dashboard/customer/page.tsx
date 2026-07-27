@@ -11,6 +11,7 @@ import { customerWidgets } from "@/lib/heritage-mock-data";
 import { STATUS_LABELS, statusBadgeClass, statusOf, ACTIVE_BOOKING_STATUSES, CANCELLABLE_STATUSES } from "@/lib/status-labels";
 import { ReviewModal } from "@/components/customer/review-modal";
 import { BookingStatusStepper } from "@/components/customer/booking-status-stepper";
+import { ConfirmModal } from "@/components/heritage/ui";
 
 const HISTORY_PAGE_SIZE = 5;
 
@@ -67,6 +68,7 @@ export default function CustomerDashboardPage() {
   const [sendingBookingId, setSendingBookingId] = useState<string | null>(null);
   const [historyPage, setHistoryPage] = useState(1);
   const [reviewingItem, setReviewingItem] = useState<{ bookingId: string; garmentId: string; garmentName: string } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{title:string; message:string; danger?:boolean; onConfirm:()=>void} | null>(null);
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -111,6 +113,9 @@ export default function CustomerDashboardPage() {
     const res = await cancelBooking(id);
     if (res.success && res.data) {
       setBookings((prev) => prev.map((b) => (b.id === id ? res.data! : b)));
+      showToast("success", "Đã hủy đơn thuê thành công.");
+    } else {
+      showToast("error", res.message ?? "Không thể hủy đơn. Vui lòng thử lại.");
     }
     setCancellingId(null);
   }
@@ -284,7 +289,12 @@ export default function CustomerDashboardPage() {
                     <button
                       type="button"
                       disabled={cancellingId === activeBooking.id}
-                      onClick={() => handleCancel(activeBooking.id)}
+                      onClick={() => setConfirmDialog({
+                        title: "Xác nhận hủy đơn",
+                        message: "Bạn có chắc muốn hủy đơn thuê này? Hành động này không thể hoàn tác.",
+                        danger: true,
+                        onConfirm: () => handleCancel(activeBooking.id),
+                      })}
                       className="rounded-lg border border-stone-300 px-5 py-3 text-sm font-semibold text-stone-600 transition hover:bg-stone-50 disabled:opacity-40"
                     >
                       {cancellingId === activeBooking.id ? "Đang hủy..." : "Hủy đơn"}
@@ -530,6 +540,8 @@ export default function CustomerDashboardPage() {
           </div>
         </div>
       )}
+
+      <ConfirmModal open={!!confirmDialog} title={confirmDialog?.title??""} message={confirmDialog?.message??""} danger={confirmDialog?.danger} onConfirm={() => { confirmDialog?.onConfirm(); setConfirmDialog(null); }} onCancel={() => setConfirmDialog(null)} />
     </div>
   );
 }
