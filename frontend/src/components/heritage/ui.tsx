@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { StaffChatNavBadge } from "@/components/chat/staff-chat-nav-badge";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 import { bookingFlowSteps } from "@/lib/heritage-mock-data";
 
 type BookingStepKey = (typeof bookingFlowSteps)[number]["key"];
@@ -160,11 +161,7 @@ export function StaffPortalShell({
             <p className="text-xs uppercase tracking-[0.18em] text-stone-500">{subtitle}</p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="hidden items-center gap-3 md:flex">
-              <button type="button" className="rounded-full p-2 text-lotus transition hover:bg-lotus/10">
-                <span className="material-symbols-outlined text-[22px]">notifications</span>
-              </button>
-            </div>
+            <NotificationBell />
             <LogoutButton className="inline-flex items-center gap-2 rounded-full border border-oxblood/30 bg-white px-3 py-2 text-sm font-semibold text-oxblood transition hover:bg-oxblood hover:text-white">
               <span className="material-symbols-outlined text-[18px]">logout</span>
               <span className="hidden sm:inline">Đăng xuất</span>
@@ -292,6 +289,7 @@ export function ManagerPortalShell({
             <div className="rounded-lg border border-sand bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
               {currentDateLabel || "Đang đồng bộ"}
             </div>
+            <NotificationBell />
             <button type="button" onClick={() => onTabChange?.("assets")} className="inline-flex items-center gap-2 rounded-lg bg-lotus px-3 py-2 text-sm font-semibold text-white transition hover:bg-oxblood">
               <span className="material-symbols-outlined text-[18px]">priority_high</span>
               Cần xử lý

@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import { AssetStatus, BookingStatus, PaymentStatus } from "@prisma/client";
+import { AppRole, AssetStatus, BookingStatus, PaymentStatus } from "@prisma/client";
 import { ok } from "../../common/api-response";
 import { PrismaService } from "../../prisma/prisma.service";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -8,6 +8,24 @@ import type { CreateBookingDto } from "./dto/create-booking.dto";
 import type { UpdateBookingStatusDto } from "./dto/update-booking-status.dto";
 import type { AssignAssetDto } from "./dto/assign-asset.dto";
 import type { MarkPaidDto } from "./dto/mark-paid.dto";
+
+const BOOKING_STATUS_LABELS: Record<string, string> = {
+  draft: "Nháp",
+  pending_confirmation: "Chờ xác nhận",
+  confirmed: "Đã xác nhận",
+  awaiting_payment: "Chờ thanh toán",
+  paid: "Đã thanh toán",
+  preparing: "Đang chuẩn bị",
+  ready_for_pickup: "Sẵn sàng nhận",
+  delivering: "Đang giao",
+  renting: "Đang thuê",
+  returned: "Đã trả",
+  inspection_pending: "Chờ kiểm tra",
+  completed: "Hoàn thành",
+  cancelled: "Đã hủy",
+  rejected: "Từ chối",
+  overdue: "Quá hạn",
+};
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 const VN_UTC_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -235,6 +253,15 @@ export class BookingsService {
       endDate: booking.rentalEndDate.toISOString().slice(0, 10),
     });
 
+    await this.notificationsService.notifyStaffBooking({
+      templateKey: "booking.staff.created",
+      bookingId: booking.id,
+      customerName: await this.resolveCustomerName(booking.customerId),
+      garmentName: booking.items[0]?.garment_sizes?.garments?.name ?? null,
+      startDate: booking.rentalStartDate.toISOString().slice(0, 10),
+      endDate: booking.rentalEndDate.toISOString().slice(0, 10),
+      roles: [AppRole.staff],
+    });
 
     return ok(this.serializeBooking(booking, days));
   }
@@ -324,9 +351,16 @@ export class BookingsService {
       garmentName: updated.items[0]?.garment_sizes?.garments?.name ?? null,
       startDate: updated.rentalStartDate.toISOString().slice(0, 10),
       endDate: updated.rentalEndDate.toISOString().slice(0, 10),
-      note: "�on thu� d� b? h?y.",
+      note: null,
     });
 
+    await this.notificationsService.notifyStaffBooking({
+      templateKey: "booking.staff.cancelled",
+      bookingId: updated.id,
+      customerName: await this.resolveCustomerName(booking.customerId),
+      garmentName: updated.items[0]?.garment_sizes?.garments?.name ?? null,
+      note: "Khách hàng tự hủy đơn.",
+    });
 
     return ok(this.serializeBooking(updated));
   }
@@ -671,10 +705,19 @@ export class BookingsService {
       garmentName: updated.items[0]?.garment_sizes?.garments?.name ?? null,
       startDate: updated.rentalStartDate.toISOString().slice(0, 10),
       endDate: updated.rentalEndDate.toISOString().slice(0, 10),
-      statusLabel: targetStatus,
+      statusLabel: BOOKING_STATUS_LABELS[targetStatus] ?? targetStatus,
       note: dto.note ?? null,
     });
 
+    if (targetStatus === BookingStatus.confirmed) {
+      await this.notificationsService.notifyStaffBooking({
+        templateKey: "booking.staff.confirmed",
+        bookingId: updated.id,
+        customerName: await this.resolveCustomerName(updated.customerId),
+        garmentName: updated.items[0]?.garment_sizes?.garments?.name ?? null,
+        roles: [AppRole.manager_owner],
+      });
+    }
 
     return ok(this.serializeBooking(updated));
   }
@@ -721,6 +764,13 @@ export class BookingsService {
           },
         },
       },
+    });
+
+    await this.notificationsService.notifyStaffBooking({
+      templateKey: "booking.staff.asset_assigned",
+      bookingId,
+      garmentName: updated?.items.find((i) => i.id === itemId)?.garment_sizes?.garments?.name ?? null,
+      assetCode: asset.assetCode,
     });
 
     return ok(this.serializeBooking(updated!));
@@ -782,6 +832,14 @@ export class BookingsService {
       amount: Number(booking.rentalTotal) + Number(booking.shippingFee ?? 0) + Number(booking.depositTotal),
     });
 
+    await this.notificationsService.notifyStaffBooking({
+      templateKey: "booking.staff.paid",
+      bookingId: updated!.id,
+      customerName: await this.resolveCustomerName(updated!.customerId),
+      garmentName: updated!.items[0]?.garment_sizes?.garments?.name ?? null,
+      startDate: updated!.rentalStartDate.toISOString().slice(0, 10),
+      endDate: updated!.rentalEndDate.toISOString().slice(0, 10),
+    });
 
     return ok(this.serializeBooking(updated!));
   }

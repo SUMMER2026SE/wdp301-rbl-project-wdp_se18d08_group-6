@@ -7,7 +7,7 @@ import { BookingFlowShell } from "@/components/heritage/ui";
 import { CustomerNavbar } from "@/components/customer/navbar";
 import { CustomerFooter } from "@/components/customer/footer";
 import { createBooking, createPaymentLink, getMyAddresses, type CustomerAddress } from "@/lib/api";
-import { getCart, clearCart } from "@/lib/cart";
+import { getCart, clearCart, type CartItem } from "@/lib/cart";
 
 function formatVND(amount: number) {
   return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
@@ -56,7 +56,11 @@ function BookingReviewInner() {
     if (isDelivery && paymentMethod !== "qr_code") setPaymentMethod("qr_code");
   }, [isDelivery, paymentMethod]);
 
-  const cartItems = getCart();
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+
+  useEffect(() => {
+    setCartItems(getCart());
+  }, []);
   const days = startDate && endDate ? daysBetween(startDate, endDate) : 0;
   const rentalTotal = cartItems.reduce((sum, item) => sum + item.dailyPrice * days, 0);
   const depositTotal = cartItems.reduce((sum, item) => sum + item.depositAmount, 0);
