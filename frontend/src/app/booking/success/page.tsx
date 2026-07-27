@@ -2,52 +2,168 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { CustomerNavbar } from "@/components/customer/navbar";
 import { CustomerFooter } from "@/components/customer/footer";
-import { bookingSuccessTimeline } from "@/lib/heritage-mock-data";
+import { BookingStatusStepper } from "@/components/customer/booking-status-stepper";
+import { getBooking } from "@/lib/api";
+import type { BookingResponse } from "@/lib/api";
+import { statusBadgeClass, statusOf } from "@/lib/status-labels";
+
+function formatVND(n: number) {
+  return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(n);
+}
+
+function formatDate(iso: string) {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+const PICKUP_LABELS: Record<string, string> = {
+  delivery: "Giao tận nơi",
+  store_pickup: "Nhận tại cửa hàng",
+};
 
 function BookingSuccessInner() {
   const searchParams = useSearchParams();
   const bookingId = searchParams.get("bookingId");
   const displayCode = bookingId ? `#${bookingId.slice(0, 8).toUpperCase()}` : "#—";
 
+  const [booking, setBooking] = useState<BookingResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!bookingId) {
+      setLoading(false);
+      return;
+    }
+    getBooking(bookingId)
+      .then((res) => {
+        if (res.success && res.data) setBooking(res.data);
+        else setError(res.message ?? "Không tải được thông tin đơn.");
+      })
+      .catch(() => setError("Không tải được thông tin đơn."))
+      .finally(() => setLoading(false));
+  }, [bookingId]);
+
   return (
     <div className="flex min-h-screen flex-col bg-mist text-ink">
       <CustomerNavbar />
-      <main className="flex flex-1 items-center justify-center px-4 py-16">
-        <div className="w-full max-w-3xl text-center">
+      <main className="flex flex-1 justify-center px-4 py-16">
+        <div className="w-full max-w-3xl">
           <div className="rounded-lg border border-sand bg-white p-8 shadow-lg sm:p-12">
-            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-jade/10 text-jade">
-              <span className="material-symbols-outlined text-4xl">check_circle</span>
-            </div>
-            <p className="mt-6 text-xs font-semibold uppercase tracking-[0.22em] text-antique">Đặt lịch thành công</p>
-            <h1 className="mt-3 font-display text-5xl text-ink sm:text-6xl">Giữ lịch thành công</h1>
-            <p className="mx-auto mt-4 max-w-2xl text-base leading-8 text-stone-600">Xưởng đã ghi nhận yêu cầu thuê. Thông tin bàn giao và trạng thái chuẩn bị sẽ được cập nhật trong bảng điều khiển khách hàng.</p>
-
-            <div className="mt-8 rounded-lg border border-sand bg-mist p-4 text-left">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Mã booking</p>
-              <p className="mt-2 font-display text-3xl text-lotus">{displayCode}</p>
-              {bookingId && <p className="mt-1 text-xs text-stone-400 break-all">{bookingId}</p>}
-            </div>
-
-            <section className="mt-10 text-left">
-              <h2 className="font-display text-3xl text-ink">Tiếp theo sẽ diễn ra gì?</h2>
-              <div className="mt-6 space-y-6">
-                {bookingSuccessTimeline.map((item, index) => (
-                  <div key={item.title} className="flex gap-4">
-                    <div className="flex flex-col items-center">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-lotus/10 text-lotus">{index + 1}</div>
-                      {index < bookingSuccessTimeline.length - 1 ? <div className="mt-2 h-full w-px bg-sand" /> : null}
-                    </div>
-                    <div className="pb-2">
-                      <h3 className="text-lg font-semibold text-ink">{item.title}</h3>
-                      <p className="mt-1 text-sm leading-7 text-stone-600">{item.description}</p>
-                    </div>
-                  </div>
-                ))}
+            <div className="text-center">
+              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-jade/10 text-jade">
+                <span className="material-symbols-outlined text-4xl">check_circle</span>
               </div>
+              <p className="mt-6 text-xs font-semibold uppercase tracking-[0.22em] text-antique">Đặt lịch thành công</p>
+              <h1 className="mt-3 font-display text-5xl text-ink sm:text-6xl">Giữ lịch thành công</h1>
+              <p className="mx-auto mt-4 max-w-2xl text-base leading-8 text-stone-600">
+                Xưởng đã ghi nhận yêu cầu thuê. Theo dõi tiến trình chuẩn bị và bàn giao ngay bên dưới.
+              </p>
+            </div>
+
+            <div className="mt-8 rounded-lg border border-sand bg-mist p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Mã booking</p>
+                  <p className="mt-1 font-display text-3xl text-lotus">{displayCode}</p>
+                </div>
+                {booking && (
+                  <span className={statusBadgeClass(statusOf(booking.status).color)}>
+                    {statusOf(booking.status).label}
+                  </span>
+                )}
+              </div>
+              {bookingId && <p className="mt-2 text-xs text-stone-400 break-all">{bookingId}</p>}
+            </div>
+
+            {/* Tiến trình đơn */}
+            <section className="mt-10">
+              <h2 className="font-display text-3xl text-ink">Tiến trình đơn hàng</h2>
+              {loading ? (
+                <div className="mt-6 h-16 animate-pulse rounded-lg bg-stone-100" />
+              ) : booking ? (
+                <BookingStatusStepper
+                  status={booking.status}
+                  pickupMethod={booking.pickupMethod}
+                  className="mt-6"
+                />
+              ) : (
+                <p className="mt-4 text-sm text-stone-500">
+                  {error ?? "Không có thông tin tiến trình cho đơn này."}
+                </p>
+              )}
             </section>
+
+            {/* Chi tiết đơn */}
+            {booking && (
+              <section className="mt-10">
+                <h2 className="font-display text-3xl text-ink">Chi tiết đơn thuê</h2>
+
+                <div className="mt-6 space-y-3">
+                  {booking.items.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between gap-4 rounded-lg border border-sand bg-parchment/40 px-4 py-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-ink">{item.garmentName ?? "Trang phục"}</p>
+                        {item.sizeLabel && <p className="text-xs text-stone-500">Size {item.sizeLabel}</p>}
+                      </div>
+                      <p className="shrink-0 text-sm text-stone-600">{formatVND(item.dailyPrice)}/ngày</p>
+                    </div>
+                  ))}
+                </div>
+
+                <dl className="mt-6 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+                  <div className="flex justify-between gap-4 border-b border-sand pb-3 sm:border-0 sm:pb-0">
+                    <dt className="text-stone-500">Thời gian thuê</dt>
+                    <dd className="text-right font-medium text-ink">
+                      {formatDate(booking.rentalStartDate)} – {formatDate(booking.rentalEndDate)} ({booking.days} ngày)
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-4 border-b border-sand pb-3 sm:border-0 sm:pb-0">
+                    <dt className="text-stone-500">Hình thức nhận</dt>
+                    <dd className="text-right font-medium text-ink">
+                      {PICKUP_LABELS[booking.pickupMethod] ?? booking.pickupMethod}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-4 border-b border-sand pb-3 sm:border-0 sm:pb-0">
+                    <dt className="text-stone-500">Tiền thuê</dt>
+                    <dd className="text-right font-medium text-ink">{formatVND(booking.rentalTotal)}</dd>
+                  </div>
+                  <div className="flex justify-between gap-4 border-b border-sand pb-3 sm:border-0 sm:pb-0">
+                    <dt className="text-stone-500">Tiền cọc</dt>
+                    <dd className="text-right font-medium text-ink">{formatVND(booking.depositTotal)}</dd>
+                  </div>
+                  {typeof booking.shippingFee === "number" && booking.shippingFee > 0 && (
+                    <div className="flex justify-between gap-4 border-b border-sand pb-3 sm:border-0 sm:pb-0">
+                      <dt className="text-stone-500">Phí giao hàng</dt>
+                      <dd className="text-right font-medium text-ink">{formatVND(booking.shippingFee)}</dd>
+                    </div>
+                  )}
+                  {booking.deliveryAddress && (
+                    <div className="flex justify-between gap-4 border-b border-sand pb-3 sm:col-span-2 sm:border-0 sm:pb-0">
+                      <dt className="shrink-0 text-stone-500">Địa chỉ giao</dt>
+                      <dd className="text-right font-medium text-ink">
+                        {[booking.deliveryAddress.line1, booking.deliveryAddress.ward, booking.deliveryAddress.district, booking.deliveryAddress.city]
+                          .filter(Boolean)
+                          .join(", ")}
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+
+                <div className="mt-6 flex items-center justify-between rounded-lg bg-lotus/5 px-4 py-3">
+                  <span className="font-semibold text-ink">Tổng cộng</span>
+                  <span className="font-display text-2xl text-lotus">
+                    {formatVND(booking.rentalTotal + booking.depositTotal + (booking.shippingFee ?? 0))}
+                  </span>
+                </div>
+              </section>
+            )}
 
             <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:justify-center">
               <Link href="/dashboard/customer" className="inline-flex items-center justify-center rounded-lg bg-lotus px-6 py-4 text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-oxblood">

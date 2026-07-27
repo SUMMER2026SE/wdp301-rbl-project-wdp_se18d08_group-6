@@ -38,7 +38,7 @@ export const STATUS_LABELS: Record<string, StatusLabel> = {
  * Every badge gets: rounded-full, small text, uppercase, letter-spacing.
  */
 export function statusBadgeClass(color: string): string {
-  return `rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${color}`;
+  return `inline-block whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${color}`;
 }
 
 /** Lookup status by key, with fallback. */

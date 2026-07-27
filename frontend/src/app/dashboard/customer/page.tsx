@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getMyBookings, cancelBooking, getCustomerRefund, getDeliveryTrack } from "@/lib/api";
 import type { BookingResponse, CustomerRefundResponse, DeliveryTrackData } from "@/lib/api";
 import { DeliveryTracker } from "@/components/location/delivery-tracker";
@@ -10,6 +10,7 @@ import { getMyChatConversation, sendBookingCardMessage } from "@/lib/chat";
 import { customerWidgets } from "@/lib/heritage-mock-data";
 import { STATUS_LABELS, statusBadgeClass, statusOf, ACTIVE_BOOKING_STATUSES, CANCELLABLE_STATUSES } from "@/lib/status-labels";
 import { ReviewModal } from "@/components/customer/review-modal";
+import { BookingStatusStepper } from "@/components/customer/booking-status-stepper";
 
 const HISTORY_PAGE_SIZE = 5;
 
@@ -66,6 +67,18 @@ export default function CustomerDashboardPage() {
   const [sendingBookingId, setSendingBookingId] = useState<string | null>(null);
   const [historyPage, setHistoryPage] = useState(1);
   const [reviewingItem, setReviewingItem] = useState<{ bookingId: string; garmentId: string; garmentName: string } | null>(null);
+  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showToast(type: "success" | "error", message: string) {
+    setToast({ type, message });
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 4000);
+  }
+
+  useEffect(() => () => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+  }, []);
 
   useEffect(() => {
     const session = readStoredSession();
@@ -113,9 +126,25 @@ export default function CustomerDashboardPage() {
           setConversationId(convId);
         }
       }
-      if (convId) {
-        await sendBookingCardMessage({ conversationId: convId, bookingId, topic });
+      if (!convId) {
+        showToast("error", "Không mở được cuộc trò chuyện hỗ trợ. Vui lòng thử lại.");
+        return;
       }
+      const res = await sendBookingCardMessage({ conversationId: convId, bookingId, topic });
+      if (res.success) {
+        showToast(
+          "success",
+          topic === "complaint"
+            ? "Đã gửi khiếu nại. Nhân viên sẽ phản hồi trong khung chat."
+            : "Đã gửi yêu cầu hỗ trợ. Nhân viên sẽ phản hồi trong khung chat.",
+        );
+        // Ra hiệu cho chat bubble mở lên để khách thấy thẻ đơn vừa gửi.
+        window.dispatchEvent(new CustomEvent("chat:open"));
+      } else {
+        showToast("error", res.message ?? "Gửi yêu cầu thất bại. Vui lòng thử lại.");
+      }
+    } catch {
+      showToast("error", "Gửi yêu cầu thất bại. Vui lòng thử lại.");
     } finally {
       setSendingBookingId(null);
     }
@@ -131,6 +160,63 @@ export default function CustomerDashboardPage() {
     (currentHistoryPage - 1) * HISTORY_PAGE_SIZE,
     currentHistoryPage * HISTORY_PAGE_SIZE,
   );
+
+  function renderRefundStatus(b: BookingResponse) {
+    if (b.status !== "completed") return <span className="text-xs text-stone-400">—</span>;
+    const refund = refundMap[b.id];
+    if (refund === undefined) return <span className="text-xs text-stone-400">Đang tải...</span>;
+    if (!refund) return <span className="text-xs text-stone-400">—</span>;
+    if (refund.status === "refunded" || refund.status === "partially_refunded") {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-jade/10 px-3 py-1 text-xs font-semibold text-jade">
+          <span className="material-symbols-outlined text-[14px]">check_circle</span>
+          Đã hoàn {formatVND(refund.amount)}
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-3 py-1 text-xs font-semibold text-yellow-700">
+        <span className="material-symbols-outlined text-[14px]">schedule</span>
+        Đang xử lý {formatVND(refund.amount)}
+      </span>
+    );
+  }
+
+  function renderActions(b: BookingResponse) {
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {(b.status === "completed" || b.status === "returned") && (
+          <button
+            type="button"
+            onClick={() => setReviewingItem({
+              bookingId: b.id,
+              garmentId: b.items[0]?.garmentId ?? "",
+              garmentName: b.items[0]?.garmentName ?? "Trang phục",
+            })}
+            className="rounded-lg bg-yellow-500 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-yellow-600 disabled:opacity-40"
+          >
+            Đánh giá
+          </button>
+        )}
+        <button
+          type="button"
+          disabled={sendingBookingId === b.id}
+          onClick={() => void handleSendBookingCard(b.id, "booking_support")}
+          className="rounded-lg bg-jade px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-forest disabled:opacity-40"
+        >
+          {sendingBookingId === b.id ? "..." : "Hỗ trợ"}
+        </button>
+        <button
+          type="button"
+          disabled={sendingBookingId === b.id}
+          onClick={() => void handleSendBookingCard(b.id, "complaint")}
+          className="rounded-lg bg-oxblood px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-red-950 disabled:opacity-40"
+        >
+          {sendingBookingId === b.id ? "..." : "Khiếu nại"}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-10">
@@ -165,8 +251,8 @@ export default function CustomerDashboardPage() {
             <section className="overflow-hidden rounded-xl border border-sand bg-white p-8 shadow-md">
               <div className="flex flex-col gap-6">
                 <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h2 className="font-display text-4xl text-ink">
+                  <div className="min-w-0">
+                    <h2 className="font-display text-4xl text-ink break-words">
                       {activeBooking.items[0]?.garmentName ?? "Trang phục"}
                     </h2>
                     <p className="mt-1 text-sm text-stone-600">
@@ -178,10 +264,15 @@ export default function CustomerDashboardPage() {
                       {" "}· Cọc: <span className="font-medium text-ink">{formatVND(activeBooking.depositTotal)}</span>
                     </p>
                   </div>
-                  <span className={statusBadgeClass(statusOf(activeBooking.status).color)}>
+                  <span className={`${statusBadgeClass(statusOf(activeBooking.status).color)} shrink-0`}>
                     {statusOf(activeBooking.status).label}
                   </span>
                 </div>
+                <BookingStatusStepper
+                  status={activeBooking.status}
+                  pickupMethod={activeBooking.pickupMethod}
+                  className="border-t border-sand pt-6"
+                />
                 <div className="flex flex-col gap-3 sm:flex-row">
                   <Link
                     href={`/booking/success?bookingId=${activeBooking.id}`}
@@ -251,105 +342,87 @@ export default function CustomerDashboardPage() {
               <p className="text-sm text-stone-400">Chưa có lịch sử thuê.</p>
             ) : (
               <div className="overflow-hidden rounded-xl border border-sand bg-white">
-                <table className="w-full border-collapse text-left text-sm">
-                  <thead>
-                    <tr className="bg-parchment text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
-                      <th className="px-6 py-4">Trang phục</th>
-                      <th className="px-6 py-4">Thời gian</th>
-                      <th className="px-6 py-4">Trạng thái</th>
-                      <th className="px-6 py-4">Tổng</th>
-                      <th className="px-6 py-4">Hoàn cọc</th>
-                      <th className="px-6 py-4"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loading ? (
-                      Array.from({ length: 3 }).map((_, i) => (
-                        <tr key={`skeleton-${i}`} className="border-t border-sand">
-                          <td className="px-6 py-4"><div className="h-4 w-32 animate-pulse rounded bg-stone-200" /></td>
-                          <td className="px-6 py-4"><div className="h-4 w-40 animate-pulse rounded bg-stone-200" /></td>
-                          <td className="px-6 py-4"><div className="h-6 w-24 animate-pulse rounded-full bg-stone-200" /></td>
-                          <td className="px-6 py-4"><div className="h-4 w-20 animate-pulse rounded bg-stone-200" /></td>
-                          <td className="px-6 py-4"><div className="h-6 w-28 animate-pulse rounded-full bg-stone-200" /></td>
-                          <td className="px-6 py-4"><div className="h-6 w-16 animate-pulse rounded bg-stone-200" /></td>
-                        </tr>
-                      ))
-                    ) : pagedHistory.map((b) => {
-                      const st = statusOf(b.status);
-                      const refund = refundMap[b.id];
-                      return (
-                        <tr key={b.id} className="border-t border-sand transition hover:bg-mist">
-                          <td className="px-6 py-4 font-medium text-ink">{b.items[0]?.garmentName ?? "—"}</td>
-                          <td className="px-6 py-4 text-stone-600">
-                            {formatDate(b.rentalStartDate)} - {formatDate(b.rentalEndDate)}
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={statusBadgeClass(st.color)}>
-                              {st.label}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-stone-600">{formatVND(b.rentalTotal + b.depositTotal)}</td>
-                          <td className="px-6 py-4">
-                            {b.status === "completed" ? (
-                              refund === undefined ? (
-                                <span className="text-xs text-stone-400">Đang tải...</span>
-                              ) : refund ? (
-                                refund.status === "refunded" || refund.status === "partially_refunded" ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-jade/10 px-3 py-1 text-xs font-semibold text-jade">
-                                    <span className="material-symbols-outlined text-[14px]">check_circle</span>
-                                    Đã hoàn {formatVND(refund.amount)}
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-3 py-1 text-xs font-semibold text-yellow-700">
-                                    <span className="material-symbols-outlined text-[14px]">schedule</span>
-                                    Đang xử lý {formatVND(refund.amount)}
-                                  </span>
-                                )
-                              ) : (
-                                <span className="text-xs text-stone-400">—</span>
-                              )
-                            ) : (
-                              <span className="text-xs text-stone-400">—</span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="flex gap-1.5">
-                              {(b.status === "completed" || b.status === "returned") && (
-                                <button
-                                  type="button"
-                                  onClick={() => setReviewingItem({
-                                    bookingId: b.id,
-                                    garmentId: b.items[0]?.garmentId ?? "",
-                                    garmentName: b.items[0]?.garmentName ?? "Trang phục",
-                                  })}
-                                  className="rounded-lg bg-yellow-500 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-yellow-600 disabled:opacity-40"
-                                >
-                                  Đánh giá
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                disabled={sendingBookingId === b.id}
-                                onClick={() => void handleSendBookingCard(b.id, "booking_support")}
-                                className="rounded-lg bg-jade px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-forest disabled:opacity-40"
-                              >
-                                {sendingBookingId === b.id ? "..." : "Hỗ trợ"}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={sendingBookingId === b.id}
-                                onClick={() => void handleSendBookingCard(b.id, "complaint")}
-                                className="rounded-lg bg-oxblood px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-red-950 disabled:opacity-40"
-                              >
-                                {sendingBookingId === b.id ? "..." : "Khiếu nại"}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                {/* Bảng — chỉ hiện từ md trở lên, có scroll ngang phòng khi hẹp */}
+                <div className="hidden overflow-x-auto md:block">
+                  <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+                    <thead>
+                      <tr className="bg-parchment text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                        <th className="px-6 py-4">Trang phục</th>
+                        <th className="whitespace-nowrap px-6 py-4">Thời gian</th>
+                        <th className="px-6 py-4">Trạng thái</th>
+                        <th className="whitespace-nowrap px-6 py-4">Tổng</th>
+                        <th className="px-6 py-4">Hoàn cọc</th>
+                        <th className="px-6 py-4"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loading ? (
+                        Array.from({ length: 3 }).map((_, i) => (
+                          <tr key={`skeleton-${i}`} className="border-t border-sand">
+                            <td className="px-6 py-4"><div className="h-4 w-32 animate-pulse rounded bg-stone-200" /></td>
+                            <td className="px-6 py-4"><div className="h-4 w-40 animate-pulse rounded bg-stone-200" /></td>
+                            <td className="px-6 py-4"><div className="h-6 w-24 animate-pulse rounded-full bg-stone-200" /></td>
+                            <td className="px-6 py-4"><div className="h-4 w-20 animate-pulse rounded bg-stone-200" /></td>
+                            <td className="px-6 py-4"><div className="h-6 w-28 animate-pulse rounded-full bg-stone-200" /></td>
+                            <td className="px-6 py-4"><div className="h-6 w-16 animate-pulse rounded bg-stone-200" /></td>
+                          </tr>
+                        ))
+                      ) : pagedHistory.map((b) => {
+                        const st = statusOf(b.status);
+                        return (
+                          <tr key={b.id} className="border-t border-sand align-top transition hover:bg-mist">
+                            <td className="max-w-[220px] px-6 py-4 font-medium text-ink">
+                              <span className="block truncate" title={b.items[0]?.garmentName ?? "—"}>{b.items[0]?.garmentName ?? "—"}</span>
+                            </td>
+                            <td className="whitespace-nowrap px-6 py-4 text-stone-600">
+                              {formatDate(b.rentalStartDate)} - {formatDate(b.rentalEndDate)}
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className={statusBadgeClass(st.color)}>
+                                {st.label}
+                              </span>
+                            </td>
+                            <td className="whitespace-nowrap px-6 py-4 text-stone-600">{formatVND(b.rentalTotal + b.depositTotal)}</td>
+                            <td className="px-6 py-4">{renderRefundStatus(b)}</td>
+                            <td className="px-6 py-4">{renderActions(b)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Thẻ — hiện dưới md, tránh vỡ bảng trên mobile */}
+                <div className="divide-y divide-sand md:hidden">
+                  {loading ? (
+                    Array.from({ length: 3 }).map((_, i) => (
+                      <div key={`skeleton-card-${i}`} className="space-y-3 p-5">
+                        <div className="h-5 w-40 animate-pulse rounded bg-stone-200" />
+                        <div className="h-4 w-32 animate-pulse rounded bg-stone-200" />
+                        <div className="h-6 w-24 animate-pulse rounded-full bg-stone-200" />
+                      </div>
+                    ))
+                  ) : pagedHistory.map((b) => {
+                    const st = statusOf(b.status);
+                    return (
+                      <div key={b.id} className="space-y-3 p-5">
+                        <div className="flex items-start justify-between gap-3">
+                          <h3 className="min-w-0 flex-1 truncate font-medium text-ink" title={b.items[0]?.garmentName ?? "—"}>{b.items[0]?.garmentName ?? "—"}</h3>
+                          <span className={`shrink-0 ${statusBadgeClass(st.color)}`}>{st.label}</span>
+                        </div>
+                        <dl className="grid grid-cols-2 gap-y-1.5 text-sm">
+                          <dt className="text-stone-400">Thời gian</dt>
+                          <dd className="text-right text-stone-600">{formatDate(b.rentalStartDate)} - {formatDate(b.rentalEndDate)}</dd>
+                          <dt className="text-stone-400">Tổng</dt>
+                          <dd className="text-right text-stone-600">{formatVND(b.rentalTotal + b.depositTotal)}</dd>
+                          <dt className="text-stone-400">Hoàn cọc</dt>
+                          <dd className="flex justify-end">{renderRefundStatus(b)}</dd>
+                        </dl>
+                        {renderActions(b)}
+                      </div>
+                    );
+                  })}
+                </div>
 
                 {/* Phân trang */}
                 {!loading && totalHistoryPages > 1 && (
@@ -428,6 +501,34 @@ export default function CustomerDashboardPage() {
             // Optional: Show a success toast or indicator here
           }}
         />
+      )}
+
+      {/* Toast phản hồi cho hỗ trợ / khiếu nại */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2">
+          <div
+            role="status"
+            className={
+              "flex items-start gap-3 rounded-xl border px-4 py-3 shadow-lg " +
+              (toast.type === "success"
+                ? "border-jade/30 bg-white text-forest"
+                : "border-red-200 bg-white text-red-700")
+            }
+          >
+            <span className="material-symbols-outlined text-xl">
+              {toast.type === "success" ? "check_circle" : "error"}
+            </span>
+            <p className="flex-1 text-sm font-medium">{toast.message}</p>
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              className="text-stone-400 transition hover:text-stone-600"
+              aria-label="Đóng thông báo"
+            >
+              <span className="material-symbols-outlined text-[18px]">close</span>
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

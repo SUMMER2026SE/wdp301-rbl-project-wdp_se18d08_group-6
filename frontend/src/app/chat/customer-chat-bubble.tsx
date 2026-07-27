@@ -90,6 +90,13 @@ export function CustomerChatBubble({
     window.localStorage.setItem(CHAT_BUBBLE_OPEN_KEY, isOpen ? "true" : "false");
   }, [isOpen]);
 
+  // Cho phép các màn khác (vd dashboard khách) ra hiệu mở khung chat.
+  useEffect(() => {
+    const openChat = () => setIsOpen(true);
+    window.addEventListener("chat:open", openChat);
+    return () => window.removeEventListener("chat:open", openChat);
+  }, []);
+
   useEffect(() => {
     if (messagesEndRef.current?.scrollIntoView) {
       messagesEndRef.current.scrollIntoView({ block: "end", behavior: "smooth" });
