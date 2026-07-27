@@ -155,8 +155,11 @@ export default function CustomerDashboardPage() {
     }
   }
 
-  const activeBooking = bookings.find((b) => ACTIVE_BOOKING_STATUSES.has(b.status));
-  const history = bookings.filter((b) => !ACTIVE_BOOKING_STATUSES.has(b.status));
+  const sortedBookings = [...bookings].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+  const activeBooking = sortedBookings.find((b) => ACTIVE_BOOKING_STATUSES.has(b.status));
+  const history = sortedBookings.filter((b) => !ACTIVE_BOOKING_STATUSES.has(b.status));
 
   // Phân trang lịch sử thuê
   const totalHistoryPages = Math.max(1, Math.ceil(history.length / HISTORY_PAGE_SIZE));
@@ -189,7 +192,7 @@ export default function CustomerDashboardPage() {
 
   function renderActions(b: BookingResponse) {
     return (
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-nowrap items-center gap-1.5">
         {(b.status === "completed" || b.status === "returned") && (
           <button
             type="button"
@@ -198,7 +201,7 @@ export default function CustomerDashboardPage() {
               garmentId: b.items[0]?.garmentId ?? "",
               garmentName: b.items[0]?.garmentName ?? "Trang phục",
             })}
-            className="rounded-lg bg-yellow-500 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-yellow-600 disabled:opacity-40"
+            className="shrink-0 whitespace-nowrap rounded-lg bg-yellow-500 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-yellow-600 disabled:opacity-40"
           >
             Đánh giá
           </button>
@@ -207,7 +210,7 @@ export default function CustomerDashboardPage() {
           type="button"
           disabled={sendingBookingId === b.id}
           onClick={() => void handleSendBookingCard(b.id, "booking_support")}
-          className="rounded-lg bg-jade px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-forest disabled:opacity-40"
+          className="shrink-0 whitespace-nowrap rounded-lg bg-jade px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-forest disabled:opacity-40"
         >
           {sendingBookingId === b.id ? "..." : "Hỗ trợ"}
         </button>
@@ -215,7 +218,7 @@ export default function CustomerDashboardPage() {
           type="button"
           disabled={sendingBookingId === b.id}
           onClick={() => void handleSendBookingCard(b.id, "complaint")}
-          className="rounded-lg bg-oxblood px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-red-950 disabled:opacity-40"
+          className="shrink-0 whitespace-nowrap rounded-lg bg-oxblood px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-red-950 disabled:opacity-40"
         >
           {sendingBookingId === b.id ? "..." : "Khiếu nại"}
         </button>
@@ -381,8 +384,22 @@ export default function CustomerDashboardPage() {
                         const st = statusOf(b.status);
                         return (
                           <tr key={b.id} className="border-t border-sand align-top transition hover:bg-mist">
-                            <td className="max-w-[220px] px-6 py-4 font-medium text-ink">
-                              <span className="block truncate" title={b.items[0]?.garmentName ?? "—"}>{b.items[0]?.garmentName ?? "—"}</span>
+                            <td className="max-w-[260px] px-6 py-4 font-medium text-ink">
+                              {b.items.length === 0 ? (
+                                <span>—</span>
+                              ) : (
+                                <ul className="space-y-1">
+                                  {b.items.map((item) => (
+                                    <li key={item.id} className="flex items-baseline gap-1.5">
+                                      <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-stone-300" />
+                                      <span className="break-words">
+                                        {item.garmentName ?? "—"}
+                                        {item.sizeLabel ? <span className="text-xs text-stone-400"> · {item.sizeLabel}</span> : null}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
                             </td>
                             <td className="whitespace-nowrap px-6 py-4 text-stone-600">
                               {formatDate(b.rentalStartDate)} - {formatDate(b.rentalEndDate)}
@@ -394,7 +411,7 @@ export default function CustomerDashboardPage() {
                             </td>
                             <td className="whitespace-nowrap px-6 py-4 text-stone-600">{formatVND(b.rentalTotal + b.depositTotal)}</td>
                             <td className="px-6 py-4">{renderRefundStatus(b)}</td>
-                            <td className="px-6 py-4">{renderActions(b)}</td>
+                            <td className="whitespace-nowrap px-6 py-4">{renderActions(b)}</td>
                           </tr>
                         );
                       })}
@@ -417,7 +434,20 @@ export default function CustomerDashboardPage() {
                     return (
                       <div key={b.id} className="space-y-3 p-5">
                         <div className="flex items-start justify-between gap-3">
-                          <h3 className="min-w-0 flex-1 truncate font-medium text-ink" title={b.items[0]?.garmentName ?? "—"}>{b.items[0]?.garmentName ?? "—"}</h3>
+                          <div className="min-w-0 flex-1">
+                            {b.items.length === 0 ? (
+                              <h3 className="font-medium text-ink">—</h3>
+                            ) : (
+                              <ul className="space-y-1 font-medium text-ink">
+                                {b.items.map((item) => (
+                                  <li key={item.id} className="break-words">
+                                    {item.garmentName ?? "—"}
+                                    {item.sizeLabel ? <span className="text-xs font-normal text-stone-400"> · {item.sizeLabel}</span> : null}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
                           <span className={`shrink-0 ${statusBadgeClass(st.color)}`}>{st.label}</span>
                         </div>
                         <dl className="grid grid-cols-2 gap-y-1.5 text-sm">
