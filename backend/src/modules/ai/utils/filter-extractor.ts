@@ -52,6 +52,7 @@ const GENERAL_STOP_WORDS = new Set([
   "giá", "tiền", "bao", "đâu", "khi", "loại", "màu", "size", "cỡ", "mẫu",
   "về", "ngừng", "nhập", "tạm", "thuê", "mướn",
   "phù", "hợp", "dành", "mặc", "đi", "dự", "tham",
+  "ngân sách", "budget",
 ]);
 
 const OCCASION_PHRASES = [
@@ -225,23 +226,21 @@ function extractBudget(text: string): { budgetMin?: number; budgetMax?: number }
     }
   }
 
-  // "giá X" — treat like "khoảng" (±20%) since it's a price statement
+  // "giá X" — treat as max (up to X), include cheaper products
   const giaMatch = lower.match(/(?:^|(?<=\s))giá\s+([\d.,]+\s*(triệu|tr|k)?)(?=\s|$|[.,;:!?])/i);
   if (giaMatch && budgetMin === undefined && budgetMax === undefined) {
     const val = normalizePriceValue(giaMatch[1]);
     if (val !== null) {
-      budgetMin = val * 0.8;
-      budgetMax = val * 1.2;
+      budgetMax = val;
     }
   }
 
-  // "X" standalone with k/tr/triệu
+  // "X" standalone with k/tr/triệu — treat as max (up to X)
   const standalonePrice = lower.match(/(?:^|(?<=\s))([\d.,]+\s*(triệu|tr|k))(?=\s|$|[.,;:!?])/i);
   if (standalonePrice && budgetMin === undefined && budgetMax === undefined) {
     const val = normalizePriceValue(standalonePrice[0]);
     if (val !== null) {
-      budgetMin = val * 0.8;
-      budgetMax = val * 1.2;
+      budgetMax = val;
     }
   }
 
@@ -281,8 +280,8 @@ function extractKeyword(text: string): string | undefined {
   }
 
   // \b doesn't work with Vietnamese → use string includes
-  for (const word of ["dưới", "trên", "khoảng", "từ", "đến", "giá"]) {
-    cleaned = cleaned.replace(new RegExp(word + "\\s+[\\d.,]+\\s*(triệu|tr|k)?", "gi"), "");
+  for (const word of ["dưới", "trên", "khoảng", "từ", "đến", "giá", "ngân sách", "budget"]) {
+    cleaned = cleaned.replace(new RegExp(word.replace(/\s+/, "\\s+") + "\\s+[\\d.,]+\\s*(triệu|tr|k)?", "gi"), "");
   }
   cleaned = cleaned.replace(/[\d.,]+\s*(triệu|tr|k)/g, "");
 

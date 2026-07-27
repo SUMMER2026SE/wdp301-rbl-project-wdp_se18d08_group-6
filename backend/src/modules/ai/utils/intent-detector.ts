@@ -3,7 +3,7 @@ import type { IntentResult } from "../interfaces/ai-response.interface";
 // \b does not work with Vietnamese characters (non-ASCII \W).
 // Use (?:^|(?<=\s)) as left-boundary and (?=\s|$|[.,;:!?]) as right-boundary.
 
-const PRODUCT_KEYWORDS = /(?:^|(?<=\s))(áo|váy|váy cưới|quần|sản phẩm|mẫu|bộ|trang phục|cổ phục|đầm|jupe|chân váy|vest|suit|size|cỡ)(?=\s|$|[.,;:!?])/i;
+const PRODUCT_KEYWORDS = /(?:^|(?<=\s))(áo|váy|váy cưới|quần|sản phẩm|mẫu|bộ|trang phục|cổ phục|đầm|jupe|chân váy|vest|suit|size|cỡ|đẹp)(?=\s|$|[.,;:!?])/i;
 const COLOR_WORDS = /(?:^|(?<=\s))(tím|đỏ|hồng|xanh|trắng|đen|vàng|nâu|kem|be|bạc|ghi|xám|cam|chàm)(?=\s|$|[.,;:!?])/i;
 const BUDGET_PATTERN = /(?:^|(?<=\s))(dưới|trên|khoảng|từ|đến|giá|tiền|budget|ngân sách)(?=\s|$|[.,;:!?])/i;
 const SIZE_PATTERN = /(?:^|(?<=\s))(size|cỡ|số)\s*[smlxl]+(?=\s|$|[.,;:!?])/i;
@@ -31,7 +31,7 @@ export function detectIntent(message: string): IntentResult {
   let searchScore = 0;
 
   if (SEARCH_QUESTION.test(text)) searchScore += 2;
-  if (PRODUCT_KEYWORDS.test(text)) searchScore += 2;
+  if (PRODUCT_KEYWORDS.test(text)) searchScore += 3;
   if (COLOR_WORDS.test(text) && CATEGORY_REFERENCE.test(text)) searchScore += 3;
   if (BUDGET_PATTERN.test(text) && PRODUCT_KEYWORDS.test(text)) searchScore += 2;
   if (SIZE_PATTERN.test(text)) searchScore += 2;

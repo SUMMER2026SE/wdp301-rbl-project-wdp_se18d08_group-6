@@ -1,6 +1,6 @@
 import { Test } from "@nestjs/testing";
 import { INestApplication } from "@nestjs/common";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { ChatGateway } from "./chat.gateway";
 import { ChatService } from "./chat.service";
 import { PrismaService } from "../../prisma/prisma.service";
