@@ -124,6 +124,14 @@ export default function ManagerDashboardPage() {
   const [successAssignId, setSuccessAssignId] = useState<string | null>(null);
   const [successAssignMsg, setSuccessAssignMsg] = useState<string | null>(null);
   const successAssignTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showToast(type: "success" | "error", message: string) {
+    setToast({ type, message });
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 4000);
+  }
 
   function showSuccessAssign(id: string, message: string) {
     setSuccessAssignId(id);
@@ -134,6 +142,7 @@ export default function ManagerDashboardPage() {
 
   useEffect(() => () => {
     if (successAssignTimerRef.current) clearTimeout(successAssignTimerRef.current);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
   }, []);
 
   // Refund approval state
@@ -725,6 +734,9 @@ export default function ManagerDashboardPage() {
             if (res.success) {
               const refresh = await getLaundryTickets();
               if (refresh.success && refresh.data) setLaundryTickets(refresh.data);
+              showToast("success", "Đã hoàn tất giặt sấy. Trang phục đã sẵn sàng cho khách hàng thuê.");
+            } else {
+              showToast("error", res.message ?? "Không thể hoàn tất giặt sấy. Vui lòng thử lại.");
             }
           }}
         />
@@ -740,6 +752,14 @@ export default function ManagerDashboardPage() {
             if (res.success) {
               const refresh = await getMaintenanceJobs();
               if (refresh.success && refresh.data) setMaintenanceJobs(refresh.data);
+              showToast(
+                "success",
+                status === "completed"
+                  ? "Đã hoàn tất bảo trì. Trang phục đã sẵn sàng cho khách hàng thuê."
+                  : "Đã ghi nhận trang phục không thể sửa chữa.",
+              );
+            } else {
+              showToast("error", res.message ?? "Không thể cập nhật bảo trì. Vui lòng thử lại.");
             }
           }}
         />
@@ -784,6 +804,34 @@ export default function ManagerDashboardPage() {
           onCancel={() => setGarmentToDeleteId(null)}
           onConfirm={() => handleDeleteGarment(garmentToDeleteId)}
         />
+      )}
+
+      {/* Toast thông báo trên màn hình */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2">
+          <div
+            role="status"
+            className={
+              "flex items-start gap-3 rounded-xl border px-4 py-3 shadow-lg " +
+              (toast.type === "success"
+                ? "border-jade/30 bg-white text-forest"
+                : "border-red-200 bg-white text-red-700")
+            }
+          >
+            <span className="material-symbols-outlined text-xl">
+              {toast.type === "success" ? "check_circle" : "error"}
+            </span>
+            <p className="flex-1 text-sm font-medium">{toast.message}</p>
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              className="text-stone-400 transition hover:text-stone-600"
+              aria-label="Đóng thông báo"
+            >
+              <span className="material-symbols-outlined text-[18px]">close</span>
+            </button>
+          </div>
+        </div>
       )}
     </ManagerPortalShell>
   );
