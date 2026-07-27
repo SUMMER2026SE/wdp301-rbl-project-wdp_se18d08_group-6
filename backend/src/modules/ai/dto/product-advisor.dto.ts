@@ -1,4 +1,17 @@
-import { IsArray, IsDateString, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
+import { Type } from "class-transformer";
+import { ArrayMaxSize, IsArray, IsDateString, IsIn, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from "class-validator";
+
+export class ChatHistoryItemDto {
+  @IsIn(["customer", "staff", "ai"])
+  role!: "customer" | "staff" | "ai";
+
+  @IsString()
+  @MaxLength(1000)
+  content!: string;
+
+  @IsString()
+  createdAt!: string;
+}
 
 export class ProductAdvisorDto {
   @IsString()
@@ -8,7 +21,10 @@ export class ProductAdvisorDto {
 
   @IsArray()
   @IsOptional()
-  history?: Array<{ role: "customer" | "staff" | "ai"; content: string; createdAt: string }>;
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => ChatHistoryItemDto)
+  history?: ChatHistoryItemDto[];
 
   @IsDateString()
   @IsOptional()
