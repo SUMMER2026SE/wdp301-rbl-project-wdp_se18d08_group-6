@@ -605,6 +605,21 @@ export async function approveRefund(
   });
 }
 
+// Huỷ một yêu cầu hoàn cọc đang chờ duyệt (vd số tiền không còn khớp do phạt đổi)
+export async function rejectRefund(refundId: string, reason?: string) {
+  return apiRequest<{ id: string; status: string }>(`/refunds/${refundId}/reject`, {
+    method: "PATCH",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+// Đơn chờ hoàn cọc nhưng phạt >= cọc → đóng đơn về hoàn tất, không tạo refund
+export async function closeBookingWithoutRefund(bookingId: string) {
+  return apiRequest<{ bookingId: string; status: string }>(`/refunds/close-without-refund/${bookingId}`, {
+    method: "POST",
+  });
+}
+
 export async function getPendingStaffRefunds() {
   return apiRequest<RefundResponse[]>("/refunds/staff/pending");
 }

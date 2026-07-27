@@ -131,6 +131,20 @@ const DEFAULT_TEMPLATES: NotificationTemplateMap = {
     channels: ["inApp"],
     enabled: true,
   },
+  "refund.approved": {
+    subject: "Đã hoàn cọc",
+    title: "Hoàn cọc thành công",
+    body: "Đơn #{{bookingCode}} — bạn đã được hoàn cọc {{amount}} qua {{refundMethodLabel}}.",
+    channels: ["inApp", "email"],
+    enabled: true,
+  },
+  "refund.closed_no_refund": {
+    subject: "Đơn thuê đã hoàn tất",
+    title: "Đơn thuê đã hoàn tất",
+    body: "Đơn #{{bookingCode}} đã hoàn tất. Do khoản phạt bằng hoặc vượt tiền cọc nên không có khoản hoàn cọc nào.",
+    channels: ["inApp"],
+    enabled: true,
+  },
   "notification.test": {
     subject: "Kiểm tra Notification Service",
     title: "Thông báo kiểm tra",

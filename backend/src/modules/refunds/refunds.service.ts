@@ -1,13 +1,17 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import { BookingStatus, PaymentStatus } from "@prisma/client";
+import { BookingStatus, PaymentStatus, Prisma } from "@prisma/client";
 import { ok } from "../../common/api-response";
 import { PrismaService } from "../../prisma/prisma.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import type { CreateRefundDto } from "./dto/create-refund.dto";
 import type { UpdateRefundStatusDto } from "./dto/update-refund.dto";
 
 @Injectable()
 export class RefundsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   async calculate(bookingId: string) {
     const booking = await this.prisma.booking.findUnique({ where: { id: bookingId } });
@@ -26,6 +30,12 @@ export class RefundsService {
     if (booking.status !== BookingStatus.refund_pending && booking.status !== BookingStatus.completed)
       throw new BadRequestException("Chỉ có thể hoàn cọc cho đơn đã kiểm tra xong.");
 
+    // Chặn hoàn cọc 2 lần: đơn đã có refund thành công thì không được tạo thêm.
+    const alreadyRefunded = booking.refunds.find(
+      (r) => r.status === PaymentStatus.refunded || r.status === PaymentStatus.partially_refunded,
+    );
+    if (alreadyRefunded) throw new BadRequestException("Đơn này đã được hoàn cọc trước đó.");
+
     const existingActive = booking.refunds.find((r) => r.status === PaymentStatus.pending || r.status === PaymentStatus.refunding);
     if (existingActive) throw new BadRequestException("Đơn này đã có yêu cầu hoàn cọc đang chờ xử lý.");
 
@@ -40,7 +50,9 @@ export class RefundsService {
     const paymentId = booking.payments[0]?.id ?? null;
     const isCash = dto.refundMethod === "cash";
 
-    const refund = await this.prisma.$transaction(async (tx) => {
+    let refund;
+    try {
+      refund = await this.prisma.$transaction(async (tx) => {
       // Mọi yêu cầu hoàn cọc (kể cả tiền mặt) đều ở trạng thái pending,
       // chờ owner/manager duyệt thì tiền mới được ghi nhận đã hoàn.
       const created = await tx.refund.create({
@@ -70,9 +82,87 @@ export class RefundsService {
           },
         },
       });
-    });
+      });
+    } catch (e) {
+      // Unique index refunds_booking_active_unique: 2 request tạo refund cùng lúc
+      // cho 1 đơn thì request đến sau bị DB từ chối.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        throw new BadRequestException("Đơn này đã có yêu cầu hoàn cọc (thao tác trùng lặp).");
+      }
+      throw e;
+    }
 
     return ok(this.serialize(refund!));
+  }
+
+  // Đơn ở bước "Chờ hoàn cọc" nhưng phạt >= cọc (vd phạt cộng thêm sau kiểm tra)
+  // → không có gì để hoàn, cho phép staff đóng đơn về "Hoàn tất" không tạo refund.
+  async closeWithoutRefund(bookingId: string, staffId: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { refunds: true },
+    });
+    if (!booking) throw new NotFoundException("Booking not found.");
+    if (booking.status !== BookingStatus.refund_pending)
+      throw new BadRequestException("Chỉ đóng được đơn đang ở trạng thái chờ hoàn cọc.");
+
+    const refundAmount = Number(booking.depositTotal) - Number(booking.penaltyTotal);
+    if (refundAmount > 0)
+      throw new BadRequestException("Đơn vẫn còn tiền cọc phải hoàn — hãy tạo yêu cầu hoàn cọc.");
+
+    const activeRefund = booking.refunds.find(
+      (r) => r.status === PaymentStatus.pending || r.status === PaymentStatus.refunding,
+    );
+    if (activeRefund) throw new BadRequestException("Đơn đang có yêu cầu hoàn cọc chờ xử lý.");
+
+    await this.prisma.$transaction([
+      this.prisma.booking.update({ where: { id: bookingId }, data: { status: BookingStatus.completed } }),
+      this.prisma.bookingStatusHistory.create({
+        data: {
+          bookingId,
+          fromStatus: BookingStatus.refund_pending,
+          toStatus: BookingStatus.completed,
+          changedBy: staffId,
+          note: "Phạt ≥ cọc — hoàn tất, không hoàn cọc",
+        },
+      }),
+    ]);
+
+    void this.notificationsService.notifyUser({
+      userId: booking.customerId,
+      templateKey: "refund.closed_no_refund",
+      data: { bookingId, bookingCode: bookingId.slice(0, 8).toUpperCase() },
+    }).catch(() => {});
+
+    return ok({ bookingId, status: BookingStatus.completed });
+  }
+
+  // Staff/manager huỷ một yêu cầu hoàn cọc còn đang chờ duyệt — dùng khi số tiền
+  // không còn khớp (phạt đổi sau khi tạo yêu cầu) hoặc yêu cầu tạo nhầm.
+  // Sau khi reject, có thể tạo lại yêu cầu hoàn cọc mới với số tiền đúng.
+  async reject(id: string, staffId: string, reason?: string) {
+    const refund = await this.prisma.refund.findUnique({ where: { id } });
+    if (!refund) throw new NotFoundException("Refund not found.");
+    if (refund.status !== PaymentStatus.pending && refund.status !== PaymentStatus.refunding)
+      throw new BadRequestException(`Không thể từ chối yêu cầu hoàn cọc ở trạng thái: ${refund.status}.`);
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.refund.update({
+        where: { id },
+        data: { status: PaymentStatus.cancelled, processed_by: staffId },
+      });
+      await tx.financialTransaction.create({
+        data: {
+          bookingId: refund.bookingId, refundId: id,
+          transactionType: "refund_rejected",
+          amount: 0,
+          note: reason ?? "Đã từ chối yêu cầu hoàn cọc.",
+        },
+      });
+      return result;
+    });
+
+    return ok({ id: updated.id, status: updated.status });
   }
 
   async approve(id: string, dto: UpdateRefundStatusDto, managerId: string) {
@@ -82,6 +172,39 @@ export class RefundsService {
       throw new BadRequestException(`Không thể duyệt hoàn cọc ở trạng thái: ${refund.status}.`);
     const isBankTransfer = refund.refund_method === "bank_transfer";
     if (isBankTransfer && !dto.proofImageUrl) throw new BadRequestException("Cần cung cấp ảnh bill chuyển khoản.");
+
+    // Số tiền hoàn được chốt lúc TẠO yêu cầu, nhưng phạt của đơn có thể đổi
+    // sau đó (vd phát hiện hư hỏng thêm). Tính lại từ dữ liệu hiện tại của đơn
+    // trước khi duyệt, không tin mù số tiền đã đóng băng.
+    const liveDeposit = Number(refund.booking.depositTotal);
+    const livePenalty = Number(refund.booking.penaltyTotal);
+    const liveRefundAmount = Math.max(0, liveDeposit - livePenalty);
+    const frozenAmount = Number(refund.amount);
+
+    if (liveRefundAmount <= 0) {
+      // Phạt đã tăng lên >= cọc sau khi yêu cầu được tạo → không còn gì để hoàn.
+      // Tự huỷ yêu cầu này để không kẹt hàng đợi, staff dùng "Đóng đơn — không hoàn cọc".
+      await this.prisma.$transaction(async (tx) => {
+        await tx.refund.update({ where: { id }, data: { status: PaymentStatus.cancelled, processed_by: managerId } });
+        await tx.financialTransaction.create({
+          data: {
+            bookingId: refund.bookingId, refundId: id, transactionType: "refund_rejected", amount: 0,
+            note: "Tự động huỷ: phạt hiện tại đã bằng hoặc vượt tiền cọc, không còn gì để hoàn.",
+          },
+        });
+      });
+      throw new BadRequestException(
+        "Tiền phạt của đơn đã tăng lên bằng hoặc vượt tiền cọc kể từ lúc tạo yêu cầu này — yêu cầu đã bị huỷ tự động. " +
+        "Vào màn Hoàn cọc của nhân viên và dùng nút \"Đóng đơn — không hoàn cọc\" để hoàn tất đơn.",
+      );
+    }
+
+    if (Math.round(liveRefundAmount) !== Math.round(frozenAmount)) {
+      throw new BadRequestException(
+        `Số tiền hoàn đã thay đổi kể từ lúc tạo yêu cầu (lúc tạo: ${frozenAmount.toLocaleString("vi-VN")}đ, hiện tại: ${liveRefundAmount.toLocaleString("vi-VN")}đ) ` +
+        `do tiền phạt của đơn đã cập nhật. Vui lòng từ chối yêu cầu này rồi tạo lại yêu cầu hoàn cọc mới để lấy đúng số tiền.`,
+      );
+    }
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.refund.update({
@@ -120,6 +243,18 @@ export class RefundsService {
         },
       });
     });
+
+    // Báo cho khách biết cọc đã được hoàn — không chặn response nếu gửi lỗi.
+    void this.notificationsService.notifyUser({
+      userId: refund.booking.customerId,
+      templateKey: "refund.approved",
+      data: {
+        bookingId: refund.bookingId,
+        bookingCode: refund.bookingId.slice(0, 8).toUpperCase(),
+        amount: Number(refund.amount).toLocaleString("vi-VN") + "đ",
+        refundMethodLabel: isBankTransfer ? "chuyển khoản" : "tiền mặt",
+      },
+    }).catch(() => {});
 
     return ok(this.serialize(updated!));
   }

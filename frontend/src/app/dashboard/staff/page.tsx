@@ -11,6 +11,7 @@ import {
   advanceBookingStatus,
   markBookingPaid,
   createRefund,
+  closeBookingWithoutRefund,
   type StaffBookingResponse,
   type DeliveryPoint,
 } from "@/lib/api";
@@ -274,6 +275,19 @@ export default function StaffDashboardPage() {
       );
     } else {
       setErrorMsg(res.message ?? "Không thể hoàn cọc.");
+    }
+  }
+
+  // Đơn chờ hoàn cọc nhưng phạt >= cọc → không có gì để hoàn, đóng đơn về hoàn tất
+  async function handleCloseWithoutRefund(bookingId: string) {
+    setActioningId(bookingId);
+    setErrorMsg(null);
+    const res = await closeBookingWithoutRefund(bookingId);
+    setActioningId(null);
+    if (res.success && res.data) {
+      setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, status: res.data!.status } : b)));
+    } else {
+      setErrorMsg(res.message ?? "Không thể đóng đơn.");
     }
   }
 
@@ -562,6 +576,21 @@ export default function StaffDashboardPage() {
                             ? "Đã gửi yêu cầu hoàn cọc — chờ Quản lý duyệt chuyển khoản"
                             : "Đã gửi yêu cầu hoàn cọc tiền mặt — chờ Quản lý duyệt"}
                         </div>
+                      ) : booking.depositTotal - (booking.penaltyTotal ?? 0) <= 0 ? (
+                        booking.status === "refund_pending" ? (
+                          <button
+                            type="button"
+                            disabled={isActioning}
+                            onClick={() => handleCloseWithoutRefund(booking.id)}
+                            className="rounded-lg bg-stone-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:opacity-50"
+                          >
+                            {isActioning ? "Đang xử lý..." : "Hoàn tất — phạt ≥ cọc, không hoàn"}
+                          </button>
+                        ) : (
+                          <span className="rounded-lg bg-stone-100 px-4 py-2 text-sm text-stone-500">
+                            Không hoàn cọc (phạt ≥ cọc)
+                          </span>
+                        )
                       ) : (
                         <>
                           {booking.pickupMethod === "delivery" ? (

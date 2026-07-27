@@ -12,6 +12,7 @@ import {
   assignAssetToBookingItem,
   getPendingManagerRefunds,
   approveRefund,
+  rejectRefund,
   type RefundResponse,
 getGarments,
   getGarmentById,
@@ -427,6 +428,21 @@ export default function ManagerDashboardPage() {
       if (refreshed.success && refreshed.data) setCompletedRefundBookings(refreshed.data);
     } else {
       setErrorMsg(res.message ?? "Không thể duyệt hoàn cọc.");
+      // Số tiền lệch có thể khiến backend tự huỷ yêu cầu này — đồng bộ lại danh sách.
+      const refreshedPending = await getPendingManagerRefunds();
+      if (refreshedPending.success && refreshedPending.data) setPendingRefunds(refreshedPending.data);
+    }
+  }
+
+  async function handleRejectRefund(refundId: string, reason: string) {
+    setApprovingId(refundId);
+    setErrorMsg(null);
+    const res = await rejectRefund(refundId, reason || undefined);
+    setApprovingId(null);
+    if (res.success) {
+      setPendingRefunds((prev) => prev.filter((r) => r.id !== refundId));
+    } else {
+      setErrorMsg(res.message ?? "Không thể từ chối yêu cầu hoàn cọc.");
     }
   }
 
@@ -708,6 +724,7 @@ export default function ManagerDashboardPage() {
           pendingRefunds={pendingRefunds}
           loadingRefunds={loadingRefunds}
           handleApproveRefund={handleApproveRefund}
+          handleRejectRefund={handleRejectRefund}
           approvingId={approvingId}
         />
       ) : (
@@ -2385,15 +2402,18 @@ function RefundCard({
   refund,
   approvingId,
   handleApproveRefund,
+  handleRejectRefund,
 }: {
   refund: any;
   approvingId: string | null;
   handleApproveRefund: (id: string, proofImageUrl: string, approveNote: string) => void;
+  handleRejectRefund: (id: string, reason: string) => void;
 }) {
   const [proofImageUrl, setProofImageUrl] = useState("");
   const [approveNote, setApproveNote] = useState("");
   const [uploadingProof, setUploadingProof] = useState(false);
   const [proofError, setProofError] = useState<string | null>(null);
+  const [showRejectConfirm, setShowRejectConfirm] = useState(false);
   const isBankTransfer = refund.refundMethod === "bank_transfer";
 
   function formatVND(amount: number) {
@@ -2551,6 +2571,35 @@ function RefundCard({
               Nhắn khách xin thông tin chuyển khoản
             </a>
           )}
+          {showRejectConfirm ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-stone-500">Từ chối yêu cầu này?</span>
+              <button
+                type="button"
+                disabled={approvingId === refund.id}
+                onClick={() => { setShowRejectConfirm(false); handleRejectRefund(refund.id, approveNote); }}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
+              >
+                Xác nhận từ chối
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowRejectConfirm(false)}
+                className="rounded-lg border border-sand px-4 py-2 text-sm font-semibold text-stone-600 transition hover:bg-stone-50"
+              >
+                Huỷ
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={approvingId === refund.id}
+              onClick={() => setShowRejectConfirm(true)}
+              className="rounded-lg border border-red-200 px-5 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+            >
+              Từ chối
+            </button>
+          )}
           <button
             type="button"
             disabled={approvingId === refund.id || uploadingProof || (isBankTransfer && !proofImageUrl.trim())}
@@ -2569,11 +2618,13 @@ function RefundsTab({
   pendingRefunds,
   loadingRefunds,
   handleApproveRefund,
+  handleRejectRefund,
   approvingId,
 }: {
   pendingRefunds: any[];
   loadingRefunds: boolean;
   handleApproveRefund: (id: string, proofImageUrl: string, approveNote: string) => void;
+  handleRejectRefund: (id: string, reason: string) => void;
   approvingId: string | null;
 }) {
   const [search, setSearch] = useState("");
@@ -2622,6 +2673,7 @@ function RefundsTab({
             refund={refund}
             approvingId={approvingId}
             handleApproveRefund={handleApproveRefund}
+            handleRejectRefund={handleRejectRefund}
           />
         ))
       )}
