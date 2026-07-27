@@ -360,18 +360,26 @@ export default function StaffDashboardPage() {
     : 0;
 
   const pendingRefundCount = tab === "pending" ? bookings.filter((b) => b.status === "pending_confirmation").length : 0;
+  // Đảm bảo đơn mới nhất luôn ở đầu theo ngày tạo.
+  // Tab refunds giữ nguyên thứ tự backend (đã sắp theo lần cập nhật hoàn cọc).
+  const sortedBookings =
+    tab === "refunds"
+      ? bookings
+      : [...bookings].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        );
 
   // Tìm kiếm theo mã đơn / tên khách / SĐT / tên trang phục
   const searchQuery = search.trim().toLowerCase().replace(/^#/, "");
   const filteredBookings = searchQuery
-    ? bookings.filter(
+    ? sortedBookings.filter(
         (b) =>
           b.id.toLowerCase().includes(searchQuery) ||
           (b.customerName ?? "").toLowerCase().includes(searchQuery) ||
           (b.customerPhone ?? "").includes(searchQuery) ||
           b.items.some((item) => (item.garmentName ?? "").toLowerCase().includes(searchQuery)),
       )
-    : bookings;
+    : sortedBookings;
 
   // Phân trang danh sách đơn
   const totalPages = Math.max(1, Math.ceil(filteredBookings.length / STAFF_PAGE_SIZE));

@@ -482,7 +482,7 @@ export class BookingsService {
 
   async findAllForStaff() {
     const bookings = await this.prisma.booking.findMany({
-      where: { status: { notIn: [BookingStatus.draft, BookingStatus.cancelled, BookingStatus.rejected, BookingStatus.completed] } },
+      where: { status: { notIn: [BookingStatus.draft, BookingStatus.cancelled, BookingStatus.rejected] } },
       orderBy: { createdAt: "desc" },
       take: 100,
       include: {

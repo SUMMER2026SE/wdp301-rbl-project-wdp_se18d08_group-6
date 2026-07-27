@@ -619,7 +619,7 @@ export default function ManagerDashboardPage() {
   const rentedItemCount = bookings
     .filter((b) => b.status === "renting")
     .reduce((sum, b) => sum + b.items.filter((i) => i.garmentAssetId).length, 0);
-  const totalAvailable = assets.filter((a) => a.status === "available").length;
+  const totalAvailable = allAssets.filter((a) => a.status === "available").length;
   const utilizationDenominator = rentedItemCount + totalAvailable;
   const utilizationPct = utilizationDenominator > 0
     ? Math.round((rentedItemCount / utilizationDenominator) * 100)
