@@ -10,6 +10,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'No file uploaded' }, { status: 400 });
     }
 
+    const bucketFromData = data.get('bucket');
+    const bucketName = (typeof bucketFromData === 'string' && bucketFromData) ? bucketFromData : (process.env.SUPABASE_ASSETS_BUCKET || 'products');
+
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
@@ -18,8 +21,6 @@ export async function POST(req: NextRequest) {
     const sanitizedName = originalName.replace(/[^a-zA-Z0-9.-]/g, '_');
     const filename = `${Date.now()}-${sanitizedName}`;
     
-    const bucketName = process.env.SUPABASE_ASSETS_BUCKET || 'products';
-
     const { error: uploadError } = await supabase.storage
       .from(bucketName)
       .upload(filename, buffer, {

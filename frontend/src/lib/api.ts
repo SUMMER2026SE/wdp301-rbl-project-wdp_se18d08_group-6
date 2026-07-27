@@ -1139,3 +1139,87 @@ export async function sendTestNotification(payload: {
     },
   );
 }
+
+// ---------- Reviews ----------
+
+export type ReviewResponse = {
+  id: string;
+  customerId: string;
+  garmentId: string;
+  bookingId: string;
+  rating: number;
+  comment: string | null;
+  status: "public" | "hidden";
+  images: string[];
+  video: string | null;
+  staffReply: string | null;
+  staffReplyAt: string | null;
+  staffRepliedBy: string | null;
+  isReported: boolean;
+  reportedReason: string | null;
+  reportedAt: string | null;
+  reportedBy: string | null;
+  editCount: number;
+  isLocked: boolean;
+  createdAt: string;
+  updatedAt: string;
+  garment?: {
+    id: string;
+    name: string;
+    images: { imageUrl: string }[];
+  };
+};
+
+export async function createReview(payload: { garmentId: string; bookingId?: string; rating: number; comment?: string; images?: string[]; video?: string; }) {
+  return apiRequest<ReviewResponse>("/reviews", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getGarmentReviews(garmentId: string) {
+  return apiRequest<{ reviews: ReviewResponse[]; averageRating: number; total: number }>(`/reviews/garment/${garmentId}`);
+}
+
+export async function getMyReviews() {
+  return apiRequest<ReviewResponse[]>("/reviews/me");
+}
+
+export type StaffReviewResponse = ReviewResponse & {
+  garment?: { id: string; name: string } | null;
+  customer?: { id: string; profile?: { fullName: string | null } | null } | null;
+  repliedByUser?: { id: string; profile?: { fullName: string | null } | null } | null;
+  reportedByUser?: { id: string; profile?: { fullName: string | null } | null } | null;
+};
+
+export async function getStaffReviews() {
+  return apiRequest<StaffReviewResponse[]>("/reviews/staff/all");
+}
+
+export async function replyToReview(reviewId: string, reply: string) {
+  return apiRequest<StaffReviewResponse>(`/reviews/${reviewId}/reply`, {
+    method: "POST",
+    body: JSON.stringify({ reply }),
+  });
+}
+
+export async function reportReview(reviewId: string, reason: string) {
+  return apiRequest<StaffReviewResponse>(`/reviews/${reviewId}/report`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function hideReview(reviewId: string, reason?: string) {
+  return apiRequest<StaffReviewResponse>(`/reviews/${reviewId}/hide`, {
+    method: "PATCH",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function updateReview(id: string, payload: { rating?: number; comment?: string; images?: string[]; video?: string; }) {
+  return apiRequest<ReviewResponse>(`/reviews/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}

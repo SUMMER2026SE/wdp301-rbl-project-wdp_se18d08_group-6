@@ -15,6 +15,7 @@ import { RefundsModule } from "./modules/refunds/refunds.module";
 import { UsersModule } from "./modules/users/users.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { ChatModule } from "./modules/chat/chat.module";
+import { ReviewsModule } from "./modules/reviews/reviews.module";
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { ChatModule } from "./modules/chat/chat.module";
     RefundsModule,
     AiModule,
     ChatModule,
+    ReviewsModule,
   ],
 })
 export class AppModule {}
