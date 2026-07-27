@@ -37,6 +37,14 @@ export class ChatController {
     return ok(await this.chatService.getOrCreateConversationForCustomer(user.id));
   }
 
+  @Get("conversations/with-customer/:customerId")
+  async getConversationWithCustomer(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("customerId", ParseUUIDPipe) customerId: string,
+  ) {
+    return ok(await this.chatService.getOrCreateConversationWithCustomer(user, customerId));
+  }
+
   @Get("conversations/:id/messages")
   async getMessages(
     @CurrentUser() user: AuthenticatedUser,

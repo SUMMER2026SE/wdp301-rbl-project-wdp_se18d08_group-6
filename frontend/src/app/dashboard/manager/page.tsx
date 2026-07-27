@@ -409,12 +409,14 @@ export default function ManagerDashboardPage() {
   }, [tab]);
 
   async function handleApproveRefund(refundId: string, proofImageUrl: string, approveNote: string) {
-    if (!proofImageUrl.trim()) return;
+    const refund = pendingRefunds.find((r) => r.id === refundId);
+    // Bill chuyển khoản chỉ bắt buộc với refund bank_transfer; tiền mặt duyệt trực tiếp
+    if (refund?.refundMethod === "bank_transfer" && !proofImageUrl.trim()) return;
     setApprovingId(refundId);
     setErrorMsg(null);
     const res = await approveRefund(refundId, {
       status: "refunded",
-      proofImageUrl: proofImageUrl.trim(),
+      proofImageUrl: proofImageUrl.trim() || undefined,
       note: approveNote || undefined,
     });
     setApprovingId(null);
@@ -2390,6 +2392,9 @@ function RefundCard({
 }) {
   const [proofImageUrl, setProofImageUrl] = useState("");
   const [approveNote, setApproveNote] = useState("");
+  const [uploadingProof, setUploadingProof] = useState(false);
+  const [proofError, setProofError] = useState<string | null>(null);
+  const isBankTransfer = refund.refundMethod === "bank_transfer";
 
   function formatVND(amount: number) {
     return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
@@ -2402,6 +2407,9 @@ function RefundCard({
           <span className="font-semibold text-ink">#{refund.bookingId.slice(0, 8).toUpperCase()}</span>
           <span className="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] bg-yellow-100 text-yellow-700">
             Chờ duyệt
+          </span>
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${isBankTransfer ? "bg-lotus/10 text-lotus" : "bg-jade/10 text-jade"}`}>
+            {isBankTransfer ? "Chuyển khoản" : "Tiền mặt"}
           </span>
         </div>
         <span className="text-xs text-stone-400">
@@ -2426,38 +2434,102 @@ function RefundCard({
         </div>
       </div>
 
-      <div className="border-t border-sand bg-mist px-6 py-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500 mb-3">
-          Thông tin chuyển khoản
-        </p>
-        <div className="grid gap-3 sm:grid-cols-3 text-sm">
-          <div>
-            <span className="text-stone-500">Ngân hàng: </span>
-            <span className="font-medium text-ink">{refund.bankName ?? "—"}</span>
-          </div>
-          <div>
-            <span className="text-stone-500">Số TK: </span>
-            <span className="font-medium text-ink">{refund.bankAccountNumber ?? "—"}</span>
-          </div>
-          <div>
-            <span className="text-stone-500">Chủ TK: </span>
-            <span className="font-medium text-ink">{refund.bankAccountHolder ?? "—"}</span>
+      {(refund.booking.items?.length ?? 0) > 0 && (
+        <div className="border-t border-sand px-6 py-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500 mb-3">Trang phục</p>
+          <div className="flex flex-wrap gap-4">
+            {refund.booking.items.map((item: any) => (
+              <div key={item.id} className="flex items-center gap-3 rounded-lg border border-sand bg-mist/50 p-2 pr-4">
+                {item.imageUrl ? (
+                  <img src={item.imageUrl} alt={item.garmentName ?? "Trang phục"} className="h-14 w-14 rounded-md object-cover" />
+                ) : (
+                  <div className="flex h-14 w-14 items-center justify-center rounded-md bg-stone-100 text-stone-400">
+                    <span className="material-symbols-outlined">checkroom</span>
+                  </div>
+                )}
+                <div>
+                  <p className="text-sm font-medium text-ink">{item.garmentName ?? "—"}</p>
+                  {item.sizeLabel && <p className="text-xs text-stone-500">Size: {item.sizeLabel}</p>}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-      </div>
+      )}
+
+      {isBankTransfer ? (
+        <div className="border-t border-sand bg-mist px-6 py-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500 mb-3">
+            Thông tin chuyển khoản
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3 text-sm">
+            <div>
+              <span className="text-stone-500">Ngân hàng: </span>
+              <span className="font-medium text-ink">{refund.bankName ?? "—"}</span>
+            </div>
+            <div>
+              <span className="text-stone-500">Số TK: </span>
+              <span className="font-medium text-ink">{refund.bankAccountNumber ?? "—"}</span>
+            </div>
+            <div>
+              <span className="text-stone-500">Chủ TK: </span>
+              <span className="font-medium text-ink">{refund.bankAccountHolder ?? "—"}</span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="border-t border-sand bg-mist px-6 py-4">
+          <p className="text-sm text-stone-500">
+            Nhân viên hoàn cọc <strong className="text-ink">tiền mặt tại quầy</strong> — duyệt để xác nhận đã chi tiền và hoàn tất đơn.
+          </p>
+        </div>
+      )}
 
       <div className="border-t border-sand px-6 py-4 space-y-4">
-        <div>
-          <label className="mb-2 block text-sm font-semibold text-stone-500">
-            Ảnh bill chuyển khoản (URL)
-          </label>
-          <input
-            className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique"
-            placeholder="Dán URL ảnh chụp giao dịch chuyển khoản..."
-            value={proofImageUrl}
-            onChange={(e) => setProofImageUrl(e.target.value)}
-          />
-        </div>
+        {isBankTransfer && (
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-stone-500">
+              Ảnh bill chuyển khoản
+            </label>
+            <div className="flex flex-wrap items-center gap-4">
+              <label className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border border-sand px-4 py-2.5 text-sm font-semibold text-stone-600 transition hover:border-antique hover:text-antique ${uploadingProof ? "pointer-events-none opacity-50" : ""}`}>
+                <span className="material-symbols-outlined text-[18px]">upload</span>
+                {uploadingProof ? "Đang tải ảnh..." : proofImageUrl ? "Chọn ảnh khác" : "Tải ảnh bill từ máy"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploadingProof}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!file) return;
+                    setProofError(null);
+                    setUploadingProof(true);
+                    try {
+                      const formData = new FormData();
+                      formData.append("file", file);
+                      const res = await fetch("/api/upload", { method: "POST", body: formData });
+                      const data = await res.json();
+                      if (data.success && data.url) setProofImageUrl(data.url);
+                      else setProofError(data.message ?? "Tải ảnh thất bại. Vui lòng thử lại.");
+                    } catch {
+                      setProofError("Tải ảnh thất bại. Vui lòng thử lại.");
+                    } finally {
+                      setUploadingProof(false);
+                    }
+                  }}
+                />
+              </label>
+              {proofImageUrl && (
+                <a href={proofImageUrl} target="_blank" rel="noreferrer" className="block">
+                  <img src={proofImageUrl} alt="Bill chuyển khoản" className="h-20 rounded-lg border border-sand object-cover" />
+                </a>
+              )}
+            </div>
+            {proofError && <p className="mt-2 text-sm text-red-600">{proofError}</p>}
+          </div>
+        )}
         <div>
           <label className="mb-2 block text-sm font-semibold text-stone-500">
             Ghi chú (tuỳ chọn)
@@ -2470,16 +2542,18 @@ function RefundCard({
           />
         </div>
         <div className="flex flex-wrap justify-end gap-2">
-          <a
-            href="/chat"
-            className="inline-flex items-center gap-2 rounded-lg border border-sand px-5 py-3 text-sm font-semibold text-stone-600 transition hover:border-lotus hover:text-lotus"
-          >
-            <span className="material-symbols-outlined text-[18px]">chat</span>
-            Nhắn khách xin thông tin chuyển khoản
-          </a>
+          {isBankTransfer && (
+            <a
+              href={refund.booking.customerId ? `/chat?customer=${refund.booking.customerId}&booking=${refund.bookingId}` : "/chat"}
+              className="inline-flex items-center gap-2 rounded-lg border border-sand px-5 py-3 text-sm font-semibold text-stone-600 transition hover:border-lotus hover:text-lotus"
+            >
+              <span className="material-symbols-outlined text-[18px]">chat</span>
+              Nhắn khách xin thông tin chuyển khoản
+            </a>
+          )}
           <button
             type="button"
-            disabled={approvingId === refund.id || !proofImageUrl.trim()}
+            disabled={approvingId === refund.id || uploadingProof || (isBankTransfer && !proofImageUrl.trim())}
             onClick={() => handleApproveRefund(refund.id, proofImageUrl, approveNote)}
             className="rounded-lg bg-jade px-6 py-3 text-sm font-semibold text-white transition hover:bg-forest disabled:opacity-50"
           >
@@ -2502,8 +2576,34 @@ function RefundsTab({
   handleApproveRefund: (id: string, proofImageUrl: string, approveNote: string) => void;
   approvingId: string | null;
 }) {
+  const [search, setSearch] = useState("");
+  const query = search.trim().replace(/^#/, "").toLowerCase();
+  const filteredRefunds = query
+    ? pendingRefunds.filter(
+        (r) =>
+          r.bookingId.toLowerCase().includes(query) ||
+          (r.booking?.customerName ?? "").toLowerCase().includes(query),
+      )
+    : pendingRefunds;
+
   return (
     <div className="space-y-6">
+      {!loadingRefunds && pendingRefunds.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[240px] max-w-md">
+            <span className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[20px] text-stone-400">search</span>
+            <input
+              className="w-full rounded-lg border border-sand bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-antique"
+              placeholder="Tìm theo mã đơn hoặc tên khách..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <span className="text-sm text-stone-500">
+            {filteredRefunds.length}/{pendingRefunds.length} yêu cầu chờ duyệt
+          </span>
+        </div>
+      )}
       {loadingRefunds ? (
         <div className="py-20 text-center text-stone-400">Đang tải danh sách hoàn cọc...</div>
       ) : pendingRefunds.length === 0 ? (
@@ -2511,8 +2611,12 @@ function RefundsTab({
           <span className="material-symbols-outlined text-5xl text-stone-200 mb-4 block">check_circle</span>
           Không có yêu cầu hoàn cọc nào đang chờ duyệt.
         </div>
+      ) : filteredRefunds.length === 0 ? (
+        <div className="py-20 text-center text-stone-400">
+          Không tìm thấy yêu cầu hoàn cọc phù hợp với &ldquo;{search.trim()}&rdquo;.
+        </div>
       ) : (
-        pendingRefunds.map((refund) => (
+        filteredRefunds.map((refund) => (
           <RefundCard
             key={refund.id}
             refund={refund}

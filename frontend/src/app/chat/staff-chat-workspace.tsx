@@ -569,7 +569,7 @@ export function StaffChatWorkspace({
                             (() => {
                               const data = getBookingCardData(message);
                               return data?.booking ? (
-                                <BookingCard booking={data.booking} />
+                                <BookingCard booking={data.booking} viewerRole="staff" />
                               ) : (
                                 <p className="text-sm text-stone-500">Không thể hiển thị đơn hàng</p>
                               );

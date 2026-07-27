@@ -9,6 +9,8 @@ import {
   getConversationLockStatus,
   getConversationMessages,
   getMyChatConversation,
+  getConversationWithCustomer,
+  sendBookingCardMessage,
   getBookingCardData,
   getProductCardData,
   getBookingTopic,
@@ -75,15 +77,56 @@ export default function ChatPage() {
     setIsHydrated(true);
   }, []);
 
+  // Mở đúng cuộc trò chuyện với khách khi vào /chat?customer=<id>&booking=<bookingId>
+  // (vd từ nút "Nhắn khách xin thông tin chuyển khoản" ở màn duyệt hoàn cọc)
+  useEffect(() => {
+    if (!socket || !connected || !isStaff) return;
+    if (autoOpenedRef.current || hasManuallyInteractedRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const targetCustomerId = params.get("customer");
+    const targetBookingId = params.get("booking");
+    if (!targetCustomerId) return;
+
+    autoOpenedRef.current = true;
+    hasManuallyInteractedRef.current = true;
+    void (async () => {
+      const res = await getConversationWithCustomer(targetCustomerId);
+      if (!res.success || !res.data) return;
+      let conv = res.data;
+
+      // Gắn ngữ cảnh đúng đơn đang hoàn cọc: nếu cuộc trò chuyện đang mang
+      // topic/đơn khác (vd khiếu nại đơn cũ) thì gửi booking card của đơn này —
+      // backend đồng thời cập nhật topic + booking_id của cuộc trò chuyện.
+      if (targetBookingId && (conv.bookingId !== targetBookingId || conv.topic !== "booking_support")) {
+        const cardRes = await sendBookingCardMessage({
+          conversationId: conv.id,
+          bookingId: targetBookingId,
+          topic: "booking_support",
+        });
+        if (cardRes.success) {
+          conv = { ...conv, topic: "booking_support", bookingId: targetBookingId };
+        }
+      }
+
+      setConversations((prev) => {
+        const rest = prev.filter((c) => c.id !== conv.id);
+        return [conv, ...rest];
+      });
+      await joinConversation(conv.id, true, conv);
+    })();
+  }, [socket, connected, isStaff]);
+
   // Restore the first assigned staff conversation after reload and reclaim send permission.
   useEffect(() => {
     if (!socket || !connected || !isStaff || conversations.length === 0) return;
-    if (autoOpenedRef.current) return;     
+    if (autoOpenedRef.current) return;
     if (hasManuallyInteractedRef.current) return;
+    // Có ?customer= thì nhường cho effect mở đúng khách ở trên
+    if (new URLSearchParams(window.location.search).get("customer")) return;
 
     const myConv = assignedConversations[0];
     if (myConv && myConv.id !== selectedConversation?.id) {
-      autoOpenedRef.current = true; 
+      autoOpenedRef.current = true;
       void joinConversation(myConv.id, false);
     }
   }, [socket, connected, isStaff, conversations, assignedConversations, selectedConversation?.id]);
@@ -503,7 +546,7 @@ export default function ChatPage() {
     setLoadingConversations(false);
   }
 
-  async function joinConversation(conversationId: string, isManual = false) {
+  async function joinConversation(conversationId: string, isManual = false, convOverride?: ChatConversation) {
     if (!socket) return;
     currentConversationIdRef.current = conversationId;
     setLockStatus(null);
@@ -512,7 +555,7 @@ export default function ChatPage() {
 
     socket.emit("join_room", { conversationId });
     previousConversationIdRef.current = conversationId;
-    const conv = conversations.find((c) => c.id === conversationId) ?? null;
+    const conv = convOverride ?? conversations.find((c) => c.id === conversationId) ?? null;
     
     setSelectedConversation(conv);
     setStaffCanReply(false);

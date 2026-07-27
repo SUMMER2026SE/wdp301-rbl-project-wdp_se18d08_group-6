@@ -251,30 +251,27 @@ export default function StaffDashboardPage() {
       reason: "Hoàn cọc tiền mặt tại quầy",
     });
     setActioningId(null);
-    if (res.success) {
-      setBookings((prev) => prev.filter((b) => b.id !== id));
-    } else {
-      setErrorMsg(res.message ?? "Không thể hoàn cọc.");
-    }
-  }
-
-  async function handleDirectCashRefund(
-    bookingId: string,
-    customerName: string | null,
-    pickupMethod: string,
-    depositTotal: number,
-    penaltyTotal: number,
-  ) {
-    setActioningId(bookingId);
-    setErrorMsg(null);
-    const res = await createRefund({
-      bookingId,
-      refundMethod: "cash",
-      reason: "Hoàn cọc tiền mặt tại quầy",
-    });
-    setActioningId(null);
-    if (res.success) {
-      setBookings((prev) => prev.filter((b) => b.id !== bookingId));
+    if (res.success && res.data) {
+      // Tiền mặt cũng phải chờ Quản lý duyệt — giữ đơn lại, gắn refund pending
+      setBookings((prev) =>
+        prev.map((b) =>
+          b.id === id
+            ? {
+                ...b,
+                refunds: [
+                  {
+                    id: res.data!.id,
+                    amount: res.data!.amount,
+                    status: res.data!.status,
+                    refundMethod: res.data!.refundMethod,
+                    createdAt: res.data!.createdAt,
+                    updatedAt: res.data!.updatedAt,
+                  },
+                ],
+              }
+            : b,
+        ),
+      );
     } else {
       setErrorMsg(res.message ?? "Không thể hoàn cọc.");
     }
@@ -563,7 +560,7 @@ export default function StaffDashboardPage() {
                           <span className="material-symbols-outlined text-base mr-1 align-middle">schedule</span>
                           {refund.refundMethod === "bank_transfer"
                             ? "Đã gửi yêu cầu hoàn cọc — chờ Quản lý duyệt chuyển khoản"
-                            : "Đang chờ xử lý hoàn cọc"}
+                            : "Đã gửi yêu cầu hoàn cọc tiền mặt — chờ Quản lý duyệt"}
                         </div>
                       ) : (
                         <>

@@ -16,9 +16,22 @@ function formatDate(iso: string) {
 
 interface BookingCardProps {
   booking: BookingCardMessage["booking"];
+  /**
+   * Vai trò của NGƯỜI XEM. detailUrl lưu trong metadata được tạo theo role của
+   * người gửi, nên staff xem card do khách gửi sẽ bị dẫn sang trang của khách
+   * (và ngược lại). Truyền viewerRole để link luôn đúng với người đang xem.
+   */
+  viewerRole?: "customer" | "staff";
 }
 
-export function BookingCard({ booking }: BookingCardProps) {
+export function BookingCard({ booking, viewerRole }: BookingCardProps) {
+  const href =
+    viewerRole === "staff"
+      ? `/dashboard/staff/booking/${booking.id}`
+      : viewerRole === "customer"
+        ? `/booking/success?bookingId=${booking.id}`
+        : booking.detailUrl ?? null;
+
   const content = (
     <>
       <p className="font-semibold text-ink">📋 Đơn thuê #{booking.code}</p>
@@ -33,10 +46,10 @@ export function BookingCard({ booking }: BookingCardProps) {
     </>
   );
 
-  if (booking.detailUrl) {
+  if (href) {
     return (
       <Link
-        href={booking.detailUrl}
+        href={href}
         className="block max-w-[220px] rounded-xl border border-sand/70 bg-white p-3 shadow-sm space-y-1.5 text-xs transition hover:shadow-md hover:border-antique overflow-hidden"
       >
         {content}

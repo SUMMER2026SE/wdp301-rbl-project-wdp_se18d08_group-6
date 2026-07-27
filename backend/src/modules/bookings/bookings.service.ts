@@ -22,6 +22,7 @@ const BOOKING_STATUS_LABELS: Record<string, string> = {
   renting: "Đang thuê",
   returned: "Đã trả",
   inspection_pending: "Chờ kiểm tra",
+  refund_pending: "Chờ hoàn cọc",
   completed: "Hoàn thành",
   cancelled: "Đã hủy",
   rejected: "Từ chối",
@@ -36,6 +37,8 @@ const OVERDUE_PENALTY_REASON = "Phí quá hạn trả đồ (10.000đ/ngày)";
 const RELEASED_STATUSES: BookingStatus[] = [
   BookingStatus.cancelled,
   BookingStatus.rejected,
+  // refund_pending: đồ đã trả & kiểm tra xong, chỉ còn chờ hoàn cọc — không giữ hàng nữa.
+  BookingStatus.refund_pending,
   BookingStatus.completed,
 ];
 
@@ -517,7 +520,7 @@ export class BookingsService {
 
   async findCompletedWithPendingRefunds() {
     const bookings = await this.prisma.booking.findMany({
-      where: { status: BookingStatus.completed, depositTotal: { gt: 0 } },
+      where: { status: { in: [BookingStatus.refund_pending, BookingStatus.completed] }, depositTotal: { gt: 0 } },
       orderBy: { updatedAt: "desc" },
       take: 100,
       include: {

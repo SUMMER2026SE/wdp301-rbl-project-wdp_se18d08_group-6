@@ -284,6 +284,42 @@ export class ChatService {
     return promise;
   }
 
+  // Staff/manager mở (hoặc tạo) cuộc trò chuyện với một khách cụ thể —
+  // dùng cho nút "Nhắn khách xin thông tin chuyển khoản" ở màn duyệt hoàn cọc.
+  async getOrCreateConversationWithCustomer(user: AuthenticatedUser, customerId: string) {
+    if (user.role === "customer") {
+      throw new ForbiddenException("Only staff can open a conversation with a customer.");
+    }
+
+    const customer = await this.prisma.userAccount.findUnique({
+      where: { id: customerId },
+      select: { id: true, role: true, email: true, profile: { select: { fullName: true } } },
+    });
+    if (!customer || customer.role !== "customer") {
+      throw new NotFoundException("Customer not found.");
+    }
+
+    const conversation = await this.getOrCreateConversationForCustomer(customerId);
+    const lastMessage = conversation.messages.length > 0 ? conversation.messages[conversation.messages.length - 1] : null;
+
+    return {
+      id: conversation.id,
+      customerId,
+      customerName: customer.profile?.fullName ?? customer.email ?? null,
+      staffId: conversation.staff_id ?? null,
+      staffName: null,
+      status: conversation.status,
+      updatedAt: conversation.updated_at,
+      lastMessage,
+      unreadCount: 0,
+      topic: conversation.topic ?? "general",
+      garmentId: conversation.garment_id ?? null,
+      garmentName: null,
+      bookingId: conversation.booking_id ?? null,
+      reopenedFromResolved: conversation.reopened_from_resolved,
+    };
+  }
+
   private async doGetOrCreateConversationForCustomer(customerId: string) {
     const existingConversation = await this.prisma.conversations.findFirst({
       where: { customer_id: customerId },

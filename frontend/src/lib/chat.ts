@@ -143,6 +143,11 @@ export async function getMyChatConversation() {
   return apiRequest<ChatConversation>("/chat/conversations/me");
 }
 
+// Staff/manager: mở (hoặc tạo) cuộc trò chuyện với một khách cụ thể
+export async function getConversationWithCustomer(customerId: string) {
+  return apiRequest<ChatConversation>(`/chat/conversations/with-customer/${customerId}`);
+}
+
 export async function createChatConversation() {
   return apiRequest<ChatConversation>("/chat/conversations", { method: "POST" });
 }

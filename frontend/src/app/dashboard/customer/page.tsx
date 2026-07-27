@@ -89,9 +89,9 @@ export default function CustomerDashboardPage() {
       if (res.success && res.data) {
         const data = res.data;
         setBookings(data);
-        // Fetch refund status for completed bookings
+        // Fetch refund status for completed bookings (kèm đơn đang chờ hoàn cọc)
         const completedBookingIds = data
-          .filter((b) => b.status === "completed")
+          .filter((b) => b.status === "completed" || b.status === "refund_pending")
           .map((b) => b.id);
         completedBookingIds.forEach((bookingId) => {
           getCustomerRefund(bookingId).then((refundRes) => {
@@ -162,15 +162,28 @@ export default function CustomerDashboardPage() {
   );
 
   function renderRefundStatus(b: BookingResponse) {
-    if (b.status !== "completed") return <span className="text-xs text-stone-400">—</span>;
+    if (b.status !== "completed" && b.status !== "refund_pending") return <span className="text-xs text-stone-400">—</span>;
     const refund = refundMap[b.id];
     if (refund === undefined) return <span className="text-xs text-stone-400">Đang tải...</span>;
     if (!refund) return <span className="text-xs text-stone-400">—</span>;
     if (refund.status === "refunded" || refund.status === "partially_refunded") {
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-jade/10 px-3 py-1 text-xs font-semibold text-jade">
-          <span className="material-symbols-outlined text-[14px]">check_circle</span>
-          Đã hoàn {formatVND(refund.amount)}
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          <span className="inline-flex items-center gap-1 rounded-full bg-jade/10 px-3 py-1 text-xs font-semibold text-jade">
+            <span className="material-symbols-outlined text-[14px]">check_circle</span>
+            Đã hoàn {formatVND(refund.amount)}
+          </span>
+          {refund.proofImageUrl && (
+            <a
+              href={refund.proofImageUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 rounded-full border border-jade/40 px-3 py-1 text-xs font-semibold text-jade transition hover:bg-jade/10"
+            >
+              <span className="material-symbols-outlined text-[14px]">receipt_long</span>
+              Xem bill
+            </a>
+          )}
         </span>
       );
     }

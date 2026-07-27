@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { AssetStatus, BookingStatus, InspectionStatus, PaymentStatus } from "@prisma/client";
+import { AssetStatus, BookingStatus, InspectionStatus } from "@prisma/client";
 import { ok } from "../../common/api-response";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { CompleteInspectionDto } from "./dto/complete-inspection.dto";
@@ -169,27 +169,27 @@ export class InspectionsService {
         if (pendingCount === 0) {
           const previousStatus = session.booking.status;
 
-          await tx.booking.update({
-            where: { id: bookingId },
-            data: { status: BookingStatus.completed },
-          });
-
-          await tx.bookingStatusHistory.create({
-            data: { bookingId, fromStatus: previousStatus, toStatus: BookingStatus.completed, changedBy: staffId, note: "All items inspected" },
-          });
-
           const depositTotal = Number(session.booking.depositTotal);
           // session.booking.penaltyTotal là giá trị TRƯỚC khi increment ở trên,
           // nên phải cộng thêm khoản phạt vừa ghi nhận trong lần kiểm tra này.
           const penaltyTotal = Number(session.booking.penaltyTotal) + totalPenalty;
           const refundAmount = depositTotal - penaltyTotal;
-          if (refundAmount > 0) {
-            const existingRefunds = await tx.refund.count({ where: { bookingId } });
-            if (existingRefunds === 0) {
-              const refundMethod = session.booking.pickupMethod === "delivery" ? "bank_transfer" : "cash";
-              await tx.refund.create({ data: { bookingId, amount: refundAmount, status: PaymentStatus.pending, refund_method: refundMethod } });
-            }
-          }
+
+          // Còn cọc phải hoàn → chuyển sang bước "Hoàn cọc": staff chủ động tạo
+          // yêu cầu hoàn cọc, owner duyệt xong booking mới completed.
+          const nextStatus = refundAmount > 0 ? BookingStatus.refund_pending : BookingStatus.completed;
+
+          await tx.booking.update({
+            where: { id: bookingId },
+            data: { status: nextStatus },
+          });
+
+          await tx.bookingStatusHistory.create({
+            data: {
+              bookingId, fromStatus: previousStatus, toStatus: nextStatus, changedBy: staffId,
+              note: nextStatus === BookingStatus.refund_pending ? "Kiểm tra xong — chờ hoàn cọc" : "All items inspected",
+            },
+          });
         }
       }
       return completedSession;

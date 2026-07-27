@@ -20,8 +20,6 @@ export async function POST(req: NextRequest) {
     const originalName = (file as File).name || 'image.png';
     const sanitizedName = originalName.replace(/[^a-zA-Z0-9.-]/g, '_');
     const filename = `${Date.now()}-${sanitizedName}`;
-    
-    const bucketName = process.env.SUPABASE_ASSETS_BUCKET || 'products';
 
     const { error: uploadError } = await getSupabaseAdmin().storage
       .from(bucketName)

@@ -185,7 +185,7 @@ export function CustomerChatBubble({
                           (() => {
                             const data = getBookingCardData(message);
                             return data?.booking ? (
-                              <BookingCard booking={data.booking} />
+                              <BookingCard booking={data.booking} viewerRole="customer" />
                             ) : (
                               <div className="text-xs text-stone-500">Không thể hiển thị đơn hàng</div>
                             );

@@ -539,6 +539,7 @@ enum BookingStatus {
   renting
   returned
   inspection_pending
+  refund_pending
   completed
   cancelled
   rejected

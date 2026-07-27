@@ -22,7 +22,7 @@ const STEPS: Step[] = [
   { key: "preparing", label: "Chuẩn bị", icon: "checkroom", statuses: ["preparing"] },
   { key: "handover", label: "Bàn giao", icon: "local_shipping", statuses: ["ready_for_pickup", "delivering"] },
   { key: "renting", label: "Đang thuê", icon: "styler", statuses: ["renting"] },
-  { key: "return", label: "Trả & kiểm tra", icon: "assignment_return", statuses: ["returned", "inspection_pending", "overdue"] },
+  { key: "return", label: "Trả & kiểm tra", icon: "assignment_return", statuses: ["returned", "inspection_pending", "refund_pending", "overdue"] },
   { key: "completed", label: "Hoàn tất", icon: "verified", statuses: ["completed"] },
 ];
 

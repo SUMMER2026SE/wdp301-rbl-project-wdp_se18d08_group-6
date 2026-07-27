@@ -113,10 +113,12 @@ function RegisterPageContent() {
 
         signIn({ accessToken, user: toAuthenticatedUser(user), persist: true });
         const next = searchParams.get("next");
+        const fallbackPath = resolveDashboardPath(user.role);
+        // Không theo "next" nếu nó trỏ vào dashboard của role khác
         router.push(
-          next && next.startsWith("/") && !next.startsWith("//")
+          next && next.startsWith("/") && !next.startsWith("//") && !(next.startsWith("/dashboard") && !next.startsWith(fallbackPath))
             ? next
-            : resolveDashboardPath(user.role),
+            : fallbackPath,
         );
       } catch {
         setError("Không thể kết nối đến hệ thống đăng nhập.");

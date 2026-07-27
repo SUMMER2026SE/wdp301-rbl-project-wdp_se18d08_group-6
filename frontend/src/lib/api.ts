@@ -534,8 +534,15 @@ export type RefundResponse = {
     depositTotal: number;
     penaltyTotal: number;
     pickupMethod: string;
+    customerId: string | null;
     customerName: string | null;
     customerPhone: string | null;
+    items?: Array<{
+      id: string;
+      garmentName: string | null;
+      sizeLabel: string | null;
+      imageUrl: string | null;
+    }>;
   };
   processedBy: string | null;
 };
@@ -557,6 +564,7 @@ export type CustomerRefundResponse = {
   bankName: string | null;
   bankAccountNumber: string | null;
   bankAccountHolder: string | null;
+  proofImageUrl: string | null;
   createdAt: string;
   updatedAt: string;
 };

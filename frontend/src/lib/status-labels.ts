@@ -27,6 +27,7 @@ export const STATUS_LABELS: Record<string, StatusLabel> = {
   renting:              { label: "Đang thuê",            color: "bg-lotus/10 text-lotus" },
   returned:             { label: "Đã trả",               color: "bg-stone-100 text-stone-600" },
   inspection_pending:   { label: "Chờ kiểm tra",        color: "bg-amber-50 text-amber-700" },
+  refund_pending:       { label: "Chờ hoàn cọc",        color: "bg-amber-50 text-amber-700" },
   completed:            { label: "Hoàn tất",             color: "bg-jade/10 text-jade" },
   cancelled:            { label: "Đã hủy",               color: "bg-stone-100 text-stone-500" },
   rejected:             { label: "Bị từ chối",           color: "bg-red-50 text-red-600" },
