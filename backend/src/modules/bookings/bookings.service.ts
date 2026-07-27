@@ -106,6 +106,17 @@ export class BookingsService {
   // ── Availability ───────────────────────────────────────────────────────────
 
   /**
+   * Lấy tên hiển thị của khách: ưu tiên fullName trong hồ sơ, fallback về email.
+   */
+  private async resolveCustomerName(customerId: string): Promise<string | null> {
+    const user = await this.prisma.userAccount.findUnique({
+      where: { id: customerId },
+      select: { email: true, profile: { select: { fullName: true } } },
+    });
+    return user?.profile?.fullName ?? user?.email ?? null;
+  }
+
+  /**
    * Nguồn chân lý duy nhất về tồn kho cho một size trong một khoảng ngày.
    * Đếm theo NHU CẦU (booking item của các đơn còn hiệu lực, trùng ngày — gồm cả
    * đơn chưa gán asset) so với SỨC CHỨA (asset chưa retired/lost). Cả endpoint
