@@ -466,9 +466,17 @@ export default function StaffInspectionPage() {
             {selectedItem && (
               <section className="rounded-xl border border-sand bg-white p-6 shadow-sm">
                 <div className="flex gap-4">
-                  <div className="flex h-40 w-28 items-center justify-center rounded bg-parchment text-stone-400">
-                    <span className="material-symbols-outlined text-4xl">checkroom</span>
-                  </div>
+                  {selectedItem.imageUrl ? (
+                    <img
+                      alt={selectedItem.garmentName ?? "Trang phục"}
+                      src={selectedItem.imageUrl}
+                      className="h-40 w-28 shrink-0 rounded object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-40 w-28 shrink-0 items-center justify-center rounded bg-parchment text-stone-400">
+                      <span className="material-symbols-outlined text-4xl">checkroom</span>
+                    </div>
+                  )}
                   <div>
                     <h2 className="font-display text-xl text-ink sm:text-2xl">
                       {selectedItem.garmentName ?? "Trang phục"}

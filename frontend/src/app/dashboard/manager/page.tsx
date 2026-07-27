@@ -1847,7 +1847,35 @@ function AssetFormModal({
 // TAB: Inspection Log
 // ═══════════════════════════════════════════════════════════════════════════════
 
+const INSPECTION_STATUS_META: Record<string, { label: string; color: string }> = {
+  pending:     { label: "Chờ xử lý",      color: "bg-stone-100 text-stone-600" },
+  in_progress: { label: "Đang kiểm tra",  color: "bg-amber-100 text-amber-700" },
+  completed:   { label: "Hoàn tất",       color: "bg-jade/10 text-jade" },
+  disputed:    { label: "Tranh chấp",     color: "bg-red-50 text-red-600" },
+};
+
 function InspectionLogTab({ log, loading }: { log: InspectionLogEntry[]; loading: boolean }) {
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [penaltyFilter, setPenaltyFilter] = useState("all");
+
+  const filteredLog = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return log.filter((entry) => {
+      const byText = q
+        ? [entry.assetCode, entry.garmentName, entry.inspectorName].some((v) => v?.toLowerCase().includes(q))
+        : true;
+      const byStatus = statusFilter === "all" ? true : entry.status === statusFilter;
+      const byPenalty =
+        penaltyFilter === "all"
+          ? true
+          : penaltyFilter === "with"
+            ? entry.totalPenalty > 0
+            : entry.totalPenalty === 0;
+      return byText && byStatus && byPenalty;
+    });
+  }, [log, search, statusFilter, penaltyFilter]);
+
   return (
     <div className="space-y-4">
       {loading ? (
@@ -1855,40 +1883,80 @@ function InspectionLogTab({ log, loading }: { log: InspectionLogEntry[]; loading
       ) : log.length === 0 ? (
         <div className="py-20 text-center text-stone-400">Chưa có phiên kiểm tra nào.</div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-mist text-xs uppercase tracking-[0.14em] text-stone-500">
-              <tr>
-                <th className="px-6 py-3">Mã tài sản</th>
-                <th className="px-6 py-3">Trang phục</th>
-                <th className="px-6 py-3">Trạng thái</th>
-                <th className="px-6 py-3">Người kiểm tra</th>
-                <th className="px-6 py-3">Ghi nhận</th>
-                <th className="px-6 py-3">Phạt</th>
-                <th className="px-6 py-3">Ngày tạo</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-sand">
-              {log.map((entry) => (
-                <tr key={entry.id} className="transition hover:bg-mist">
-                  <td className="px-6 py-4 font-semibold text-ink">{entry.assetCode}</td>
-                  <td className="px-6 py-4 text-stone-600">{entry.garmentName}</td>
-                  <td className="px-6 py-4">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                      entry.status === "completed" ? "bg-jade/10 text-jade" : "bg-amber-100 text-amber-700"
-                    }`}>
-                      {entry.status === "completed" ? "Hoàn tất" : entry.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-stone-600">{entry.inspectorName ?? "—"}</td>
-                  <td className="px-6 py-4 text-stone-600">{entry.findingsCount}</td>
-                  <td className="px-6 py-4 text-red-700">{entry.totalPenalty > 0 ? formatVND(entry.totalPenalty) : "—"}</td>
-                  <td className="px-6 py-4 text-stone-500">{entry.createdAt.slice(0, 10)}</td>
-                </tr>
+        <>
+          <div className="flex flex-wrap gap-2">
+            <div className="relative min-w-[220px] flex-1">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-stone-400">search</span>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full rounded-lg border border-sand bg-mist py-2 pl-10 pr-3 text-sm outline-none focus:border-antique"
+                placeholder="Tìm mã tài sản, trang phục, người kiểm tra..."
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="rounded-lg border border-sand bg-white px-3 py-2 text-sm outline-none focus:border-antique"
+              aria-label="Lọc trạng thái kiểm tra"
+            >
+              <option value="all">Tất cả trạng thái</option>
+              {Object.entries(INSPECTION_STATUS_META).map(([key, meta]) => (
+                <option key={key} value={key}>{meta.label}</option>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </select>
+            <select
+              value={penaltyFilter}
+              onChange={(e) => setPenaltyFilter(e.target.value)}
+              className="rounded-lg border border-sand bg-white px-3 py-2 text-sm outline-none focus:border-antique"
+              aria-label="Lọc theo phạt"
+            >
+              <option value="all">Tất cả phạt</option>
+              <option value="with">Có phạt</option>
+              <option value="without">Không phạt</option>
+            </select>
+          </div>
+
+          {filteredLog.length === 0 ? (
+            <div className="py-20 text-center text-stone-400">Không tìm thấy phiên kiểm tra phù hợp.</div>
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-mist text-xs uppercase tracking-[0.14em] text-stone-500">
+                  <tr>
+                    <th className="px-6 py-3">Mã tài sản</th>
+                    <th className="px-6 py-3">Trang phục</th>
+                    <th className="px-6 py-3">Trạng thái</th>
+                    <th className="px-6 py-3">Người kiểm tra</th>
+                    <th className="px-6 py-3">Ghi nhận</th>
+                    <th className="px-6 py-3">Phạt</th>
+                    <th className="px-6 py-3">Ngày tạo</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-sand">
+                  {filteredLog.map((entry) => {
+                    const sm = INSPECTION_STATUS_META[entry.status] ?? { label: entry.status, color: "bg-stone-100 text-stone-600" };
+                    return (
+                      <tr key={entry.id} className="transition hover:bg-mist">
+                        <td className="px-6 py-4 font-semibold text-ink">{entry.assetCode}</td>
+                        <td className="px-6 py-4 text-stone-600">{entry.garmentName}</td>
+                        <td className="px-6 py-4">
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${sm.color}`}>
+                            {sm.label}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-stone-600">{entry.inspectorName ?? "—"}</td>
+                        <td className="px-6 py-4 text-stone-600">{entry.findingsCount}</td>
+                        <td className="px-6 py-4 text-red-700">{entry.totalPenalty > 0 ? formatVND(entry.totalPenalty) : "—"}</td>
+                        <td className="px-6 py-4 text-stone-500">{entry.createdAt.slice(0, 10)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -2037,6 +2105,23 @@ function FinanceTab({
   depositHoldingCount: number;
   bookings: StaffBookingResponse[];
 }) {
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  const filteredBookings = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return bookings
+      .slice()
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .filter((b) => {
+        const byText = q
+          ? [b.id, b.customerName].some((v) => v?.toLowerCase().includes(q))
+          : true;
+        const byStatus = statusFilter === "all" ? true : b.status === statusFilter;
+        return byText && byStatus;
+      });
+  }, [bookings, search, statusFilter]);
+
   return (
     <div className="space-y-6">
       <div className="grid gap-6 md:grid-cols-3">
@@ -2058,8 +2143,30 @@ function FinanceTab({
       </div>
 
       <div className="overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
-        <div className="border-b border-sand px-6 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand px-6 py-4">
           <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">Đối soát đơn gần đây</h3>
+          <div className="flex flex-wrap gap-2">
+            <div className="relative min-w-[220px]">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-stone-400">search</span>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full rounded-lg border border-sand bg-mist py-2 pl-10 pr-3 text-sm outline-none focus:border-antique"
+                placeholder="Tìm mã đơn, khách hàng..."
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="rounded-lg border border-sand bg-white px-3 py-2 text-sm outline-none focus:border-antique"
+              aria-label="Lọc trạng thái đơn"
+            >
+              <option value="all">Tất cả trạng thái</option>
+              {Object.entries(STATUS_LABELS).map(([key, meta]) => (
+                <option key={key} value={key}>{meta.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -2078,8 +2185,12 @@ function FinanceTab({
                 <tr>
                   <td colSpan={6} className="px-6 py-10 text-center text-stone-400">Chưa có đơn nào.</td>
                 </tr>
+              ) : filteredBookings.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-10 text-center text-stone-400">Không tìm thấy đơn phù hợp.</td>
+                </tr>
               ) : (
-                bookings.slice().reverse().map((b) => {
+                filteredBookings.map((b) => {
                   const s = STATUS_LABELS[b.status] ?? { label: b.status, color: "bg-stone-100 text-stone-600" };
                   return (
                     <tr key={b.id} className="transition hover:bg-mist">
