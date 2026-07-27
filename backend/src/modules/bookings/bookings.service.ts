@@ -469,7 +469,7 @@ export class BookingsService {
       include: {
         items: {
           include: {
-            garment_sizes: { include: { garments: true } },
+            garment_sizes: { include: { garments: { include: { images: { orderBy: { sortOrder: "asc" } } } } } },
             garmentAsset: true,
           },
         },
