@@ -12,6 +12,7 @@ const AI_DEBOUNCE_MS = 1000;
 @Injectable()
 export class ChatService {
   private readonly aiDebounceMap = new Map<string, NodeJS.Timeout>();
+  private readonly getOrCreateLocks = new Map<string, Promise<unknown>>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -270,6 +271,20 @@ export class ChatService {
   }
 
   async getOrCreateConversationForCustomer(customerId: string) {
+    // Serialize concurrent get-or-create for the same customer (e.g. two browser
+    // tabs opening chat at once) so we don't create duplicate conversations.
+    const inFlight = this.getOrCreateLocks.get(customerId);
+    if (inFlight) {
+      return inFlight as ReturnType<ChatService["doGetOrCreateConversationForCustomer"]>;
+    }
+
+    const promise = this.doGetOrCreateConversationForCustomer(customerId)
+      .finally(() => this.getOrCreateLocks.delete(customerId));
+    this.getOrCreateLocks.set(customerId, promise);
+    return promise;
+  }
+
+  private async doGetOrCreateConversationForCustomer(customerId: string) {
     const existingConversation = await this.prisma.conversations.findFirst({
       where: { customer_id: customerId },
       include: {
@@ -533,7 +548,7 @@ export class ChatService {
     });
   }
 
-  async deleteMessage(userId: string, role: AppRole, messageId: string) {
+  async deleteMessage(userId: string, messageId: string) {
     const message = await this.prisma.messages.findUnique({
       where: { id: messageId },
     });
@@ -637,7 +652,7 @@ export class ChatService {
     //console.log("releaseStaffAssignmentsByStaffId", staffId, "updated:", result.count);
   //}
 
-  async autoReplyReleasedConversations(staffId: string): Promise<Array<{ conversationId: string; messages: messages[] }>> {
+  async autoReplyReleasedConversations(staffId: string, hasOnlineStaff = false): Promise<Array<{ conversationId: string; messages: messages[] }>> {
     const conversations = await this.prisma.conversations.findMany({
       where: { status: "open", staff_id: staffId },
       select: { id: true, customer_id: true },
@@ -675,7 +690,7 @@ export class ChatService {
       });
       if (lastAiReply) continue;
 
-      const aiMsgs = await this.maybeAutoReply(conv.id, lastMsg.content, false, lastMsg.message_type);
+      const aiMsgs = await this.maybeAutoReply(conv.id, lastMsg.content, hasOnlineStaff, lastMsg.message_type);
       if (aiMsgs.length > 0) {
         results.push({ conversationId: conv.id, messages: aiMsgs });
       }

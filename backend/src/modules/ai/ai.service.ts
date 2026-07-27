@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { TryonStatus, type TryonCategory } from "@prisma/client";
 import { ok } from "../../common/api-response";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -75,6 +75,8 @@ type ReplicateResult = {
 
 @Injectable()
 export class AiService {
+  private readonly logger = new Logger(AiService.name);
+
   constructor(private readonly prisma: PrismaService) { }
 
   async createTryon(dto: CreateTryonDto, customerId: string) {
@@ -179,20 +181,20 @@ export class AiService {
     const model = this.getModelPath(mode);
     const { input, inputSchema } = this.buildReplicateInput(mode, userImageDataUri, garmentImageUrl, garmentName, category);
 
-    console.log(`[AI] Fetching version for ${model}...`);
+    this.logger.debug(`Fetching version for ${model}...`);
     const version = await this.fetchLatestModelVersion(model, apiToken);
 
-    console.log(`[AI] POST ${REPLICATE_API}/predictions → ${model}:${version}`);
-    console.log(`[AI] mode=${mode} model=${model} inputKeys=${Object.keys(input).join(",")}`);
+    this.logger.debug(`POST ${REPLICATE_API}/predictions → ${model}:${version}`);
+    this.logger.debug(`mode=${mode} model=${model} inputKeys=${Object.keys(input).join(",")}`);
 
     let prediction = await this.createPrediction(version, input, apiToken);
-    console.log(`[AI] Prediction ${prediction.id}: ${prediction.status}`);
+    this.logger.debug(`Prediction ${prediction.id}: ${prediction.status}`);
 
     prediction = await this.waitForPrediction(prediction, apiToken);
     const url = this.extractOutputUrl(prediction.output);
     if (!url) throw new Error("No output from Replicate");
 
-    console.log(`[AI] Success: prediction=${prediction.id} url=${url.substring(0, 80)}`);
+    this.logger.debug(`Success: prediction=${prediction.id} url=${url.substring(0, 80)}`);
     return { url, model, predictionId: prediction.id, inputSchema };
   }
 
@@ -313,7 +315,7 @@ export class AiService {
       }
       current = this.parsePrediction(text, "prediction poll");
       attempts++;
-      if (attempts % 5 === 0) console.log(`[AI] Poll ${attempts}: ${current.status}`);
+      if (attempts % 5 === 0) this.logger.debug(`Poll ${attempts}: ${current.status}`);
     }
 
     if (current.status === "failed" || current.status === "canceled" || current.error) {
@@ -511,18 +513,16 @@ export class AiService {
 
   async productAdvisor(dto: ProductAdvisorDto, isAutoReply = false) {
     const { intent, confidence } = detectIntent(dto.message);
-    console.log("=== AI productAdvisor ===");
-    console.log("Message:", dto.message);
-    console.log("Intent:", intent, `(confidence: ${confidence})`);
+    this.logger.debug(`productAdvisor intent=${intent} confidence=${confidence}`);
 
     const hardcoded = getHardcodedReply(dto.message, isAutoReply);
     if (hardcoded) {
-      console.log("→ Hardcoded reply (no AI call)");
+      this.logger.debug("Hardcoded reply (no AI call)");
       return ok(hardcoded);
     }
 
     const filters: ProductFilters | undefined = intent === "search" ? extractFilters(dto.message) : undefined;
-    console.log("Filters:", JSON.stringify(filters, null, 2));
+    this.logger.debug(`Filters: ${JSON.stringify(filters)}`);
 
     let catalog: AdvisorProduct[] = [];
     let droppedOccasion: string[] | undefined;
@@ -532,28 +532,28 @@ export class AiService {
 
     if (intent === "search") {
       catalog = await this.queryCatalog(filters);
-      console.log("Catalog count:", catalog.length);
+      this.logger.debug(`Catalog count: ${catalog.length}`);
 
       if (catalog.length === 0 && filters?.occasion) {
-        console.log("→ 0 results with occasion, retrying without occasion");
+        this.logger.debug("0 results with occasion, retrying without occasion");
         catalog = await this.queryCatalog({ ...filters, occasion: undefined });
         if (catalog.length > 0) droppedOccasion = filters.occasion;
       }
 
       if (catalog.length === 0 && filters?.keyword) {
-        console.log("→ 0 results with keyword, retrying without keyword");
+        this.logger.debug("0 results with keyword, retrying without keyword");
         catalog = await this.queryCatalog({ ...filters, occasion: undefined, keyword: undefined });
         if (catalog.length > 0) droppedKeyword = filters.keyword;
       }
 
       if (catalog.length === 0 && filters?.color) {
-        console.log("→ 0 results with color, retrying without color");
+        this.logger.debug("0 results with color, retrying without color");
         catalog = await this.queryCatalog({ ...filters, occasion: undefined, keyword: undefined, color: undefined });
         if (catalog.length > 0) droppedColor = filters.color;
       }
 
       if (catalog.length === 0 && filters?.size) {
-        console.log("→ 0 results with size, retrying without size");
+        this.logger.debug("0 results with size, retrying without size");
         catalog = await this.queryCatalog({ ...filters, occasion: undefined, keyword: undefined, color: undefined, size: undefined });
         if (catalog.length > 0) droppedSize = filters.size;
       }
@@ -566,7 +566,7 @@ export class AiService {
         ? "Em là trợ lý tư vấn sản phẩm, không hỗ trợ được câu hỏi này. Bạn vui lòng liên hệ staff để được giải đáp ạ."
         : "Bạn có thể mô tả trang phục bạn đang tìm kiếm (ví dụ: áo dài đỏ, áo dài trắng size M, có ngân sách dưới 200k/ngày), em sẽ gợi ý sản phẩm phù hợp.";
       const title = intent === "general" ? "Liên hệ staff" : "Bạn cần tìm gì?";
-      console.log(`→ ${intent} intent, skip catalog query`);
+      this.logger.debug(`${intent} intent, skip catalog query`);
       return ok({ topics: [{ title, assistantReply: msg, recommendedProductIds: [], reasons: {}, products: [] }] });
     }
 
@@ -644,7 +644,7 @@ export class AiService {
       where.garment_sizes = { some: { AND: garmentSizeAnd } };
     }
 
-    console.log("Query WHERE:", JSON.stringify(where, null, 2).slice(0, 2000));
+    this.logger.debug(`Query WHERE: ${JSON.stringify(where).slice(0, 2000)}`);
 
     const garments = await this.prisma.garment.findMany({
       where: where as never,
@@ -661,9 +661,19 @@ export class AiService {
       orderBy: { createdAt: "desc" },
     });
 
+    const budgetMin = filters?.budgetMin;
+    const budgetMax = filters?.budgetMax;
+    const inBudget = (price: number) =>
+      (budgetMin === undefined || price >= budgetMin) &&
+      (budgetMax === undefined || price <= budgetMax);
+
     return garments.map((g) => {
       const activeSizes = g.garment_sizes;
-      const prices = activeSizes.map((s) => Number(s.daily_price)).filter((p) => p > 0);
+      const allPrices = activeSizes.map((s) => Number(s.daily_price)).filter((p) => p > 0);
+      // When a price filter is set, show the cheapest size that actually matches
+      // the budget (not the cheapest size overall) to avoid misleading prices.
+      const matchingPrices = allPrices.filter(inBudget);
+      const prices = matchingPrices.length > 0 ? matchingPrices : allPrices;
       const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
       const deposits = activeSizes.map((s) => Number(s.deposit_amount)).filter((d) => d > 0);
       const minDeposit = deposits.length > 0 ? Math.min(...deposits) : 0;

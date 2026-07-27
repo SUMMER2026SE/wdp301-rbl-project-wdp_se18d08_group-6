@@ -1,6 +1,6 @@
 import { ConnectedSocket, MessageBody, SubscribeMessage, WebSocketGateway, OnGatewayConnection, OnGatewayDisconnect, WebSocketServer } from "@nestjs/websockets";
 import { JwtService } from "@nestjs/jwt";
-import { Injectable, OnModuleInit } from "@nestjs/common";
+import { Injectable, OnModuleInit, OnModuleDestroy } from "@nestjs/common";
 import type { AppRole } from "@prisma/client";
 import type { Server, Socket } from "socket.io";
 import { ChatService } from "./chat.service";
@@ -36,12 +36,19 @@ interface ActiveReplier {
   },
 })
 @Injectable()
-export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGatewayDisconnect {
+export class ChatGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConnection, OnGatewayDisconnect {
 
   async onModuleInit() {
     // Server restart — in-memory timers are gone
     await this.chatService.resolveAllReopenedConversations();
     await this.chatService.releaseStaleStaffAssignments();
+    this.rateLimitCleanupInterval = setInterval(() => this.cleanupRateLimits(), ChatGateway.RATE_LIMIT_WINDOW_MS);
+  }
+
+  onModuleDestroy() {
+    if (this.rateLimitCleanupInterval) {
+      clearInterval(this.rateLimitCleanupInterval);
+    }
   }
   @WebSocketServer()
   server!: Server;
@@ -51,6 +58,7 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
   private readonly lockTimeouts = new Map<string, NodeJS.Timeout>();
   private readonly disconnectReleaseTimeouts = new Map<string, NodeJS.Timeout>();
   private readonly messageRateLimits = new Map<string, number[]>();
+  private rateLimitCleanupInterval?: NodeJS.Timeout;
   private readonly aiReplyCounters = new Map<string, number>();
   private static readonly MAX_MESSAGE_LENGTH = 2000;
   private static readonly RATE_LIMIT_MAX = 5;
@@ -321,7 +329,7 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
     }
 
     try {
-      const result = await this.chatService.deleteMessage(user.userId, user.role, body.messageId);
+      const result = await this.chatService.deleteMessage(user.userId, body.messageId);
       this.server.to(body.conversationId).emit("message_deleted", {
         conversationId: body.conversationId,
         messageId: body.messageId,
@@ -537,7 +545,7 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
       //console.log("TIMER FIRE", socketId, staffId, "onlineUsers.has?", hasOnline);
       if (!hasOnline) {
         //console.log("CLEAR DB staff_id for", staffId);
-        void this.chatService.autoReplyReleasedConversations(staffId).then((results) => {
+        void this.chatService.autoReplyReleasedConversations(staffId, this.hasOnlineStaff()).then((results) => {
           for (const { conversationId, messages: aiMsgs } of results) {
             for (const aiMsg of aiMsgs) {
               //console.log("EMIT AI (post-release)", aiMsg.id, aiMsg.content);
