@@ -544,7 +544,6 @@ enum BookingStatus {
   cancelled
   rejected
   overdue
-  refund_pending
 
   @@map("booking_status")
 }
