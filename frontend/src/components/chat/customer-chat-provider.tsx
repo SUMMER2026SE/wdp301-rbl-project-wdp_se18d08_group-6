@@ -72,9 +72,7 @@ export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
     const socket = socketRef.current;
 
     const onConnect = () => {
-      //console.log("CONNECTED");
-      //console.log(socket.id);
-      //console.log(selectedConversationRef.current);
+      setTypingUsers({});
       const conv = selectedConversationRef.current;
       if (!conv) return;
 
@@ -288,6 +286,8 @@ export function CustomerChatProvider({ children }: CustomerChatProviderProps) {
     const convId = conversation.id;
     const content = messageText.trim();
     setMessageText("");
+
+    setTypingUsers((prev) => ({ ...prev, "ai-assistant": true }));
 
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const optimistic: ChatMessage = {

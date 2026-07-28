@@ -18,8 +18,13 @@ type LoginResult = {
   };
 };
 
-function getSafeRedirectPath(value: string | null, fallbackPath: string) {
-  return value && value.startsWith("/") && !value.startsWith("//") ? value : fallbackPath;
+function getSafeRedirectPath(value: string | null, role: AppRole) {
+  const fallbackPath = resolveDashboardPath(role);
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return fallbackPath;
+  // "next" trỏ vào khu dashboard nhưng không phải dashboard của role này
+  // (vd owner bị đá về /login?next=/dashboard/staff) → về đúng dashboard theo role.
+  if (value.startsWith("/dashboard") && !value.startsWith(fallbackPath)) return fallbackPath;
+  return value;
 }
 
 function LoginPageContent() {
@@ -71,7 +76,7 @@ function LoginPageContent() {
         }
 
         signIn({ accessToken: result.data.accessToken, user: toAuthenticatedUser(result.data.user), persist: rememberMe });
-        router.push(getSafeRedirectPath(searchParams.get("next"), resolveDashboardPath(result.data.user.role)));
+        router.push(getSafeRedirectPath(searchParams.get("next"), result.data.user.role));
       } catch {
         setError("Không thể kết nối đến hệ thống đăng nhập.");
       } finally {
@@ -84,7 +89,7 @@ function LoginPageContent() {
   // Tự động chuyển hướng nếu đã đăng nhập
   useEffect(() => {
     if (status === "authenticated" && session) {
-      router.replace(getSafeRedirectPath(searchParams.get("next"), resolveDashboardPath(session.user.role)));
+      router.replace(getSafeRedirectPath(searchParams.get("next"), session.user.role));
     }
   }, [router, searchParams, session, status]);
 
@@ -112,7 +117,7 @@ function LoginPageContent() {
 
       // Đăng nhập qua context AuthProvider (thay thế cách lưu localStorage thủ công)
       signIn({ accessToken: result.data.accessToken, user: toAuthenticatedUser(result.data.user), persist: rememberMe });
-      router.push(getSafeRedirectPath(searchParams.get("next"), resolveDashboardPath(result.data.user.role)));
+      router.push(getSafeRedirectPath(searchParams.get("next"), result.data.user.role));
     } catch {
       setError("Không thể kết nối đến hệ thống đăng nhập.");
     } finally {

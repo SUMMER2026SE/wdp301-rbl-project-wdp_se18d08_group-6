@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { StaffPortalShell } from "@/components/heritage/ui";
+import { StaffPortalShell, ConfirmModal } from "@/components/heritage/ui";
 import {
   getStaffPendingBookings,
   getStaffAllBookings,
@@ -11,6 +11,7 @@ import {
   advanceBookingStatus,
   markBookingPaid,
   createRefund,
+  closeBookingWithoutRefund,
   type StaffBookingResponse,
   type DeliveryPoint,
 } from "@/lib/api";
@@ -28,8 +29,8 @@ function formatVND(amount: number) {
 
 const NEXT_ACTIONS: Partial<Record<string, { status: string; label: string; style: string }[]>> = {
   pending_confirmation: [
-    { status: "awaiting_payment", label: "Xác nhận", style: "bg-lotus text-white hover:bg-oxblood" },
-    { status: "rejected",         label: "Từ chối",  style: "border border-red-300 text-red-700 hover:bg-red-50" },
+    { status: "confirmed", label: "Xác nhận", style: "bg-lotus text-white hover:bg-oxblood" },
+    { status: "rejected",  label: "Từ chối",  style: "border border-red-300 text-red-700 hover:bg-red-50" },
   ],
   confirmed: [
     { status: "awaiting_payment", label: "Chờ thanh toán", style: "bg-lotus text-white hover:bg-oxblood" },
@@ -120,6 +121,21 @@ export default function StaffDashboardPage() {
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [errorDialog, setErrorDialog] = useState<string | null>(null);
+  const [successId, setSuccessId] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showSuccess(id: string, message: string) {
+    setSuccessId(id);
+    setSuccessMsg(message);
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    successTimerRef.current = setTimeout(() => { setSuccessId(null); setSuccessMsg(null); }, 4000);
+  }
+
+  useEffect(() => () => {
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
+  }, []);
+  const [confirmDialog, setConfirmDialog] = useState<{title:string; message:string; danger?:boolean; onConfirm:()=>void} | null>(null);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [paymentDialog, setPaymentDialog] = useState<PaymentDialog>(null);
@@ -159,6 +175,8 @@ export default function StaffDashboardPage() {
       .finally(() => setLoading(false));
   }, [tab]);
 
+  const CONFIRM_REQUIRED = new Set(["cancelled", "rejected", "overdue"]);
+
   async function handleAction(id: string, status: string) {
     setActioningId(id);
     setErrorMsg(null);
@@ -168,8 +186,11 @@ export default function StaffDashboardPage() {
       setBookings((prev) =>
         prev.map((b) => (b.id === id ? { ...b, status: res.data!.status, paidPaymentMethod: res.data!.paidPaymentMethod ?? b.paidPaymentMethod } : b)),
       );
+      const bookingCode = id.slice(0, 8).toUpperCase();
+      const statusLabel = STATUS_LABELS[res.data.status]?.label ?? res.data.status;
+      showSuccess(id, `Đơn #${bookingCode} đã chuyển sang trạng thái ${statusLabel}.`);
       if (tab === "pending" && status !== "pending_confirmation") {
-        setBookings((prev) => prev.filter((b) => b.id !== id));
+        setTimeout(() => setBookings((prev) => prev.filter((b) => b.id !== id)), 4500);
       }
     } else {
       // Nếu lỗi liên quan đến asset thì hiển thị popup thay vì banner
@@ -207,6 +228,8 @@ export default function StaffDashboardPage() {
       setBookings((prev) =>
         prev.map((b) => (b.id === id ? { ...b, status: res.data!.status, paidPaymentMethod: res.data!.paidPaymentMethod ?? b.paidPaymentMethod } : b)),
       );
+      const bookingCode = id.slice(0, 8).toUpperCase();
+      showSuccess(id, `Đơn #${bookingCode} đã thanh toán thành công.`);
     } else {
       setErrorMsg(res.message ?? "Không thể ghi nhận thanh toán.");
     }
@@ -221,6 +244,8 @@ export default function StaffDashboardPage() {
       setBookings((prev) =>
         prev.map((b) => (b.id === bookingId ? { ...b, status: res.data!.status, paidPaymentMethod: res.data!.paidPaymentMethod ?? b.paidPaymentMethod } : b)),
       );
+      const bookingCode = bookingId.slice(0, 8).toUpperCase();
+      showSuccess(bookingId, `Đơn #${bookingCode} đã thanh toán thành công.`);
     } else {
       setErrorMsg(res.message ?? "Không thể xác nhận thanh toán online.");
     }
@@ -251,32 +276,42 @@ export default function StaffDashboardPage() {
       reason: "Hoàn cọc tiền mặt tại quầy",
     });
     setActioningId(null);
-    if (res.success) {
-      setBookings((prev) => prev.filter((b) => b.id !== id));
+    if (res.success && res.data) {
+      // Tiền mặt cũng phải chờ Quản lý duyệt — giữ đơn lại, gắn refund pending
+      setBookings((prev) =>
+        prev.map((b) =>
+          b.id === id
+            ? {
+                ...b,
+                refunds: [
+                  {
+                    id: res.data!.id,
+                    amount: res.data!.amount,
+                    status: res.data!.status,
+                    refundMethod: res.data!.refundMethod,
+                    createdAt: res.data!.createdAt,
+                    updatedAt: res.data!.updatedAt,
+                  },
+                ],
+              }
+            : b,
+        ),
+      );
     } else {
       setErrorMsg(res.message ?? "Không thể hoàn cọc.");
     }
   }
 
-  async function handleDirectCashRefund(
-    bookingId: string,
-    customerName: string | null,
-    pickupMethod: string,
-    depositTotal: number,
-    penaltyTotal: number,
-  ) {
+  // Đơn chờ hoàn cọc nhưng phạt >= cọc → không có gì để hoàn, đóng đơn về hoàn tất
+  async function handleCloseWithoutRefund(bookingId: string) {
     setActioningId(bookingId);
     setErrorMsg(null);
-    const res = await createRefund({
-      bookingId,
-      refundMethod: "cash",
-      reason: "Hoàn cọc tiền mặt tại quầy",
-    });
+    const res = await closeBookingWithoutRefund(bookingId);
     setActioningId(null);
-    if (res.success) {
-      setBookings((prev) => prev.filter((b) => b.id !== bookingId));
+    if (res.success && res.data) {
+      setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, status: res.data!.status } : b)));
     } else {
-      setErrorMsg(res.message ?? "Không thể hoàn cọc.");
+      setErrorMsg(res.message ?? "Không thể đóng đơn.");
     }
   }
 
@@ -325,18 +360,26 @@ export default function StaffDashboardPage() {
     : 0;
 
   const pendingRefundCount = tab === "pending" ? bookings.filter((b) => b.status === "pending_confirmation").length : 0;
+  // Đảm bảo đơn mới nhất luôn ở đầu theo ngày tạo.
+  // Tab refunds giữ nguyên thứ tự backend (đã sắp theo lần cập nhật hoàn cọc).
+  const sortedBookings =
+    tab === "refunds"
+      ? bookings
+      : [...bookings].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        );
 
   // Tìm kiếm theo mã đơn / tên khách / SĐT / tên trang phục
   const searchQuery = search.trim().toLowerCase().replace(/^#/, "");
   const filteredBookings = searchQuery
-    ? bookings.filter(
+    ? sortedBookings.filter(
         (b) =>
           b.id.toLowerCase().includes(searchQuery) ||
           (b.customerName ?? "").toLowerCase().includes(searchQuery) ||
           (b.customerPhone ?? "").includes(searchQuery) ||
           b.items.some((item) => (item.garmentName ?? "").toLowerCase().includes(searchQuery)),
       )
-    : bookings;
+    : sortedBookings;
 
   // Phân trang danh sách đơn
   const totalPages = Math.max(1, Math.ceil(filteredBookings.length / STAFF_PAGE_SIZE));
@@ -446,10 +489,14 @@ export default function StaffDashboardPage() {
               : null;
 
             return (
-              <div
-                key={booking.id}
-                className="overflow-hidden rounded-xl border border-sand bg-white shadow-sm"
-              >
+              <div key={booking.id}>
+                {successId === booking.id && (
+                  <div className="mb-2 flex items-center gap-2 rounded-lg border border-jade/30 bg-jade/5 p-4 text-sm text-jade">
+                    <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                    <span>{successMsg}</span>
+                  </div>
+                )}
+                <div className="overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand bg-parchment px-6 py-3">
                   <div className="flex items-center gap-3">
                     <span className="font-semibold text-ink">#{booking.id.slice(0, 8).toUpperCase()}</span>
@@ -563,8 +610,23 @@ export default function StaffDashboardPage() {
                           <span className="material-symbols-outlined text-base mr-1 align-middle">schedule</span>
                           {refund.refundMethod === "bank_transfer"
                             ? "Đã gửi yêu cầu hoàn cọc — chờ Quản lý duyệt chuyển khoản"
-                            : "Đang chờ xử lý hoàn cọc"}
+                            : "Đã gửi yêu cầu hoàn cọc tiền mặt — chờ Quản lý duyệt"}
                         </div>
+                      ) : booking.depositTotal - (booking.penaltyTotal ?? 0) <= 0 ? (
+                        booking.status === "refund_pending" ? (
+                          <button
+                            type="button"
+                            disabled={isActioning}
+                            onClick={() => handleCloseWithoutRefund(booking.id)}
+                            className="rounded-lg bg-stone-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:opacity-50"
+                          >
+                            {isActioning ? "Đang xử lý..." : "Hoàn tất — phạt ≥ cọc, không hoàn"}
+                          </button>
+                        ) : (
+                          <span className="rounded-lg bg-stone-100 px-4 py-2 text-sm text-stone-500">
+                            Không hoàn cọc (phạt ≥ cọc)
+                          </span>
+                        )
                       ) : (
                         <>
                           {booking.pickupMethod === "delivery" ? (
@@ -622,22 +684,38 @@ export default function StaffDashboardPage() {
                             </button>
                           )
                         )}
-                        {actions.map((action) => (
-                          <button
-                            key={action.status}
-                            type="button"
-                            disabled={isActioning}
-                            onClick={() => handleAction(booking.id, action.status)}
-                            className={`rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50 ${action.style}`}
-                          >
-                            {isActioning ? "Đang xử lý..." : action.label}
-                          </button>
-                        ))}
+                        {actions.map((action) => {
+                          const needsConfirm = CONFIRM_REQUIRED.has(action.status);
+                          return (
+                            <button
+                              key={action.status}
+                              type="button"
+                              disabled={isActioning}
+                              onClick={() => {
+                                if (needsConfirm) {
+                                  const labels: Record<string, string> = { cancelled: "hủy", rejected: "từ chối", overdue: "đánh dấu quá hạn" };
+                                  setConfirmDialog({
+                                    title: "Xác nhận",
+                                    message: `Bạn có chắc muốn ${labels[action.status] ?? action.status} đơn này?`,
+                                    danger: true,
+                                    onConfirm: () => handleAction(booking.id, action.status),
+                                  });
+                                } else {
+                                  handleAction(booking.id, action.status);
+                                }
+                              }}
+                              className={`rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50 ${action.style}`}
+                            >
+                              {isActioning ? "Đang xử lý..." : action.label}
+                            </button>
+                          );
+                        })}
                       </>
                     )
                   )}
                 </div>
               </div>
+            </div>
             );
           })}
 
@@ -874,6 +952,8 @@ export default function StaffDashboardPage() {
           </div>
         </div>
       )}
+
+      <ConfirmModal open={!!confirmDialog} title={confirmDialog?.title??""} message={confirmDialog?.message??""} danger={confirmDialog?.danger} onConfirm={() => { confirmDialog?.onConfirm(); setConfirmDialog(null); }} onCancel={() => setConfirmDialog(null)} />
     </StaffPortalShell>
   );
 }

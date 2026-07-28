@@ -143,12 +143,27 @@ export async function getMyChatConversation() {
   return apiRequest<ChatConversation>("/chat/conversations/me");
 }
 
+// Staff/manager: mở (hoặc tạo) cuộc trò chuyện với một khách cụ thể
+export async function getConversationWithCustomer(customerId: string) {
+  return apiRequest<ChatConversation>(`/chat/conversations/with-customer/${customerId}`);
+}
+
 export async function createChatConversation() {
   return apiRequest<ChatConversation>("/chat/conversations", { method: "POST" });
 }
 
-export async function getChatConversations() {
-  return apiRequest<ChatConversation[]>("/chat/conversations");
+export async function getChatConversations(tab?: string) {
+  const query = tab ? `?tab=${tab}` : "";
+  return apiRequest<ChatConversation[]>(`/chat/conversations${query}`);
+}
+
+export async function getChatConversationCounts() {
+  return apiRequest<{
+    needsReply: number;
+    awaitingReply: number;
+    unassigned: number;
+    resolved: number;
+  }>("/chat/conversations/counts");
 }
 
 export async function getConversationMessages(conversationId: string, before?: string, limit = 15) {
@@ -248,26 +263,9 @@ export function emitChatMessage(params: {
     sendTimeoutRef.current.set(tempId, timeout);
   };
 
-  const waitForRoom = (fn: () => void) => {
-    const poll = setInterval(() => {
-      if (roomJoinedRef?.current) {
-        clearInterval(poll);
-        fn();
-      }
-    }, 50);
-    setTimeout(() => {
-      clearInterval(poll);
-      fn();
-    }, 5000);
-  };
-
   if (!socket.connected) {
     socket.connect();
-    socket.once("connect", () => {
-      if (roomJoinedRef) { waitForRoom(doEmit); } else { doEmit(); }
-    });
-  } else if (roomJoinedRef && !roomJoinedRef.current) {
-    waitForRoom(doEmit);
+    socket.once("connect", doEmit);
   } else {
     doEmit();
   }

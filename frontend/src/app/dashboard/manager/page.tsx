@@ -1,16 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ManagerPortalShell } from "@/components/heritage/ui";
+import { ManagerPortalShell, ConfirmModal } from "@/components/heritage/ui";
 import { useAuth } from "@/components/auth/auth-provider";
 import { STATUS_LABELS, statusBadgeClass } from "@/lib/status-labels";
 import {
   getStaffAllBookings,
+  getStaffCompletedRefundBookings,
   getAvailableAssets,
   assignAssetToBookingItem,
   getPendingManagerRefunds,
   approveRefund,
+  rejectRefund,
   type RefundResponse,
 getGarments,
   getGarmentById,
@@ -115,8 +117,33 @@ export default function ManagerDashboardPage() {
   const [currentDateLabel, setCurrentDateLabel] = useState("");
   const [tab, setTab] = useState<Tab>("overview");
   const [bookings, setBookings] = useState<StaffBookingResponse[]>([]);
+  // Đơn completed còn cọc (kèm trạng thái refund) — dùng để tính "tiền cọc đang giữ"
+  const [completedRefundBookings, setCompletedRefundBookings] = useState<StaffBookingResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successAssignId, setSuccessAssignId] = useState<string | null>(null);
+  const [successAssignMsg, setSuccessAssignMsg] = useState<string | null>(null);
+  const successAssignTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showToast(type: "success" | "error", message: string) {
+    setToast({ type, message });
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 4000);
+  }
+
+  function showSuccessAssign(id: string, message: string) {
+    setSuccessAssignId(id);
+    setSuccessAssignMsg(message);
+    if (successAssignTimerRef.current) clearTimeout(successAssignTimerRef.current);
+    successAssignTimerRef.current = setTimeout(() => { setSuccessAssignId(null); setSuccessAssignMsg(null); }, 4000);
+  }
+
+  useEffect(() => () => {
+    if (successAssignTimerRef.current) clearTimeout(successAssignTimerRef.current);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+  }, []);
 
   // Refund approval state
   const [pendingRefunds, setPendingRefunds] = useState<RefundResponse[]>([]);
@@ -199,6 +226,7 @@ export default function ManagerDashboardPage() {
     setErrorMsg(null);
     Promise.all([
       getStaffAllBookings().then(res => { if (res.success && res.data) setBookings(res.data); }),
+      getStaffCompletedRefundBookings().then(res => { if (res.success && res.data) setCompletedRefundBookings(res.data); }),
       getGarments().then(res => { if (res.success && res.data) setGarments(res.data); }),
       getAllAssets().then(res => { if (res.success && res.data) setAllAssets(res.data); }),
       getGarmentCategories().then(res => { if (res.success && res.data) setCategories(res.data); }),
@@ -405,19 +433,39 @@ export default function ManagerDashboardPage() {
   }, [tab]);
 
   async function handleApproveRefund(refundId: string, proofImageUrl: string, approveNote: string) {
-    if (!proofImageUrl.trim()) return;
+    const refund = pendingRefunds.find((r) => r.id === refundId);
+    // Bill chuyển khoản chỉ bắt buộc với refund bank_transfer; tiền mặt duyệt trực tiếp
+    if (refund?.refundMethod === "bank_transfer" && !proofImageUrl.trim()) return;
     setApprovingId(refundId);
     setErrorMsg(null);
     const res = await approveRefund(refundId, {
       status: "refunded",
-      proofImageUrl: proofImageUrl.trim(),
+      proofImageUrl: proofImageUrl.trim() || undefined,
       note: approveNote || undefined,
     });
     setApprovingId(null);
     if (res.success) {
       setPendingRefunds((prev) => prev.filter((r) => r.id !== refundId));
+      // Tải lại danh sách đơn completed để "tiền cọc đang giữ" trừ ngay cọc vừa hoàn
+      const refreshed = await getStaffCompletedRefundBookings();
+      if (refreshed.success && refreshed.data) setCompletedRefundBookings(refreshed.data);
     } else {
       setErrorMsg(res.message ?? "Không thể duyệt hoàn cọc.");
+      // Số tiền lệch có thể khiến backend tự huỷ yêu cầu này — đồng bộ lại danh sách.
+      const refreshedPending = await getPendingManagerRefunds();
+      if (refreshedPending.success && refreshedPending.data) setPendingRefunds(refreshedPending.data);
+    }
+  }
+
+  async function handleRejectRefund(refundId: string, reason: string) {
+    setApprovingId(refundId);
+    setErrorMsg(null);
+    const res = await rejectRefund(refundId, reason || undefined);
+    setApprovingId(null);
+    if (res.success) {
+      setPendingRefunds((prev) => prev.filter((r) => r.id !== refundId));
+    } else {
+      setErrorMsg(res.message ?? "Không thể từ chối yêu cầu hoàn cọc.");
     }
   }
 
@@ -451,13 +499,22 @@ export default function ManagerDashboardPage() {
     const res = await assignAssetToBookingItem(bookingId, itemId, state.selected);
     setActioningId(null);
     if (res.success) {
-      const listRes = await getStaffAllBookings();
-      if (listRes.success && listRes.data) setBookings(listRes.data);
       setAssetAssignState((prev) => {
         const next = { ...prev };
         delete next[itemKey];
         return next;
       });
+      const bookingCode = bookingId.slice(0, 8).toUpperCase();
+      showSuccessAssign(bookingId, `Đơn #${bookingCode} đã gắn sản phẩm thành công.`);
+      setTimeout(() => {
+        setBookings((prev) =>
+          prev.map((b) =>
+            b.id === bookingId
+              ? { ...b, items: b.items.map((i) => (i.id === itemId ? { ...i, garmentAssetId: state.selected } : i)) }
+              : b,
+          ),
+        );
+      }, 4500);
     } else {
       setErrorMsg(res.message ?? "Không thể gán tài sản.");
     }
@@ -544,12 +601,25 @@ export default function ManagerDashboardPage() {
   const totalRentalRevenue = bookings
     .filter((b) => REVENUE_STATUSES.includes(b.status))
     .reduce((sum, b) => sum + b.rentalTotal, 0);
-  const totalDepositHeld = activeBookings.reduce((sum, b) => sum + b.depositTotal, 0);
+  // Tiền cọc đang giữ = cọc đã thu và CHƯA hoàn cho khách.
+  // - Đơn từ lúc thanh toán (paid) đến khi kiểm tra xong: đang giữ cọc.
+  // - Đơn completed: vẫn giữ cọc cho đến khi yêu cầu hoàn cọc được DUYỆT.
+  // - Khi duyệt hoàn: trừ TRỌN tiền cọc của đơn (tiền phạt hạch toán riêng, không liên quan).
+  const DEPOSIT_HOLDING_STATUSES = ["paid", "preparing", "ready_for_pickup", "delivering", "renting", "returned", "inspection_pending", "overdue"];
+  const depositHoldingActive = bookings.filter((b) => DEPOSIT_HOLDING_STATUSES.includes(b.status));
+  const depositHoldingCompleted = completedRefundBookings.filter((b) => {
+    const refund = (b as StaffBookingResponse & { refunds?: Array<{ status: string }> }).refunds?.[0];
+    return !(refund && (refund.status === "refunded" || refund.status === "partially_refunded"));
+  });
+  const depositHoldingCount = depositHoldingActive.length + depositHoldingCompleted.length;
+  const totalDepositHeld =
+    depositHoldingActive.reduce((sum, b) => sum + b.depositTotal, 0) +
+    depositHoldingCompleted.reduce((sum, b) => sum + b.depositTotal, 0);
   const totalPenalties = bookings.reduce((sum, b) => sum + (b.penaltyTotal ?? 0), 0);
   const rentedItemCount = bookings
     .filter((b) => b.status === "renting")
     .reduce((sum, b) => sum + b.items.filter((i) => i.garmentAssetId).length, 0);
-  const totalAvailable = assets.filter((a) => a.status === "available").length;
+  const totalAvailable = allAssets.filter((a) => a.status === "available").length;
   const utilizationDenominator = rentedItemCount + totalAvailable;
   const utilizationPct = utilizationDenominator > 0
     ? Math.round((rentedItemCount / utilizationDenominator) * 100)
@@ -565,7 +635,7 @@ export default function ManagerDashboardPage() {
       active={tab as any}
       title={meta.title}
       subtitle={meta.subtitle}
-      onTabChange={goToTab}
+      onTabChange={(key) => { if (key !== "reviews" && key !== "chat") goToTab(key); }}
       managerName={hasMounted ? (user?.fullName ?? user?.email?.split("@")[0] ?? "Quản lý cửa hàng") : "Quản lý cửa hàng"}
       managerEmail={hasMounted ? (user?.email ?? null) : null}
       currentDateLabel={hasMounted ? currentDateLabel : ""}
@@ -577,7 +647,6 @@ export default function ManagerDashboardPage() {
           {errorMsg}
         </div>
       )}
-
       {loading ? (
         <div className="py-20 text-center text-stone-400">Đang tải dữ liệu...</div>
       ) : tab === "overview" ? (
@@ -586,6 +655,7 @@ export default function ManagerDashboardPage() {
           totalDepositHeld={totalDepositHeld}
           bookings={bookings}
           activeBookings={activeBookings}
+          depositHoldingCount={depositHoldingCount}
           utilizationPct={utilizationPct}
           rentedItemCount={rentedItemCount}
           utilizationDenominator={utilizationDenominator}
@@ -603,6 +673,8 @@ export default function ManagerDashboardPage() {
           bookingsNeedingAssets={bookingsNeedingAssets}
           assetAssignState={assetAssignState}
           actioningId={actioningId}
+          successAssignId={successAssignId}
+          successAssignMsg={successAssignMsg}
           onOpenPicker={openAssetPicker}
           onAssign={handleAssignAsset}
           onClosePicker={closeAssetPicker}
@@ -662,6 +734,9 @@ export default function ManagerDashboardPage() {
             if (res.success) {
               const refresh = await getLaundryTickets();
               if (refresh.success && refresh.data) setLaundryTickets(refresh.data);
+              showToast("success", "Đã hoàn tất giặt sấy. Trang phục đã sẵn sàng cho khách hàng thuê.");
+            } else {
+              showToast("error", res.message ?? "Không thể hoàn tất giặt sấy. Vui lòng thử lại.");
             }
           }}
         />
@@ -677,6 +752,14 @@ export default function ManagerDashboardPage() {
             if (res.success) {
               const refresh = await getMaintenanceJobs();
               if (refresh.success && refresh.data) setMaintenanceJobs(refresh.data);
+              showToast(
+                "success",
+                status === "completed"
+                  ? "Đã hoàn tất bảo trì. Trang phục đã sẵn sàng cho khách hàng thuê."
+                  : "Đã ghi nhận trang phục không thể sửa chữa.",
+              );
+            } else {
+              showToast("error", res.message ?? "Không thể cập nhật bảo trì. Vui lòng thử lại.");
             }
           }}
         />
@@ -685,6 +768,7 @@ export default function ManagerDashboardPage() {
           pendingRefunds={pendingRefunds}
           loadingRefunds={loadingRefunds}
           handleApproveRefund={handleApproveRefund}
+          handleRejectRefund={handleRejectRefund}
           approvingId={approvingId}
         />
       ) : (
@@ -692,7 +776,7 @@ export default function ManagerDashboardPage() {
           totalRentalRevenue={totalRentalRevenue}
           totalDepositHeld={totalDepositHeld}
           totalPenalties={totalPenalties}
-          activeBookings={activeBookings}
+          depositHoldingCount={depositHoldingCount}
           bookings={bookings}
         />
       )}
@@ -721,6 +805,34 @@ export default function ManagerDashboardPage() {
           onConfirm={() => handleDeleteGarment(garmentToDeleteId)}
         />
       )}
+
+      {/* Toast thông báo trên màn hình */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2">
+          <div
+            role="status"
+            className={
+              "flex items-start gap-3 rounded-xl border px-4 py-3 shadow-lg " +
+              (toast.type === "success"
+                ? "border-jade/30 bg-white text-forest"
+                : "border-red-200 bg-white text-red-700")
+            }
+          >
+            <span className="material-symbols-outlined text-xl">
+              {toast.type === "success" ? "check_circle" : "error"}
+            </span>
+            <p className="flex-1 text-sm font-medium">{toast.message}</p>
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              className="text-stone-400 transition hover:text-stone-600"
+              aria-label="Đóng thông báo"
+            >
+              <span className="material-symbols-outlined text-[18px]">close</span>
+            </button>
+          </div>
+        </div>
+      )}
     </ManagerPortalShell>
   );
 }
@@ -733,6 +845,8 @@ function AssetsAssignTab({
   bookingsNeedingAssets,
   assetAssignState,
   actioningId,
+  successAssignId,
+  successAssignMsg,
   onOpenPicker,
   onAssign,
   onClosePicker,
@@ -746,6 +860,8 @@ function AssetsAssignTab({
     open: boolean;
   }>;
   actioningId: string | null;
+  successAssignId: string | null;
+  successAssignMsg: string | null;
   onOpenPicker: (itemKey: string, garmentId: string) => void;
   onAssign: (bookingId: string, itemId: string, itemKey: string) => void;
   onClosePicker: (itemKey: string) => void;
@@ -763,7 +879,14 @@ function AssetsAssignTab({
           const s = STATUS_LABELS[booking.status] ?? { label: booking.status, color: "bg-stone-100 text-stone-600" };
           const unassignedItems = booking.items.filter((item) => !item.garmentAssetId);
           return (
-            <div key={booking.id} className="overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
+            <div key={booking.id}>
+              {successAssignId === booking.id && (
+                <div className="mb-2 flex items-center gap-2 rounded-lg border border-jade/30 bg-jade/5 p-4 text-sm text-jade">
+                  <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                  <span>{successAssignMsg}</span>
+                </div>
+              )}
+              <div className="overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand bg-mist px-6 py-3">
                 <div className="flex items-center gap-3">
                   <span className="font-semibold text-ink">#{booking.id.slice(0, 8).toUpperCase()}</span>
@@ -824,6 +947,7 @@ function AssetsAssignTab({
                 })}
               </div>
             </div>
+            </div>
           );
         })
       )}
@@ -836,7 +960,7 @@ function AssetsAssignTab({
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function OverviewTab({
-  totalRentalRevenue, totalDepositHeld, bookings, activeBookings,
+  totalRentalRevenue, totalDepositHeld, bookings, activeBookings, depositHoldingCount,
   utilizationPct, rentedItemCount, utilizationDenominator,
   countBy, garments, onGoToTab, bookingsNeedingAssets, allAssets, laundryTickets, maintenanceJobs, assets,
 }: {
@@ -844,6 +968,7 @@ function OverviewTab({
   totalDepositHeld: number;
   bookings: StaffBookingResponse[];
   activeBookings: StaffBookingResponse[];
+  depositHoldingCount: number;
   utilizationPct: number;
   rentedItemCount: number;
   utilizationDenominator: number;
@@ -873,7 +998,7 @@ function OverviewTab({
     <div className="space-y-8">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         <SnapshotCard label="Doanh thu (đang phát sinh)" value={formatVND(totalRentalRevenue)} hint="Từ đơn completed + đang thuê" icon="payments" tone="lotus" />
-        <SnapshotCard label="Tiền cọc đang giữ" value={formatVND(totalDepositHeld)} hint={`${activeBookings.length} đơn đang hoạt động`} icon="account_balance_wallet" tone="antique" />
+        <SnapshotCard label="Tiền cọc đang giữ" value={formatVND(totalDepositHeld)} hint={`${depositHoldingCount} đơn đang giữ cọc — trừ khi duyệt hoàn`} icon="account_balance_wallet" tone="antique" />
         <SnapshotCard label="Đơn đặt chỗ hiện tại" value={String(activeBookings.length)} hint="Đang trong luồng vận hành" icon="calendar_month" tone="jade" />
         <SnapshotCard label="Hiệu suất lấp đầy" value={garments.length === 0 ? "—" : `${utilizationPct}%`} hint={`${rentedItemCount} đang thuê / ${utilizationDenominator} khả dụng`} icon="pie_chart" tone="bronze" progress={garments.length === 0 ? null : utilizationPct} />
       </div>
@@ -1558,17 +1683,19 @@ function GarmentFormModal({
                 )}
               </div>
               {addingSize ? (
-                <div className="flex gap-2">
+                <div className="space-y-2">
                   <input
                     autoFocus
                     value={newSizeLabel}
                     onChange={(e) => setNewSizeLabel(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddSize(); } if (e.key === "Escape") { setAddingSize(false); setNewSizeLabel(""); } }}
-                    className="flex-1 rounded-lg border border-antique px-3 py-2 text-sm outline-none focus:border-lotus"
+                    className="w-full rounded-lg border border-antique px-3 py-2 text-sm outline-none focus:border-lotus"
                     placeholder="VD: XS, 3XL, 90cm"
                   />
-                  <button type="button" onClick={handleAddSize} disabled={savingSize || !newSizeLabel.trim()} className="rounded-lg bg-lotus px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 hover:bg-oxblood">{savingSize ? "..." : "Lưu"}</button>
-                  <button type="button" onClick={() => { setAddingSize(false); setNewSizeLabel(""); }} className="rounded-lg border border-sand px-3 py-2 text-xs text-stone-500 hover:bg-stone-50">Huỷ</button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={handleAddSize} disabled={savingSize || !newSizeLabel.trim()} className="rounded-lg bg-lotus px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 hover:bg-oxblood">{savingSize ? "..." : "Lưu"}</button>
+                    <button type="button" onClick={() => { setAddingSize(false); setNewSizeLabel(""); }} className="rounded-lg border border-sand px-3 py-2 text-xs font-semibold text-stone-500 hover:bg-stone-50">Huỷ</button>
+                  </div>
                 </div>
               ) : (
                 <select value={sizeLabel} onChange={(e) => setSizeLabel(e.target.value)} className={`w-full rounded-lg border ${errors.sizeLabel ? 'border-red-500' : 'border-sand'} bg-white px-3 py-2 text-sm outline-none focus:border-antique`}>
@@ -1787,7 +1914,35 @@ function AssetFormModal({
 // TAB: Inspection Log
 // ═══════════════════════════════════════════════════════════════════════════════
 
+const INSPECTION_STATUS_META: Record<string, { label: string; color: string }> = {
+  pending:     { label: "Chờ xử lý",      color: "bg-stone-100 text-stone-600" },
+  in_progress: { label: "Đang kiểm tra",  color: "bg-amber-100 text-amber-700" },
+  completed:   { label: "Hoàn tất",       color: "bg-jade/10 text-jade" },
+  disputed:    { label: "Tranh chấp",     color: "bg-red-50 text-red-600" },
+};
+
 function InspectionLogTab({ log, loading }: { log: InspectionLogEntry[]; loading: boolean }) {
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [penaltyFilter, setPenaltyFilter] = useState("all");
+
+  const filteredLog = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return log.filter((entry) => {
+      const byText = q
+        ? [entry.assetCode, entry.garmentName, entry.inspectorName].some((v) => v?.toLowerCase().includes(q))
+        : true;
+      const byStatus = statusFilter === "all" ? true : entry.status === statusFilter;
+      const byPenalty =
+        penaltyFilter === "all"
+          ? true
+          : penaltyFilter === "with"
+            ? entry.totalPenalty > 0
+            : entry.totalPenalty === 0;
+      return byText && byStatus && byPenalty;
+    });
+  }, [log, search, statusFilter, penaltyFilter]);
+
   return (
     <div className="space-y-4">
       {loading ? (
@@ -1795,40 +1950,80 @@ function InspectionLogTab({ log, loading }: { log: InspectionLogEntry[]; loading
       ) : log.length === 0 ? (
         <div className="py-20 text-center text-stone-400">Chưa có phiên kiểm tra nào.</div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-mist text-xs uppercase tracking-[0.14em] text-stone-500">
-              <tr>
-                <th className="px-6 py-3">Mã tài sản</th>
-                <th className="px-6 py-3">Trang phục</th>
-                <th className="px-6 py-3">Trạng thái</th>
-                <th className="px-6 py-3">Người kiểm tra</th>
-                <th className="px-6 py-3">Ghi nhận</th>
-                <th className="px-6 py-3">Phạt</th>
-                <th className="px-6 py-3">Ngày tạo</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-sand">
-              {log.map((entry) => (
-                <tr key={entry.id} className="transition hover:bg-mist">
-                  <td className="px-6 py-4 font-semibold text-ink">{entry.assetCode}</td>
-                  <td className="px-6 py-4 text-stone-600">{entry.garmentName}</td>
-                  <td className="px-6 py-4">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                      entry.status === "completed" ? "bg-jade/10 text-jade" : "bg-amber-100 text-amber-700"
-                    }`}>
-                      {entry.status === "completed" ? "Hoàn tất" : entry.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-stone-600">{entry.inspectorName ?? "—"}</td>
-                  <td className="px-6 py-4 text-stone-600">{entry.findingsCount}</td>
-                  <td className="px-6 py-4 text-red-700">{entry.totalPenalty > 0 ? formatVND(entry.totalPenalty) : "—"}</td>
-                  <td className="px-6 py-4 text-stone-500">{entry.createdAt.slice(0, 10)}</td>
-                </tr>
+        <>
+          <div className="flex flex-wrap gap-2">
+            <div className="relative min-w-[220px] flex-1">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-stone-400">search</span>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full rounded-lg border border-sand bg-mist py-2 pl-10 pr-3 text-sm outline-none focus:border-antique"
+                placeholder="Tìm mã tài sản, trang phục, người kiểm tra..."
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="rounded-lg border border-sand bg-white px-3 py-2 text-sm outline-none focus:border-antique"
+              aria-label="Lọc trạng thái kiểm tra"
+            >
+              <option value="all">Tất cả trạng thái</option>
+              {Object.entries(INSPECTION_STATUS_META).map(([key, meta]) => (
+                <option key={key} value={key}>{meta.label}</option>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </select>
+            <select
+              value={penaltyFilter}
+              onChange={(e) => setPenaltyFilter(e.target.value)}
+              className="rounded-lg border border-sand bg-white px-3 py-2 text-sm outline-none focus:border-antique"
+              aria-label="Lọc theo phạt"
+            >
+              <option value="all">Tất cả phạt</option>
+              <option value="with">Có phạt</option>
+              <option value="without">Không phạt</option>
+            </select>
+          </div>
+
+          {filteredLog.length === 0 ? (
+            <div className="py-20 text-center text-stone-400">Không tìm thấy phiên kiểm tra phù hợp.</div>
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-mist text-xs uppercase tracking-[0.14em] text-stone-500">
+                  <tr>
+                    <th className="px-6 py-3">Mã tài sản</th>
+                    <th className="px-6 py-3">Trang phục</th>
+                    <th className="px-6 py-3">Trạng thái</th>
+                    <th className="px-6 py-3">Người kiểm tra</th>
+                    <th className="px-6 py-3">Ghi nhận</th>
+                    <th className="px-6 py-3">Phạt</th>
+                    <th className="px-6 py-3">Ngày tạo</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-sand">
+                  {filteredLog.map((entry) => {
+                    const sm = INSPECTION_STATUS_META[entry.status] ?? { label: entry.status, color: "bg-stone-100 text-stone-600" };
+                    return (
+                      <tr key={entry.id} className="transition hover:bg-mist">
+                        <td className="px-6 py-4 font-semibold text-ink">{entry.assetCode}</td>
+                        <td className="px-6 py-4 text-stone-600">{entry.garmentName}</td>
+                        <td className="px-6 py-4">
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${sm.color}`}>
+                            {sm.label}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-stone-600">{entry.inspectorName ?? "—"}</td>
+                        <td className="px-6 py-4 text-stone-600">{entry.findingsCount}</td>
+                        <td className="px-6 py-4 text-red-700">{entry.totalPenalty > 0 ? formatVND(entry.totalPenalty) : "—"}</td>
+                        <td className="px-6 py-4 text-stone-500">{entry.createdAt.slice(0, 10)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -1896,6 +2091,7 @@ function DamagedTab({
   actioningId: string | null;
   onComplete: (id: string, status: string) => Promise<void>;
 }) {
+  const [confirmDialog, setConfirmDialog] = useState<{title:string; message:string; danger?:boolean; onConfirm:()=>void} | null>(null);
   return (
     <div className="space-y-4">
       {loading ? (
@@ -1926,7 +2122,12 @@ function DamagedTab({
                     <button
                       type="button"
                       disabled={actioningId === j.id}
-                      onClick={() => onComplete(j.id, "completed")}
+                      onClick={() => setConfirmDialog({
+                        title: "Hoàn tất bảo trì",
+                        message: "Xác nhận hoàn tất bảo trì?",
+                        danger: false,
+                        onConfirm: () => onComplete(j.id, "completed"),
+                      })}
                       className="rounded-lg bg-jade px-3 py-2 text-xs font-semibold text-white transition hover:bg-forest disabled:opacity-50"
                     >
                       {actioningId === j.id ? "..." : "Hoàn tất"}
@@ -1934,7 +2135,12 @@ function DamagedTab({
                     <button
                       type="button"
                       disabled={actioningId === j.id}
-                      onClick={() => onComplete(j.id, "cannot_repair")}
+                      onClick={() => setConfirmDialog({
+                        title: "Không thể sửa",
+                        message: "Xác nhận không thể sửa được? Hành động này không thể hoàn tác.",
+                        danger: true,
+                        onConfirm: () => onComplete(j.id, "cannot_repair"),
+                      })}
                       className="rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-50"
                     >
                       Không sửa được
@@ -1946,6 +2152,8 @@ function DamagedTab({
           ))}
         </div>
       )}
+
+      <ConfirmModal open={!!confirmDialog} title={confirmDialog?.title??""} message={confirmDialog?.message??""} danger={confirmDialog?.danger} onConfirm={() => { confirmDialog?.onConfirm(); setConfirmDialog(null); }} onCancel={() => setConfirmDialog(null)} />
     </div>
   );
 }
@@ -1956,14 +2164,31 @@ function DamagedTab({
 
 function FinanceTab({
   totalRentalRevenue, totalDepositHeld, totalPenalties,
-  activeBookings, bookings,
+  depositHoldingCount, bookings,
 }: {
   totalRentalRevenue: number;
   totalDepositHeld: number;
   totalPenalties: number;
-  activeBookings: StaffBookingResponse[];
+  depositHoldingCount: number;
   bookings: StaffBookingResponse[];
 }) {
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  const filteredBookings = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return bookings
+      .slice()
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .filter((b) => {
+        const byText = q
+          ? [b.id, b.customerName].some((v) => v?.toLowerCase().includes(q))
+          : true;
+        const byStatus = statusFilter === "all" ? true : b.status === statusFilter;
+        return byText && byStatus;
+      });
+  }, [bookings, search, statusFilter]);
+
   return (
     <div className="space-y-6">
       <div className="grid gap-6 md:grid-cols-3">
@@ -1975,7 +2200,7 @@ function FinanceTab({
         <div className="rounded-xl border border-sand bg-white p-6 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Tiền cọc đang giữ</p>
           <p className="mt-2 font-display text-3xl text-amber-700">{formatVND(totalDepositHeld)}</p>
-          <p className="mt-1 text-sm text-stone-500">{activeBookings.length} đơn đang active</p>
+          <p className="mt-1 text-sm text-stone-500">{depositHoldingCount} đơn đang giữ cọc — trừ khi duyệt hoàn</p>
         </div>
         <div className="rounded-xl border border-sand bg-white p-6 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Tiền phạt phát sinh</p>
@@ -1985,8 +2210,30 @@ function FinanceTab({
       </div>
 
       <div className="overflow-hidden rounded-xl border border-sand bg-white shadow-sm">
-        <div className="border-b border-sand px-6 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sand px-6 py-4">
           <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-500">Đối soát đơn gần đây</h3>
+          <div className="flex flex-wrap gap-2">
+            <div className="relative min-w-[220px]">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-stone-400">search</span>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full rounded-lg border border-sand bg-mist py-2 pl-10 pr-3 text-sm outline-none focus:border-antique"
+                placeholder="Tìm mã đơn, khách hàng..."
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="rounded-lg border border-sand bg-white px-3 py-2 text-sm outline-none focus:border-antique"
+              aria-label="Lọc trạng thái đơn"
+            >
+              <option value="all">Tất cả trạng thái</option>
+              {Object.entries(STATUS_LABELS).map(([key, meta]) => (
+                <option key={key} value={key}>{meta.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -2005,8 +2252,12 @@ function FinanceTab({
                 <tr>
                   <td colSpan={6} className="px-6 py-10 text-center text-stone-400">Chưa có đơn nào.</td>
                 </tr>
+              ) : filteredBookings.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-10 text-center text-stone-400">Không tìm thấy đơn phù hợp.</td>
+                </tr>
               ) : (
-                bookings.slice().reverse().map((b) => {
+                filteredBookings.map((b) => {
                   const s = STATUS_LABELS[b.status] ?? { label: b.status, color: "bg-stone-100 text-stone-600" };
                   return (
                     <tr key={b.id} className="transition hover:bg-mist">
@@ -2359,13 +2610,19 @@ function RefundCard({
   refund,
   approvingId,
   handleApproveRefund,
+  handleRejectRefund,
 }: {
   refund: any;
   approvingId: string | null;
   handleApproveRefund: (id: string, proofImageUrl: string, approveNote: string) => void;
+  handleRejectRefund: (id: string, reason: string) => void;
 }) {
   const [proofImageUrl, setProofImageUrl] = useState("");
   const [approveNote, setApproveNote] = useState("");
+  const [uploadingProof, setUploadingProof] = useState(false);
+  const [proofError, setProofError] = useState<string | null>(null);
+  const [showRejectConfirm, setShowRejectConfirm] = useState(false);
+  const isBankTransfer = refund.refundMethod === "bank_transfer";
 
   function formatVND(amount: number) {
     return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(amount);
@@ -2378,6 +2635,9 @@ function RefundCard({
           <span className="font-semibold text-ink">#{refund.bookingId.slice(0, 8).toUpperCase()}</span>
           <span className="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] bg-yellow-100 text-yellow-700">
             Chờ duyệt
+          </span>
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${isBankTransfer ? "bg-lotus/10 text-lotus" : "bg-jade/10 text-jade"}`}>
+            {isBankTransfer ? "Chuyển khoản" : "Tiền mặt"}
           </span>
         </div>
         <span className="text-xs text-stone-400">
@@ -2402,38 +2662,102 @@ function RefundCard({
         </div>
       </div>
 
-      <div className="border-t border-sand bg-mist px-6 py-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500 mb-3">
-          Thông tin chuyển khoản
-        </p>
-        <div className="grid gap-3 sm:grid-cols-3 text-sm">
-          <div>
-            <span className="text-stone-500">Ngân hàng: </span>
-            <span className="font-medium text-ink">{refund.bankName ?? "—"}</span>
-          </div>
-          <div>
-            <span className="text-stone-500">Số TK: </span>
-            <span className="font-medium text-ink">{refund.bankAccountNumber ?? "—"}</span>
-          </div>
-          <div>
-            <span className="text-stone-500">Chủ TK: </span>
-            <span className="font-medium text-ink">{refund.bankAccountHolder ?? "—"}</span>
+      {(refund.booking.items?.length ?? 0) > 0 && (
+        <div className="border-t border-sand px-6 py-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500 mb-3">Trang phục</p>
+          <div className="flex flex-wrap gap-4">
+            {refund.booking.items.map((item: any) => (
+              <div key={item.id} className="flex items-center gap-3 rounded-lg border border-sand bg-mist/50 p-2 pr-4">
+                {item.imageUrl ? (
+                  <img src={item.imageUrl} alt={item.garmentName ?? "Trang phục"} className="h-14 w-14 rounded-md object-cover" />
+                ) : (
+                  <div className="flex h-14 w-14 items-center justify-center rounded-md bg-stone-100 text-stone-400">
+                    <span className="material-symbols-outlined">checkroom</span>
+                  </div>
+                )}
+                <div>
+                  <p className="text-sm font-medium text-ink">{item.garmentName ?? "—"}</p>
+                  {item.sizeLabel && <p className="text-xs text-stone-500">Size: {item.sizeLabel}</p>}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-      </div>
+      )}
+
+      {isBankTransfer ? (
+        <div className="border-t border-sand bg-mist px-6 py-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500 mb-3">
+            Thông tin chuyển khoản
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3 text-sm">
+            <div>
+              <span className="text-stone-500">Ngân hàng: </span>
+              <span className="font-medium text-ink">{refund.bankName ?? "—"}</span>
+            </div>
+            <div>
+              <span className="text-stone-500">Số TK: </span>
+              <span className="font-medium text-ink">{refund.bankAccountNumber ?? "—"}</span>
+            </div>
+            <div>
+              <span className="text-stone-500">Chủ TK: </span>
+              <span className="font-medium text-ink">{refund.bankAccountHolder ?? "—"}</span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="border-t border-sand bg-mist px-6 py-4">
+          <p className="text-sm text-stone-500">
+            Nhân viên hoàn cọc <strong className="text-ink">tiền mặt tại quầy</strong> — duyệt để xác nhận đã chi tiền và hoàn tất đơn.
+          </p>
+        </div>
+      )}
 
       <div className="border-t border-sand px-6 py-4 space-y-4">
-        <div>
-          <label className="mb-2 block text-sm font-semibold text-stone-500">
-            Ảnh bill chuyển khoản (URL)
-          </label>
-          <input
-            className="w-full rounded-lg border border-sand px-3 py-2 text-sm outline-none focus:border-antique"
-            placeholder="Dán URL ảnh chụp giao dịch chuyển khoản..."
-            value={proofImageUrl}
-            onChange={(e) => setProofImageUrl(e.target.value)}
-          />
-        </div>
+        {isBankTransfer && (
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-stone-500">
+              Ảnh bill chuyển khoản
+            </label>
+            <div className="flex flex-wrap items-center gap-4">
+              <label className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border border-sand px-4 py-2.5 text-sm font-semibold text-stone-600 transition hover:border-antique hover:text-antique ${uploadingProof ? "pointer-events-none opacity-50" : ""}`}>
+                <span className="material-symbols-outlined text-[18px]">upload</span>
+                {uploadingProof ? "Đang tải ảnh..." : proofImageUrl ? "Chọn ảnh khác" : "Tải ảnh bill từ máy"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploadingProof}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!file) return;
+                    setProofError(null);
+                    setUploadingProof(true);
+                    try {
+                      const formData = new FormData();
+                      formData.append("file", file);
+                      const res = await fetch("/api/upload", { method: "POST", body: formData });
+                      const data = await res.json();
+                      if (data.success && data.url) setProofImageUrl(data.url);
+                      else setProofError(data.message ?? "Tải ảnh thất bại. Vui lòng thử lại.");
+                    } catch {
+                      setProofError("Tải ảnh thất bại. Vui lòng thử lại.");
+                    } finally {
+                      setUploadingProof(false);
+                    }
+                  }}
+                />
+              </label>
+              {proofImageUrl && (
+                <a href={proofImageUrl} target="_blank" rel="noreferrer" className="block">
+                  <img src={proofImageUrl} alt="Bill chuyển khoản" className="h-20 rounded-lg border border-sand object-cover" />
+                </a>
+              )}
+            </div>
+            {proofError && <p className="mt-2 text-sm text-red-600">{proofError}</p>}
+          </div>
+        )}
         <div>
           <label className="mb-2 block text-sm font-semibold text-stone-500">
             Ghi chú (tuỳ chọn)
@@ -2445,10 +2769,48 @@ function RefundCard({
             onChange={(e) => setApproveNote(e.target.value)}
           />
         </div>
-        <div className="flex justify-end">
+        <div className="flex flex-wrap justify-end gap-2">
+          {isBankTransfer && (
+            <a
+              href={refund.booking.customerId ? `/chat?customer=${refund.booking.customerId}&booking=${refund.bookingId}` : "/chat"}
+              className="inline-flex items-center gap-2 rounded-lg border border-sand px-5 py-3 text-sm font-semibold text-stone-600 transition hover:border-lotus hover:text-lotus"
+            >
+              <span className="material-symbols-outlined text-[18px]">chat</span>
+              Nhắn khách xin thông tin chuyển khoản
+            </a>
+          )}
+          {showRejectConfirm ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-stone-500">Từ chối yêu cầu này?</span>
+              <button
+                type="button"
+                disabled={approvingId === refund.id}
+                onClick={() => { setShowRejectConfirm(false); handleRejectRefund(refund.id, approveNote); }}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
+              >
+                Xác nhận từ chối
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowRejectConfirm(false)}
+                className="rounded-lg border border-sand px-4 py-2 text-sm font-semibold text-stone-600 transition hover:bg-stone-50"
+              >
+                Huỷ
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={approvingId === refund.id}
+              onClick={() => setShowRejectConfirm(true)}
+              className="rounded-lg border border-red-200 px-5 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+            >
+              Từ chối
+            </button>
+          )}
           <button
             type="button"
-            disabled={approvingId === refund.id || !proofImageUrl.trim()}
+            disabled={approvingId === refund.id || uploadingProof || (isBankTransfer && !proofImageUrl.trim())}
             onClick={() => handleApproveRefund(refund.id, proofImageUrl, approveNote)}
             className="rounded-lg bg-jade px-6 py-3 text-sm font-semibold text-white transition hover:bg-forest disabled:opacity-50"
           >
@@ -2464,15 +2826,43 @@ function RefundsTab({
   pendingRefunds,
   loadingRefunds,
   handleApproveRefund,
+  handleRejectRefund,
   approvingId,
 }: {
   pendingRefunds: any[];
   loadingRefunds: boolean;
   handleApproveRefund: (id: string, proofImageUrl: string, approveNote: string) => void;
+  handleRejectRefund: (id: string, reason: string) => void;
   approvingId: string | null;
 }) {
+  const [search, setSearch] = useState("");
+  const query = search.trim().replace(/^#/, "").toLowerCase();
+  const filteredRefunds = query
+    ? pendingRefunds.filter(
+        (r) =>
+          r.bookingId.toLowerCase().includes(query) ||
+          (r.booking?.customerName ?? "").toLowerCase().includes(query),
+      )
+    : pendingRefunds;
+
   return (
     <div className="space-y-6">
+      {!loadingRefunds && pendingRefunds.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[240px] max-w-md">
+            <span className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[20px] text-stone-400">search</span>
+            <input
+              className="w-full rounded-lg border border-sand bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-antique"
+              placeholder="Tìm theo mã đơn hoặc tên khách..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <span className="text-sm text-stone-500">
+            {filteredRefunds.length}/{pendingRefunds.length} yêu cầu chờ duyệt
+          </span>
+        </div>
+      )}
       {loadingRefunds ? (
         <div className="py-20 text-center text-stone-400">Đang tải danh sách hoàn cọc...</div>
       ) : pendingRefunds.length === 0 ? (
@@ -2480,13 +2870,18 @@ function RefundsTab({
           <span className="material-symbols-outlined text-5xl text-stone-200 mb-4 block">check_circle</span>
           Không có yêu cầu hoàn cọc nào đang chờ duyệt.
         </div>
+      ) : filteredRefunds.length === 0 ? (
+        <div className="py-20 text-center text-stone-400">
+          Không tìm thấy yêu cầu hoàn cọc phù hợp với &ldquo;{search.trim()}&rdquo;.
+        </div>
       ) : (
-        pendingRefunds.map((refund) => (
+        filteredRefunds.map((refund) => (
           <RefundCard
             key={refund.id}
             refund={refund}
             approvingId={approvingId}
             handleApproveRefund={handleApproveRefund}
+            handleRejectRefund={handleRejectRefund}
           />
         ))
       )}

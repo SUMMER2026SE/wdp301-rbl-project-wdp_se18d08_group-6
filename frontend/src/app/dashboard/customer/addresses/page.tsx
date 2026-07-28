@@ -5,6 +5,7 @@ import { AddressAutocomplete, type ResolvedAddress } from "@/components/location
 import { useAuth } from "@/components/auth/auth-provider";
 import { apiRequest } from "@/lib/api";
 import { normalizeNullableText } from "@/lib/auth";
+import { ConfirmModal } from "@/components/heritage/ui";
 
 /** (new) typed helpers for local use, but backend now returns via apiRequest */
 declare global {
@@ -92,6 +93,7 @@ export default function CustomerAddressesPage() {
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{title:string; message:string; danger?:boolean; onConfirm:()=>void} | null>(null);
 
   const loadAddresses = useCallback(async () => {
     setLoading(true);
@@ -326,7 +328,12 @@ export default function CustomerAddressesPage() {
                     onMouseEnter={(e) => { e.currentTarget.style.color = "#ba1a1a"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.color = "#5a403c"; }}
                     disabled={deletingId === address.id}
-                    onClick={() => handleDeleteAddress(address.id)}
+                    onClick={() => setConfirmDialog({
+                      title: "Xóa địa chỉ",
+                      message: "Bạn có chắc muốn xóa địa chỉ này?",
+                      danger: true,
+                      onConfirm: () => handleDeleteAddress(address.id),
+                    })}
                   >
                     {deletingId === address.id ? "Đang xoá..." : "Xoá"}
                   </button>
@@ -429,6 +436,8 @@ export default function CustomerAddressesPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmModal open={!!confirmDialog} title={confirmDialog?.title??""} message={confirmDialog?.message??""} danger={confirmDialog?.danger} onConfirm={() => { confirmDialog?.onConfirm(); setConfirmDialog(null); }} onCancel={() => setConfirmDialog(null)} />
     </div>
   );
 }

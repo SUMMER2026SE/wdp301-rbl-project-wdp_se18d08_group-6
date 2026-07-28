@@ -16,6 +16,7 @@ import type { AuthenticatedUser } from "../auth/auth-user";
 import { RefundsService } from "./refunds.service";
 import { CreateRefundDto } from "./dto/create-refund.dto";
 import { UpdateRefundStatusDto } from "./dto/update-refund.dto";
+import { RejectRefundDto } from "./dto/reject-refund.dto";
 
 @Controller("refunds")
 export class RefundsController {
@@ -38,6 +39,16 @@ export class RefundsController {
     return this.refundsService.create(body, user.id);
   }
 
+  @Post("close-without-refund/:bookingId")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("staff", "manager_owner", "admin")
+  closeWithoutRefund(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("bookingId", ParseUUIDPipe) bookingId: string,
+  ) {
+    return this.refundsService.closeWithoutRefund(bookingId, user.id);
+  }
+
   @Patch(":id/approve")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("manager_owner", "admin")
@@ -47,6 +58,17 @@ export class RefundsController {
     @Body() body: UpdateRefundStatusDto,
   ) {
     return this.refundsService.approve(id, body, user.id);
+  }
+
+  @Patch(":id/reject")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("staff", "manager_owner", "admin")
+  reject(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() body: RejectRefundDto,
+  ) {
+    return this.refundsService.reject(id, user.id, body?.reason);
   }
 
   @Get("staff/pending")

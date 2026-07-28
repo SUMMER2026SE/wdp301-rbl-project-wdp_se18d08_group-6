@@ -8,6 +8,7 @@ const mockGetChatConversations = vi.fn();
 const mockGetConversationMessages = vi.fn();
 const mockGetConversationLockStatus = vi.fn();
 const mockGetMyChatConversation = vi.fn();
+const mockGetChatConversationCounts = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -43,6 +44,7 @@ vi.mock("@/lib/chat", () => ({
   getConversationMessages: (conversationId: string) => mockGetConversationMessages(conversationId),
   getConversationLockStatus: (conversationId: string) => mockGetConversationLockStatus(conversationId),
   getMyChatConversation: () => mockGetMyChatConversation(),
+  getChatConversationCounts: () => mockGetChatConversationCounts(),
 }));
 
 const mockSocket = {
@@ -62,6 +64,7 @@ beforeEach(() => {
   mockGetConversationMessages.mockReset();
   mockGetConversationLockStatus.mockReset();
   mockGetMyChatConversation.mockReset();
+  mockGetChatConversationCounts.mockReset();
 });
 
 afterEach(() => {
@@ -98,6 +101,11 @@ describe("ChatPage", () => {
           created_at: "2026-01-01T00:00:00.000Z",
         },
       ],
+    });
+
+    mockGetChatConversationCounts.mockResolvedValue({
+      success: true,
+      data: { unassigned: 1, needsReply: 0, awaitingReply: 0, resolved: 0 },
     });
 
     mockGetConversationLockStatus.mockResolvedValue({

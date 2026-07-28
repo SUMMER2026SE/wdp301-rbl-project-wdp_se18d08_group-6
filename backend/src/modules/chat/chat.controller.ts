@@ -15,9 +15,17 @@ export class ChatController {
     private readonly chatGateway: ChatGateway,
   ) {}
 
+  @Get("conversations/counts")
+  async getConversationCounts(@CurrentUser() user: AuthenticatedUser) {
+    return ok(await this.chatService.getConversationCounts(user));
+  }
+
   @Get("conversations")
-  async listConversations(@CurrentUser() user: AuthenticatedUser) {
-    return ok(await this.chatService.listConversations(user));
+  async listConversations(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("tab") tab?: string,
+  ) {
+    return ok(await this.chatService.listConversations(user, tab));
   }
 
   @Get("conversations/me")
@@ -27,6 +35,14 @@ export class ChatController {
     }
 
     return ok(await this.chatService.getOrCreateConversationForCustomer(user.id));
+  }
+
+  @Get("conversations/with-customer/:customerId")
+  async getConversationWithCustomer(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("customerId", ParseUUIDPipe) customerId: string,
+  ) {
+    return ok(await this.chatService.getOrCreateConversationWithCustomer(user, customerId));
   }
 
   @Get("conversations/:id/messages")
@@ -72,17 +88,11 @@ export class ChatController {
       throw new ForbiddenException("garmentId is required.");
     }
 
-    const message = await this.chatService.sendProductCardMessage(
-      user.id,
-      user.role,
-      conversationId,
-      body.garmentId,
-    );
+    const [message, updatedConv] = await Promise.all([
+      this.chatService.sendProductCardMessage(user.id, user.role, conversationId, body.garmentId),
+      this.chatService.getConversationById(conversationId),
+    ]);
 
-    // Fetch updated conversation to get latest staff_id/status after message processing
-    const updatedConv = await this.chatService.getConversationById(conversationId);
-
-    // Broadcast the message to the conversation room via gateway
     this.chatGateway.server?.to(conversationId).emit("message_received", {
       conversationId,
       message,
@@ -140,15 +150,10 @@ export class ChatController {
       throw new ForbiddenException("topic must be 'booking_support' or 'complaint'.");
     }
 
-    const message = await this.chatService.sendBookingCardMessage(
-      user.id,
-      user.role,
-      conversationId,
-      body.bookingId,
-      body.topic,
-    );
-
-    const updatedConv = await this.chatService.getConversationById(conversationId);
+    const [message, updatedConv] = await Promise.all([
+      this.chatService.sendBookingCardMessage(user.id, user.role, conversationId, body.bookingId, body.topic),
+      this.chatService.getConversationById(conversationId),
+    ]);
 
     this.chatGateway.server?.to(conversationId).emit("message_received", {
       conversationId,
@@ -185,9 +190,10 @@ export class ChatController {
     )
     file: Express.Multer.File,
   ) {
-    const message = await this.chatService.uploadFile(user.id, user.role, conversationId, file);
-
-    const updatedConv = await this.chatService.getConversationById(conversationId);
+    const [message, updatedConv] = await Promise.all([
+      this.chatService.uploadFile(user.id, user.role, conversationId, file),
+      this.chatService.getConversationById(conversationId),
+    ]);
 
     this.chatGateway.server?.to(conversationId).emit("message_received", {
       conversationId,

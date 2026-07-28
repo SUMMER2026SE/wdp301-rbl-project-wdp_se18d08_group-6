@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { Notification as NotificationRow, Prisma } from "@prisma/client";
+import { AppRole, Notification as NotificationRow, Prisma } from "@prisma/client";
 import * as nodemailer from "nodemailer";
 import { ok } from "../../common/api-response";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -71,29 +71,78 @@ const DEFAULT_TEMPLATES: NotificationTemplateMap = {
   "booking.created": {
     subject: "Đơn thuê mới đã được tạo",
     title: "Đơn thuê mới",
-    body: "Đơn thuê {{bookingId}} đã được tạo cho {{garmentName}} từ {{startDate}} đến {{endDate}}.",
+    body: "Đơn #{{bookingCode}} — {{garmentName}} từ {{startDate}} đến {{endDate}}.",
     channels: ["inApp", "email"],
     enabled: true,
   },
   "booking.status_changed": {
     subject: "Trạng thái đơn thuê đã thay đổi",
     title: "Cập nhật đơn thuê",
-    body: "Đơn thuê {{bookingId}} đã chuyển sang trạng thái {{statusLabel}}. Ghi chú: {{note}}",
+    body: "Đơn #{{bookingCode}} đã chuyển sang trạng thái {{statusLabel}}.",
     channels: ["inApp"],
     enabled: true,
   },
   "booking.payment_received": {
     subject: "Đã ghi nhận thanh toán",
     title: "Thanh toán thành công",
-    body: "Đơn thuê {{bookingId}} đã được ghi nhận thanh toán với tổng số tiền {{amount}}.",
+    body: "Đơn #{{bookingCode}} — thanh toán {{amount}}.",
     channels: ["inApp", "email"],
     enabled: true,
   },
   "booking.cancelled": {
     subject: "Đơn thuê đã bị hủy",
     title: "Đơn thuê bị hủy",
-    body: "Đơn thuê {{bookingId}} đã bị hủy. {{note}}",
+    body: "Đơn #{{bookingCode}} đã bị hủy.",
     channels: ["inApp", "email"],
+    enabled: true,
+  },
+  "booking.staff.created": {
+    subject: "Đơn thuê mới cần xử lý",
+    title: "Đơn thuê mới",
+    body: "Khách {{customerName}} vừa tạo đơn #{{bookingCode}} ({{garmentName}}) từ {{startDate}} đến {{endDate}}. Vui lòng xác nhận.",
+    channels: ["inApp"],
+    enabled: true,
+  },
+  "booking.staff.cancelled": {
+    subject: "Khách đã hủy đơn thuê",
+    title: "Đơn thuê bị hủy",
+    body: "Khách {{customerName}} đã hủy đơn #{{bookingCode}} ({{garmentName}}).",
+    channels: ["inApp"],
+    enabled: true,
+  },
+  "booking.staff.paid": {
+    subject: "Đơn thuê đã được thanh toán",
+    title: "Thanh toán mới",
+    body: "Đơn #{{bookingCode}} của khách {{customerName}} — thanh toán {{amount}}. Sẵn sàng chuẩn bị.",
+    channels: ["inApp"],
+    enabled: true,
+  },
+  "booking.staff.confirmed": {
+    subject: "Đơn thuê đã được xác nhận",
+    title: "Đã xác nhận đơn",
+    body: "Đã xác nhận đơn #{{bookingCode}} ({{garmentName}}). Vui lòng gắn tài sản.",
+    channels: ["inApp"],
+    enabled: true,
+  },
+  "booking.staff.asset_assigned": {
+    subject: "Tài sản đã được gán",
+    title: "Gán tài sản thành công",
+    body: "Đã gán {{assetCode}} vào đơn #{{bookingCode}} ({{garmentName}}).",
+    channels: ["inApp"],
+    enabled: true,
+  },
+  "refund.approved": {
+    subject: "Đã hoàn cọc",
+    title: "Hoàn cọc thành công",
+    body: "Đơn #{{bookingCode}} — bạn đã được hoàn cọc {{amount}} qua {{refundMethodLabel}}.",
+    channels: ["inApp", "email"],
+    enabled: true,
+  },
+  "refund.closed_no_refund": {
+    subject: "Đơn thuê đã hoàn tất",
+    title: "Đơn thuê đã hoàn tất",
+    body: "Đơn #{{bookingCode}} đã hoàn tất. Do khoản phạt bằng hoặc vượt tiền cọc nên không có khoản hoàn cọc nào.",
+    channels: ["inApp"],
     enabled: true,
   },
   "notification.test": {
@@ -331,7 +380,7 @@ export class NotificationsService {
 
   async sendBookingNotification(input: {
     userId: string;
-    templateKey: "booking.created" | "booking.status_changed" | "booking.payment_received" | "booking.cancelled";
+    templateKey: "booking.created" | "booking.status_changed" | "booking.payment_received" | "booking.cancelled" | "booking.return_reminder" | "booking.overdue";
     bookingId: string;
     garmentName?: string | null;
     startDate?: string;
@@ -340,17 +389,74 @@ export class NotificationsService {
     note?: string | null;
     amount?: string | number;
   }) {
+    const bookingCode = input.bookingId.slice(0, 8).toUpperCase();
     return this.notifyUser({
       userId: input.userId,
       templateKey: input.templateKey,
       data: {
         bookingId: input.bookingId,
+        bookingCode,
         garmentName: input.garmentName ?? "trang phục",
         startDate: input.startDate ?? null,
         endDate: input.endDate ?? null,
         statusLabel: input.statusLabel ?? null,
         note: input.note ?? null,
         amount: input.amount ?? null,
+      },
+    });
+  }
+
+  async notifyRoles(input: {
+    roles: AppRole[];
+    templateKey: string;
+    data?: Record<string, unknown>;
+    channels?: NotificationChannel[];
+  }) {
+    const recipients = await this.prisma.userAccount.findMany({
+      where: { role: { in: input.roles }, isActive: true },
+      select: { id: true },
+    });
+
+    await Promise.all(
+      recipients.map((recipient) =>
+        this.notifyUser({
+          userId: recipient.id,
+          templateKey: input.templateKey,
+          data: input.data,
+          channels: input.channels,
+        }),
+      ),
+    );
+
+    return ok({ notified: recipients.length });
+  }
+
+  async notifyStaffBooking(input: {
+    templateKey: "booking.staff.created" | "booking.staff.cancelled" | "booking.staff.paid" | "booking.staff.confirmed" | "booking.staff.asset_assigned";
+    bookingId: string;
+    customerName?: string | null;
+    garmentName?: string | null;
+    startDate?: string;
+    endDate?: string;
+    note?: string | null;
+    amount?: string | number;
+    assetCode?: string | null;
+    roles?: AppRole[];
+  }) {
+    const bookingCode = input.bookingId.slice(0, 8).toUpperCase();
+    return this.notifyRoles({
+      roles: input.roles ?? [AppRole.staff, AppRole.manager_owner],
+      templateKey: input.templateKey,
+      data: {
+        bookingId: input.bookingId,
+        bookingCode,
+        customerName: input.customerName ?? "khách hàng",
+        garmentName: input.garmentName ?? "trang phục",
+        startDate: input.startDate ?? null,
+        endDate: input.endDate ?? null,
+        note: input.note ?? null,
+        amount: input.amount ?? null,
+        assetCode: input.assetCode ?? null,
       },
     });
   }
@@ -690,5 +796,5 @@ export class NotificationsService {
   private preferenceKey(userId: string) {
     return `notification:preferences:${userId}`;
   }
-}
-
+}
+

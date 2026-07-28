@@ -254,9 +254,23 @@ export class GarmentsService {
     return ok(assets.map((a) => ({ id: a.id, assetCode: a.assetCode, status: a.status, conditionNote: a.conditionNote })));
   }
 
-  async findAllGrouped() {
+  async findAllGrouped(search?: string, category?: string) {
     const garments = await this.prisma.garment.findMany({
-      where: { isActive: true, deletedAt: null },
+      where: {
+        isActive: true,
+        deletedAt: null,
+        ...(search
+          ? {
+              OR: [
+                { name: { contains: search, mode: "insensitive" } },
+                { description: { contains: search, mode: "insensitive" } },
+                { color: { contains: search, mode: "insensitive" } },
+                { category: { name: { contains: search, mode: "insensitive" } } },
+              ],
+            }
+          : {}),
+        ...(category ? { category: { name: { equals: category, mode: "insensitive" } } } : {}),
+      },
       include: {
         category: true,
         images: { orderBy: { sortOrder: "asc" } },

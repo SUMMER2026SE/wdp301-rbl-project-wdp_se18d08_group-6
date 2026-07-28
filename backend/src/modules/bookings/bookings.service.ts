@@ -1,20 +1,47 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import { AssetStatus, BookingStatus, PaymentStatus } from "@prisma/client";
+import { AppRole, AssetStatus, BookingStatus, PaymentStatus, Prisma } from "@prisma/client";
 import { ok } from "../../common/api-response";
 import { PrismaService } from "../../prisma/prisma.service";
 import { NotificationsService } from "../notifications/notifications.service";
+import { LocationsService } from "../locations/locations.service";
 import type { CheckAvailabilityDto } from "./dto/check-availability.dto";
 import type { CreateBookingDto } from "./dto/create-booking.dto";
 import type { UpdateBookingStatusDto } from "./dto/update-booking-status.dto";
 import type { AssignAssetDto } from "./dto/assign-asset.dto";
 import type { MarkPaidDto } from "./dto/mark-paid.dto";
 
+const BOOKING_STATUS_LABELS: Record<string, string> = {
+  draft: "Nháp",
+  pending_confirmation: "Chờ xác nhận",
+  confirmed: "Đã xác nhận",
+  awaiting_payment: "Chờ thanh toán",
+  paid: "Đã thanh toán",
+  preparing: "Đang chuẩn bị",
+  ready_for_pickup: "Sẵn sàng nhận",
+  delivering: "Đang giao",
+  renting: "Đang thuê",
+  returned: "Đã trả",
+  inspection_pending: "Chờ kiểm tra",
+  refund_pending: "Chờ hoàn cọc",
+  completed: "Hoàn thành",
+  cancelled: "Đã hủy",
+  rejected: "Từ chối",
+  overdue: "Quá hạn",
+};
+
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
+const VN_UTC_OFFSET_MS = 7 * 60 * 60 * 1000;
+const OVERDUE_FEE_PER_DAY = 10_000;
+const OVERDUE_PENALTY_REASON = "Phí quá hạn trả đồ (10.000đ/ngày)";
 
 const RELEASED_STATUSES: BookingStatus[] = [
   BookingStatus.cancelled,
   BookingStatus.rejected,
+  // refund_pending: đồ đã trả & kiểm tra xong, chỉ còn chờ hoàn cọc — không giữ hàng nữa.
+  BookingStatus.refund_pending,
   BookingStatus.completed,
+  BookingStatus.returned,
+  BookingStatus.inspection_pending,
 ];
 
 const CANCELLABLE_STATUSES: BookingStatus[] = [
@@ -54,6 +81,7 @@ export class BookingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
+    private readonly locations: LocationsService,
   ) { }
 
   private parseDateRange(startDate: string, endDate: string) {
@@ -69,7 +97,63 @@ export class BookingsService {
     return { startDay, endDay, days };
   }
 
+  // Ngày hiện tại theo giờ Việt Nam, dạng "YYYY-MM-DD"
+  private vnTodayStr(): string {
+    return new Date(Date.now() + VN_UTC_OFFSET_MS).toISOString().slice(0, 10);
+  }
+
+  // Số ngày quá hạn so với rentalEndDate (0 nếu chưa quá hạn)
+  private overdueDays(rentalEndDate: Date): number {
+    const endStr = new Date(rentalEndDate).toISOString().slice(0, 10);
+    return Math.max(0, Math.round((Date.parse(this.vnTodayStr()) - Date.parse(endStr)) / MS_PER_DAY));
+  }
+
   // ── Availability ───────────────────────────────────────────────────────────
+
+  /**
+   * Lấy tên hiển thị của khách: ưu tiên fullName trong hồ sơ, fallback về email.
+   */
+  private async resolveCustomerName(customerId: string): Promise<string | null> {
+    const user = await this.prisma.userAccount.findUnique({
+      where: { id: customerId },
+      select: { email: true, profile: { select: { fullName: true } } },
+    });
+    return user?.profile?.fullName ?? user?.email ?? null;
+  }
+
+  /**
+   * Nguồn chân lý duy nhất về tồn kho cho một size trong một khoảng ngày.
+   * Đếm theo NHU CẦU (booking item của các đơn còn hiệu lực, trùng ngày — gồm cả
+   * đơn chưa gán asset) so với SỨC CHỨA (asset chưa retired/lost). Cả endpoint
+   * checkAvailability lẫn create() đều dùng hàm này để không lệch cách tính.
+   * Nhận `client` để chạy được cả với prisma thường lẫn transaction client.
+   */
+  private async computeSizeAvailability(
+    client: Prisma.TransactionClient,
+    garmentSizeId: string,
+    startDay: Date,
+    endDay: Date,
+  ) {
+    const capacity = await client.garmentAsset.count({
+      where: {
+        garment_size_id: garmentSizeId,
+        status: { notIn: [AssetStatus.retired, AssetStatus.lost] },
+      },
+    });
+
+    const committed = await client.bookingItem.count({
+      where: {
+        garment_size_id: garmentSizeId,
+        booking: {
+          status: { notIn: RELEASED_STATUSES },
+          rentalStartDate: { lte: endDay },
+          rentalEndDate: { gte: startDay },
+        },
+      },
+    });
+
+    return { capacity, committed, available: Math.max(0, capacity - committed) };
+  }
 
   async checkAvailability(dto: CheckAvailabilityDto) {
     const size = await this.prisma.garment_sizes.findFirst({
@@ -79,39 +163,18 @@ export class BookingsService {
 
     const { startDay, endDay } = this.parseDateRange(dto.startDate, dto.endDate);
 
-    const availableCount = await this.prisma.garmentAsset.count({
-      where: { garment_size_id: dto.garmentSizeId, status: AssetStatus.available },
-    });
-
-    const freeReservedCount = await this.prisma.garmentAsset.count({
-      where: {
-        garment_size_id: dto.garmentSizeId,
-        status: { in: [AssetStatus.reserved, AssetStatus.rented] },
-        bookingItems: {
-          none: {
-            booking: {
-              status: { notIn: RELEASED_STATUSES },
-              rentalStartDate: { lte: endDay },
-              rentalEndDate: { gte: startDay },
-            },
-          },
-        },
-      },
-    });
-
-    const totalAvailable = availableCount + freeReservedCount;
-    const totalValidAssets = await this.prisma.garmentAsset.count({
-      where: {
-        garment_size_id: dto.garmentSizeId,
-        status: { notIn: [AssetStatus.retired, AssetStatus.lost] },
-      },
-    });
+    const { capacity, available } = await this.computeSizeAvailability(
+      this.prisma,
+      dto.garmentSizeId,
+      startDay,
+      endDay,
+    );
 
     return ok({
       garmentSizeId: dto.garmentSizeId,
-      available: totalAvailable > 0,
-      availableCount: totalAvailable,
-      totalAssets: totalValidAssets,
+      available: available > 0,
+      availableCount: available,
+      totalAssets: capacity,
     });
   }
 
@@ -131,21 +194,15 @@ export class BookingsService {
       throw new NotFoundException(`Không tìm thấy size: ${missing.join(", ")}`);
     }
 
+    // Số lượng yêu cầu cho mỗi size trong chính đơn này (garmentSizeIds có thể trùng).
+    const requestedQtyBySize = new Map<string, number>();
     for (const sizeId of dto.garmentSizeIds) {
-      const avail = await this.checkAvailability({
-        garmentSizeId: sizeId,
-        startDate: dto.startDate,
-        endDate: dto.endDate,
-      } as CheckAvailabilityDto);
-      if (!avail.data?.available) {
-        const s = sizes.find((sz) => sz.id === sizeId)!;
-        throw new BadRequestException(
-          `"${s.garments.name}" (${s.size_label ?? "—"}) không còn sản phẩm khả dụng.`,
-        );
-      }
+      requestedQtyBySize.set(sizeId, (requestedQtyBySize.get(sizeId) ?? 0) + 1);
     }
 
     let deliveryAddressSnapshot: string | null = null;
+    // Phí ship luôn được tính lại ở server theo địa chỉ giao — không tin giá trị client gửi.
+    let shippingFee = 0;
     if (dto.pickupMethod === "delivery") {
       if (dto.paymentMethod && dto.paymentMethod !== "qr_code") {
         throw new BadRequestException("Đơn giao tận nơi phải thanh toán bằng chuyển khoản QR.");
@@ -159,6 +216,13 @@ export class BookingsService {
       });
       if (!address) {
         throw new BadRequestException("Địa chỉ giao nhận không hợp lệ.");
+      }
+
+      try {
+        const estimate = await this.locations.estimateShippingFee(dto.deliveryAddressId);
+        shippingFee = Number(estimate.estimatedFee) || 0;
+      } catch {
+        throw new BadRequestException("Không thể tính phí giao hàng cho địa chỉ này. Vui lòng thử lại.");
       }
 
       deliveryAddressSnapshot = [
@@ -181,37 +245,60 @@ export class BookingsService {
       return { garmentId: size.garment_id, garment_size_id: sizeId, dailyPrice: dp, depositAmount: da };
     });
 
-    const booking = await this.prisma.booking.create({
-      data: {
-        customerId,
-        status: BookingStatus.pending_confirmation,
-        rentalStartDate: startDay,
-        rentalEndDate: endDay,
-        pickupMethod: dto.pickupMethod ?? "store_pickup",
-        deliveryAddressId: dto.pickupMethod === "delivery" ? dto.deliveryAddressId : null,
-        rentalTotal,
-        depositTotal,
-        shippingFee: dto.shippingFee ?? 0,
-        note: [
-          dto.note,
-          deliveryAddressSnapshot ? `Địa chỉ giao/nhận:\n${deliveryAddressSnapshot}` : null,
-          dto.shippingFee ? `Phí giao hàng: ${dto.shippingFee.toLocaleString("vi-VN")} VND` : null,
-        ]
-          .filter(Boolean)
-          .join("\n\n") || null,
-        items: { create: itemsData },
-        paymentMethod: dto.pickupMethod === "delivery" ? "qr_code" : (dto.paymentMethod ?? "cash"),
-      },
-      include: {
-        items: {
-          include: {
-            garment_sizes: { include: { garments: true } },
-            garmentAsset: true,
+    // Kiểm tra tồn kho + tạo đơn trong cùng một transaction Serializable để tránh
+    // oversell khi hai khách đặt đồng thời cho size gần hết hàng.
+    const booking = await this.prisma.$transaction(
+      async (tx) => {
+        for (const [sizeId, requestedQty] of requestedQtyBySize) {
+          const { capacity, committed } = await this.computeSizeAvailability(
+            tx,
+            sizeId,
+            startDay,
+            endDay,
+          );
+
+          if (committed + requestedQty > capacity) {
+            const s = sizeMap.get(sizeId)!;
+            throw new BadRequestException(
+              `"${s.garments.name}" (${s.size_label ?? "—"}) không còn đủ sản phẩm khả dụng cho khoảng thời gian đã chọn.`,
+            );
+          }
+        }
+
+        return tx.booking.create({
+          data: {
+            customerId,
+            status: BookingStatus.pending_confirmation,
+            rentalStartDate: startDay,
+            rentalEndDate: endDay,
+            pickupMethod: dto.pickupMethod ?? "store_pickup",
+            deliveryAddressId: dto.pickupMethod === "delivery" ? dto.deliveryAddressId : null,
+            rentalTotal,
+            depositTotal,
+            shippingFee,
+            note: [
+              dto.note,
+              deliveryAddressSnapshot ? `Địa chỉ giao/nhận:\n${deliveryAddressSnapshot}` : null,
+              shippingFee ? `Phí giao hàng: ${shippingFee.toLocaleString("vi-VN")} VND` : null,
+            ]
+              .filter(Boolean)
+              .join("\n\n") || null,
+            items: { create: itemsData },
+            paymentMethod: dto.pickupMethod === "delivery" ? "qr_code" : (dto.paymentMethod ?? "cash"),
           },
-        },
-        deliveryAddress: true,
+          include: {
+            items: {
+              include: {
+                garment_sizes: { include: { garments: true } },
+                garmentAsset: true,
+              },
+            },
+            deliveryAddress: true,
+          },
+        });
       },
-    });
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
     await this.notificationsService.sendBookingNotification({
       userId: booking.customerId,
       templateKey: "booking.created",
@@ -221,6 +308,15 @@ export class BookingsService {
       endDate: booking.rentalEndDate.toISOString().slice(0, 10),
     });
 
+    await this.notificationsService.notifyStaffBooking({
+      templateKey: "booking.staff.created",
+      bookingId: booking.id,
+      customerName: await this.resolveCustomerName(booking.customerId),
+      garmentName: booking.items[0]?.garment_sizes?.garments?.name ?? null,
+      startDate: booking.rentalStartDate.toISOString().slice(0, 10),
+      endDate: booking.rentalEndDate.toISOString().slice(0, 10),
+      roles: [AppRole.staff],
+    });
 
     return ok(this.serializeBooking(booking, days));
   }
@@ -310,9 +406,16 @@ export class BookingsService {
       garmentName: updated.items[0]?.garment_sizes?.garments?.name ?? null,
       startDate: updated.rentalStartDate.toISOString().slice(0, 10),
       endDate: updated.rentalEndDate.toISOString().slice(0, 10),
-      note: "�on thu� d� b? h?y.",
+      note: null,
     });
 
+    await this.notificationsService.notifyStaffBooking({
+      templateKey: "booking.staff.cancelled",
+      bookingId: updated.id,
+      customerName: await this.resolveCustomerName(booking.customerId),
+      garmentName: updated.items[0]?.garment_sizes?.garments?.name ?? null,
+      note: "Khách hàng tự hủy đơn.",
+    });
 
     return ok(this.serializeBooking(updated));
   }
@@ -366,7 +469,7 @@ export class BookingsService {
       include: {
         items: {
           include: {
-            garment_sizes: { include: { garments: true } },
+            garment_sizes: { include: { garments: { include: { images: { orderBy: { sortOrder: "asc" } } } } } },
             garmentAsset: true,
           },
         },
@@ -379,7 +482,7 @@ export class BookingsService {
 
   async findAllForStaff() {
     const bookings = await this.prisma.booking.findMany({
-      where: { status: { notIn: [BookingStatus.draft, BookingStatus.cancelled, BookingStatus.rejected, BookingStatus.completed] } },
+      where: { status: { notIn: [BookingStatus.draft, BookingStatus.cancelled, BookingStatus.rejected] } },
       orderBy: { createdAt: "desc" },
       take: 100,
       include: {
@@ -419,7 +522,7 @@ export class BookingsService {
 
   async findCompletedWithPendingRefunds() {
     const bookings = await this.prisma.booking.findMany({
-      where: { status: BookingStatus.completed, depositTotal: { gt: 0 } },
+      where: { status: { in: [BookingStatus.refund_pending, BookingStatus.completed] }, depositTotal: { gt: 0 } },
       orderBy: { updatedAt: "desc" },
       take: 100,
       include: {
@@ -601,6 +704,11 @@ export class BookingsService {
       });
     }
 
+    // Chốt phí quá hạn (10.000đ/ngày) tại thời điểm khách trả đồ
+    if (targetStatus === BookingStatus.returned) {
+      await this.applyOverdueFee(id);
+    }
+
     const assetIds = booking.items
       .map((item) => item.garmentAssetId)
       .filter((assetId): assetId is string => Boolean(assetId));
@@ -652,10 +760,19 @@ export class BookingsService {
       garmentName: updated.items[0]?.garment_sizes?.garments?.name ?? null,
       startDate: updated.rentalStartDate.toISOString().slice(0, 10),
       endDate: updated.rentalEndDate.toISOString().slice(0, 10),
-      statusLabel: targetStatus,
+      statusLabel: BOOKING_STATUS_LABELS[targetStatus] ?? targetStatus,
       note: dto.note ?? null,
     });
 
+    if (targetStatus === BookingStatus.confirmed) {
+      await this.notificationsService.notifyStaffBooking({
+        templateKey: "booking.staff.confirmed",
+        bookingId: updated.id,
+        customerName: await this.resolveCustomerName(updated.customerId),
+        garmentName: updated.items[0]?.garment_sizes?.garments?.name ?? null,
+        roles: [AppRole.manager_owner],
+      });
+    }
 
     return ok(this.serializeBooking(updated));
   }
@@ -702,6 +819,13 @@ export class BookingsService {
           },
         },
       },
+    });
+
+    await this.notificationsService.notifyStaffBooking({
+      templateKey: "booking.staff.asset_assigned",
+      bookingId,
+      garmentName: updated?.items.find((i) => i.id === itemId)?.garment_sizes?.garments?.name ?? null,
+      assetCode: asset.assetCode,
     });
 
     return ok(this.serializeBooking(updated!));
@@ -763,6 +887,14 @@ export class BookingsService {
       amount: Number(booking.rentalTotal) + Number(booking.shippingFee ?? 0) + Number(booking.depositTotal),
     });
 
+    await this.notificationsService.notifyStaffBooking({
+      templateKey: "booking.staff.paid",
+      bookingId: updated!.id,
+      customerName: await this.resolveCustomerName(updated!.customerId),
+      garmentName: updated!.items[0]?.garment_sizes?.garments?.name ?? null,
+      startDate: updated!.rentalStartDate.toISOString().slice(0, 10),
+      endDate: updated!.rentalEndDate.toISOString().slice(0, 10),
+    });
 
     return ok(this.serializeBooking(updated!));
   }
@@ -798,6 +930,116 @@ export class BookingsService {
 
     }
     return ok({ expiredCount: results.length, releasedAssets: results.reduce((s, r) => s + r.released, 0), bookings: results.map((r) => r.bookingId) });
+  }
+
+  // ── Overdue & phí phạt quá hạn ─────────────────────────────────────────────
+
+  // Ghi nhận phí quá hạn 10.000đ/ngày cho một booking (idempotent — gọi lại chỉ
+  // cập nhật số tiền theo số ngày quá hạn hiện tại, không tạo bản ghi trùng).
+  async applyOverdueFee(bookingId: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { penalties: true },
+    });
+    if (!booking) return null;
+
+    const days = this.overdueDays(booking.rentalEndDate);
+    const amount = days * OVERDUE_FEE_PER_DAY;
+    if (amount <= 0) return null;
+
+    const existing = booking.penalties.find((p) => p.reason === OVERDUE_PENALTY_REASON);
+    const previous = existing ? Number(existing.amount) : 0;
+    if (previous !== amount) {
+      await this.prisma.$transaction(async (tx) => {
+        if (existing) {
+          await tx.penalty.update({ where: { id: existing.id }, data: { amount } });
+        } else {
+          await tx.penalty.create({ data: { bookingId, reason: OVERDUE_PENALTY_REASON, amount } });
+        }
+        await tx.booking.update({
+          where: { id: bookingId },
+          data: { penaltyTotal: { increment: amount - previous } },
+        });
+      });
+    }
+    return { bookingId, days, amount };
+  }
+
+  // Chạy lúc 12h00 ngày cuối của kỳ thuê: nhắc khách trả đồ trước 00h00 hôm sau.
+  async sendReturnReminders() {
+    const today = new Date(this.vnTodayStr());
+    const bookings = await this.prisma.booking.findMany({
+      where: { status: BookingStatus.renting, rentalEndDate: today },
+      include: { items: { include: { garment_sizes: { include: { garments: true } } } } },
+    });
+
+    for (const booking of bookings) {
+      await this.notificationsService.sendBookingNotification({
+        userId: booking.customerId,
+        templateKey: "booking.return_reminder",
+        bookingId: booking.id,
+        garmentName: booking.items[0]?.garment_sizes?.garments?.name ?? null,
+        startDate: booking.rentalStartDate.toISOString().slice(0, 10),
+        endDate: booking.rentalEndDate.toISOString().slice(0, 10),
+      });
+    }
+
+    return ok({ remindedCount: bookings.length, bookings: bookings.map((b) => b.id) });
+  }
+
+  // Chạy lúc 00h00 hằng ngày: đánh dấu quá hạn các đơn đang thuê đã qua ngày trả,
+  // đồng thời cộng dồn phí phạt 10.000đ/ngày cho mọi đơn đang quá hạn.
+  async markOverdueBookings() {
+    const today = new Date(this.vnTodayStr());
+    const toMark = await this.prisma.booking.findMany({
+      where: { status: BookingStatus.renting, rentalEndDate: { lt: today } },
+      include: { items: { include: { garment_sizes: { include: { garments: true } } } } },
+    });
+
+    for (const booking of toMark) {
+      await this.prisma.$transaction([
+        this.prisma.bookingStatusHistory.create({
+          data: {
+            bookingId: booking.id,
+            fromStatus: BookingStatus.renting,
+            toStatus: BookingStatus.overdue,
+            note: "Tự động đánh dấu quá hạn — khách chưa trả đồ sau ngày kết thúc thuê",
+          },
+        }),
+        this.prisma.booking.update({ where: { id: booking.id }, data: { status: BookingStatus.overdue } }),
+      ]);
+    }
+
+    // Cộng dồn phí phạt cho tất cả đơn đang quá hạn (kể cả đơn staff đánh dấu tay)
+    const overdueBookings = await this.prisma.booking.findMany({
+      where: { status: BookingStatus.overdue },
+      select: { id: true },
+    });
+    const fees = new Map<string, { days: number; amount: number }>();
+    for (const { id } of overdueBookings) {
+      const fee = await this.applyOverdueFee(id);
+      if (fee) fees.set(id, { days: fee.days, amount: fee.amount });
+    }
+
+    // Chỉ thông báo cho các đơn vừa bị đánh dấu quá hạn
+    for (const booking of toMark) {
+      const fee = fees.get(booking.id);
+      await this.notificationsService.sendBookingNotification({
+        userId: booking.customerId,
+        templateKey: "booking.overdue",
+        bookingId: booking.id,
+        garmentName: booking.items[0]?.garment_sizes?.garments?.name ?? null,
+        startDate: booking.rentalStartDate.toISOString().slice(0, 10),
+        endDate: booking.rentalEndDate.toISOString().slice(0, 10),
+        amount: (fee?.amount ?? OVERDUE_FEE_PER_DAY).toLocaleString("vi-VN") + " đ",
+      });
+    }
+
+    return ok({
+      markedCount: toMark.length,
+      accruedCount: fees.size,
+      bookings: toMark.map((b) => b.id),
+    });
   }
 
   // ── Serialization ──────────────────────────────────────────────────────────

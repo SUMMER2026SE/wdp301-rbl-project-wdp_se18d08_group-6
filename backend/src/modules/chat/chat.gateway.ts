@@ -1,6 +1,6 @@
 import { ConnectedSocket, MessageBody, SubscribeMessage, WebSocketGateway, OnGatewayConnection, OnGatewayDisconnect, WebSocketServer } from "@nestjs/websockets";
 import { JwtService } from "@nestjs/jwt";
-import { Injectable, OnModuleInit } from "@nestjs/common";
+import { Injectable, OnModuleInit, OnModuleDestroy } from "@nestjs/common";
 import type { AppRole } from "@prisma/client";
 import type { Server, Socket } from "socket.io";
 import { ChatService } from "./chat.service";
@@ -36,13 +36,19 @@ interface ActiveReplier {
   },
 })
 @Injectable()
-export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGatewayDisconnect {
+export class ChatGateway implements OnModuleInit, OnModuleDestroy, OnGatewayConnection, OnGatewayDisconnect {
 
   async onModuleInit() {
-    // Resolve all reopened conversations first (server was restarted, in-memory timers are gone)
+    // Server restart — in-memory timers are gone
     await this.chatService.resolveAllReopenedConversations();
-    // Then clear staff assignments for normal open conversations
-    await this.chatService.clearAllStaffAssignments();
+    await this.chatService.releaseStaleStaffAssignments();
+    this.rateLimitCleanupInterval = setInterval(() => this.cleanupRateLimits(), ChatGateway.RATE_LIMIT_WINDOW_MS);
+  }
+
+  onModuleDestroy() {
+    if (this.rateLimitCleanupInterval) {
+      clearInterval(this.rateLimitCleanupInterval);
+    }
   }
   @WebSocketServer()
   server!: Server;
@@ -52,6 +58,8 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
   private readonly lockTimeouts = new Map<string, NodeJS.Timeout>();
   private readonly disconnectReleaseTimeouts = new Map<string, NodeJS.Timeout>();
   private readonly messageRateLimits = new Map<string, number[]>();
+  private rateLimitCleanupInterval?: NodeJS.Timeout;
+  private readonly aiReplyCounters = new Map<string, number>();
   private static readonly MAX_MESSAGE_LENGTH = 2000;
   private static readonly RATE_LIMIT_MAX = 5;
   private static readonly RATE_LIMIT_WINDOW_MS = 10_000;
@@ -134,7 +142,7 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
     };
 
     let userSockets = this.onlineUsers.get(user.id);
-    const isNewStaff = dbRole === "staff" && (!userSockets || userSockets.size === 0);
+    const isNewStaff = this.isStaffSide(dbRole) && (!userSockets || userSockets.size === 0);
     if (!userSockets) {
       userSockets = new Set();
       this.onlineUsers.set(user.id, userSockets);
@@ -144,7 +152,7 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
       this.onlineStaffCount++;
       //console.log("CONNECT staff", client.id, user.id, "onlineStaffCount:", this.onlineStaffCount, "totalSockets:", userSockets.size);
     }
-    if (dbRole === "staff") {
+    if (this.isStaffSide(dbRole)) {
       client.join("staff");
     } else {
       client.join("customers");
@@ -153,7 +161,7 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
     // Auto-join user to their active conversation rooms
     try {
       const convs = await this.prisma.conversations.findMany({
-        where: dbRole === "staff"
+        where: this.isStaffSide(dbRole)
           ? { staff_id: user.id, status: { in: ["open", "resolved"] } }
           : { customer_id: user.id, status: { in: ["open", "resolved"] } },
         select: { id: true },
@@ -169,6 +177,12 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
 
   hasOnlineStaff(): boolean {
     return this.onlineStaffCount > 0;
+  }
+
+  // Staff và Quản lý/Chủ cửa hàng đều thao tác phía "nhân viên" trong chat
+  // (manager cần chat với khách để xin thông tin chuyển khoản hoàn cọc).
+  private isStaffSide(role?: string): boolean {
+    return role === "staff" || role === "manager_owner";
   }
 
   private onlineStaffCount = 0;
@@ -187,7 +201,7 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
     }
     //console.log("DISCONNECT", client.id, user.userId, user.role, "remainingSockets:", remaining);
 
-    if (user.role === "staff") {
+    if (this.isStaffSide(user.role)) {
       if (remaining === 0) {
         this.onlineStaffCount--;
         //console.log("DISCONNECT staff last socket, onlineStaffCount:", this.onlineStaffCount);
@@ -227,7 +241,7 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
   @SubscribeMessage("open_conversation")
   async handleOpenConversation(@MessageBody() body: { conversationId: string }, @ConnectedSocket() client: AuthSocket) {
     const user = client.data.user;
-    if (!user || user.role !== "staff" || !body?.conversationId) {
+    if (!user || !this.isStaffSide(user.role) || !body?.conversationId) {
       client.emit("open_conversation_result", { conversationId: body?.conversationId, canReply: false, reason: "unauthorized" });
       return;
     }
@@ -244,8 +258,12 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
 
     // Zombie lock: DB has staff_id but in-memory lock is gone (e.g. server restart)
     // Don't clear reopened conversations — keep original staff assigned
+    // Don't clear if last message is from the assigned staff (Chờ phản hồi)
     if (conversation.staff_id && conversation.staff_id !== user.userId && !existingLock && !conversation.reopened_from_resolved) {
-      conversation = await this.chatService.releaseStaffAssignment(body.conversationId);
+      const released = await this.chatService.releaseStaffAssignmentIfStale(body.conversationId, conversation.staff_id);
+      if (released) {
+        conversation = await this.chatService.getConversationById(body.conversationId);
+      }
     }
 
     // Reopen resolved conversation when staff clicks it
@@ -311,8 +329,7 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
     }
 
     try {
-      const result = await this.chatService.deleteMessage(user.userId, user.role, body.messageId);
-      console.log("BEFORE EMIT ROOM", body.conversationId, (this.server as any).adapter?.rooms?.get(body.conversationId));
+      const result = await this.chatService.deleteMessage(user.userId, body.messageId);
       this.server.to(body.conversationId).emit("message_deleted", {
         conversationId: body.conversationId,
         messageId: body.messageId,
@@ -366,7 +383,7 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
       return { success: false, error: "rate_limited" };
     }
 
-    if (user.role === "staff") {
+    if (this.isStaffSide(user.role)) {
       const conversation = await this.chatService.getConversationById(body.conversationId);
       if (conversation.staff_id !== user.userId) {
         client.emit("send_error", { conversationId: body.conversationId, reason: "conversation_locked", tempId: body.tempId });
@@ -383,29 +400,23 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
     }
 
     const message = await this.chatService.sendMessage(user.userId, user.role, body.conversationId, body.content);
-    const updatedConv = await this.chatService.getConversationById(body.conversationId);
 
-    console.log(
-      "EMIT MESSAGE",
-      body.conversationId,
-      message?.id,
-      message?.content,
-    );
+    const updatedConv = await this.prisma.conversations.findUnique({
+      where: { id: body.conversationId },
+      select: { staff_id: true, status: true },
+    });
     if (!client.rooms.has(body.conversationId)) {
       client.join(body.conversationId);
-      console.log("JOIN (auto)", client.id, body.conversationId);
     }
-    const beforeEmitRoom = (this.server as any).adapter?.rooms?.get(body.conversationId);
-    console.log("BEFORE EMIT ROOM", body.conversationId, beforeEmitRoom);
     this.server.to(body.conversationId).emit("message_received", {
       conversationId: body.conversationId,
       message,
-      staffId: updatedConv.staff_id,
-      status: updatedConv.status,
+      staffId: updatedConv?.staff_id ?? null,
+      status: updatedConv?.status ?? "open",
     });
 
     if (user.role === "customer") {
-      if (!updatedConv.staff_id && updatedConv.status === "open") {
+      if (updatedConv && !updatedConv.staff_id && updatedConv.status === "open") {
         this.server.to("staff").emit("new_unassigned_message", {
           conversationId: body.conversationId,
           customerName: user.fullName,
@@ -413,17 +424,29 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
         });
       }
 
-      void this.chatService.maybeAutoReply(body.conversationId, body.content, this.hasOnlineStaff()).then((aiMsgs) => {
+      const convId = body.conversationId;
+      const counter = (this.aiReplyCounters.get(convId) ?? 0) + 1;
+      this.aiReplyCounters.set(convId, counter);
+      const currentCounter = counter;
+
+      this.server.to(convId).emit("typing", {
+        conversationId: convId,
+        isTyping: true,
+        userId: "ai-assistant",
+      });
+
+      void this.chatService.maybeAutoReply(convId, body.content, this.hasOnlineStaff()).then((aiMsgs) => {
+        if (this.aiReplyCounters.get(convId) !== currentCounter) return;
+
+        this.server.to(convId).emit("typing", {
+          conversationId: convId,
+          isTyping: false,
+          userId: "ai-assistant",
+        });
+
         for (const aiMsg of aiMsgs) {
-          console.log(
-            "EMIT AI",
-            aiMsg.id,
-            aiMsg.content,
-          );
-          const aiEmitRoom = (this.server as any).adapter?.rooms?.get(body.conversationId);
-          console.log("BEFORE EMIT ROOM", body.conversationId, aiEmitRoom);
-          this.server.to(body.conversationId).emit("message_received", {
-            conversationId: body.conversationId,
+          this.server.to(convId).emit("message_received", {
+            conversationId: convId,
             message: aiMsg,
             staffId: null,
             status: "open",
@@ -438,15 +461,13 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
   @SubscribeMessage("resolve_conversation")
   async handleResolveConversation(@MessageBody() body: { conversationId: string }, @ConnectedSocket() client: AuthSocket) {
     const user = client.data.user;
-    if (!user || user.role !== "staff" || !body?.conversationId) {
+    if (!user || !this.isStaffSide(user.role) || !body?.conversationId) {
       return;
     }
 
     try {
       const conversation = await this.chatService.resolveConversation(body.conversationId, user.userId);
       this.clearActiveLock(body.conversationId);
-      const resolveRoom = (this.server as any).adapter?.rooms?.get(body.conversationId);
-      console.log("BEFORE EMIT ROOM", body.conversationId, resolveRoom);
       this.server.to(body.conversationId).emit("conversation_resolved", {
         conversationId: body.conversationId,
         status: conversation.status,
@@ -468,8 +489,6 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
     }
 
     await this.chatService.markConversationRead(user.userId, user.role, body.conversationId);
-    const readRoom = (this.server as any).adapter?.rooms?.get(body.conversationId);
-    console.log("BEFORE EMIT ROOM", body.conversationId, readRoom);
     this.server.to(body.conversationId).emit("conversation_read", {
       conversationId: body.conversationId,
       readerId: user.userId,
@@ -526,7 +545,7 @@ export class ChatGateway implements OnModuleInit, OnGatewayConnection, OnGateway
       //console.log("TIMER FIRE", socketId, staffId, "onlineUsers.has?", hasOnline);
       if (!hasOnline) {
         //console.log("CLEAR DB staff_id for", staffId);
-        void this.chatService.autoReplyReleasedConversations(staffId).then((results) => {
+        void this.chatService.autoReplyReleasedConversations(staffId, this.hasOnlineStaff()).then((results) => {
           for (const { conversationId, messages: aiMsgs } of results) {
             for (const aiMsg of aiMsgs) {
               //console.log("EMIT AI (post-release)", aiMsg.id, aiMsg.content);

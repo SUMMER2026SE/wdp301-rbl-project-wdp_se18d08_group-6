@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { cartCount } from "@/lib/cart";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 
 export function CustomerNavbar({ active }: { active?: "collection" | "tryon" }) {
   const pathname = usePathname();
@@ -84,6 +85,9 @@ export function CustomerNavbar({ active }: { active?: "collection" | "tryon" }) 
 
           {/* Right actions */}
           <div className="flex items-center gap-2">
+            {/* Notifications */}
+            {status === "authenticated" && <NotificationBell notificationsHref="/dashboard/customer/notifications" />}
+
             {/* Cart */}
             <Link
               href="/booking/review"

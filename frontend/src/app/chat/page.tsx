@@ -9,6 +9,8 @@ import {
   getConversationLockStatus,
   getConversationMessages,
   getMyChatConversation,
+  getConversationWithCustomer,
+  sendBookingCardMessage,
   getBookingCardData,
   getProductCardData,
   getBookingTopic,
@@ -20,7 +22,7 @@ import {
 import { CustomerChatBubble } from "./customer-chat-bubble";
 import { StaffChatWorkspace } from "./staff-chat-workspace";
 import { useRouter } from "next/navigation";
-import { StaffPortalShell } from "@/components/heritage/ui";
+import { ManagerPortalShell, StaffPortalShell } from "@/components/heritage/ui";
 export default function ChatPage() {
   const { session, status, signOut: authSignOut, refreshUser } = useAuth();
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
@@ -52,7 +54,9 @@ export default function ChatPage() {
   const autoOpenedRef = useRef(false); 
   const isAcceptingConversationRef = useRef(false);
   const hasManuallyInteractedRef = useRef(false);
-  const isStaff = session?.user.role === "staff";
+  // Staff và Quản lý/Chủ cửa hàng (duyệt hoàn cọc) đều dùng workspace phía nhân viên
+  const isManager = session?.user.role === "manager_owner";
+  const isStaff = session?.user.role === "staff" || isManager;
 
   const assignedConversations = isStaff
     ? conversations.filter((conversation) => conversation.staffId === session?.user.id && conversation.status !== "resolved")
@@ -73,15 +77,56 @@ export default function ChatPage() {
     setIsHydrated(true);
   }, []);
 
+  // Mở đúng cuộc trò chuyện với khách khi vào /chat?customer=<id>&booking=<bookingId>
+  // (vd từ nút "Nhắn khách xin thông tin chuyển khoản" ở màn duyệt hoàn cọc)
+  useEffect(() => {
+    if (!socket || !connected || !isStaff) return;
+    if (autoOpenedRef.current || hasManuallyInteractedRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const targetCustomerId = params.get("customer");
+    const targetBookingId = params.get("booking");
+    if (!targetCustomerId) return;
+
+    autoOpenedRef.current = true;
+    hasManuallyInteractedRef.current = true;
+    void (async () => {
+      const res = await getConversationWithCustomer(targetCustomerId);
+      if (!res.success || !res.data) return;
+      let conv = res.data;
+
+      // Gắn ngữ cảnh đúng đơn đang hoàn cọc: nếu cuộc trò chuyện đang mang
+      // topic/đơn khác (vd khiếu nại đơn cũ) thì gửi booking card của đơn này —
+      // backend đồng thời cập nhật topic + booking_id của cuộc trò chuyện.
+      if (targetBookingId && (conv.bookingId !== targetBookingId || conv.topic !== "booking_support")) {
+        const cardRes = await sendBookingCardMessage({
+          conversationId: conv.id,
+          bookingId: targetBookingId,
+          topic: "booking_support",
+        });
+        if (cardRes.success) {
+          conv = { ...conv, topic: "booking_support", bookingId: targetBookingId };
+        }
+      }
+
+      setConversations((prev) => {
+        const rest = prev.filter((c) => c.id !== conv.id);
+        return [conv, ...rest];
+      });
+      await joinConversation(conv.id, true, conv);
+    })();
+  }, [socket, connected, isStaff]);
+
   // Restore the first assigned staff conversation after reload and reclaim send permission.
   useEffect(() => {
     if (!socket || !connected || !isStaff || conversations.length === 0) return;
-    if (autoOpenedRef.current) return;     
+    if (autoOpenedRef.current) return;
     if (hasManuallyInteractedRef.current) return;
+    // Có ?customer= thì nhường cho effect mở đúng khách ở trên
+    if (new URLSearchParams(window.location.search).get("customer")) return;
 
     const myConv = assignedConversations[0];
     if (myConv && myConv.id !== selectedConversation?.id) {
-      autoOpenedRef.current = true; 
+      autoOpenedRef.current = true;
       void joinConversation(myConv.id, false);
     }
   }, [socket, connected, isStaff, conversations, assignedConversations, selectedConversation?.id]);
@@ -92,6 +137,7 @@ export default function ChatPage() {
     const conv = () => selectedConversationRef.current;
 
     const onMessageReceived = (payload: { conversationId: string; message: ChatMessage; staffId?: string | null; status?: string }) => {
+
       // If the message is from current user, remove only the first matching optimistic message (fallback)
       if (payload.message.sender_id === session?.user.id) {
         setMessages((prev) => {
@@ -372,8 +418,8 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!session) return;
-    void loadConversations();
-  }, [session]);
+    void loadConversations(isStaff ? sidebarTab : undefined);
+  }, [session, sidebarTab]);
 
   useEffect(() => {
     if (isHydrated && status !== "loading" && session && !isStaff) {
@@ -452,7 +498,7 @@ export default function ChatPage() {
     // Refresh messages to fill any gap while disconnected (merge instead of replace)
     void refreshMessages(conv.id);
     // Refresh conversation list to update unreadCount and new conversations
-    void loadConversations();
+    void loadConversations(isStaff ? sidebarTab : undefined);
   };
   const onDisconnect = (reason: string) => {
     setConnected(false);
@@ -477,12 +523,12 @@ export default function ChatPage() {
   };
   }, [socket, isStaff, session, authSignOut, refreshUser]);
 
-  async function loadConversations() {
+  async function loadConversations(tab?: string) {
     if (!session) return;
     setLoadingConversations(true);
 
     if (isStaff) {
-      const result = await getChatConversations();
+      const result = await getChatConversations(tab);
       if (result.success && result.data) {
         setConversations(result.data);
       }
@@ -500,7 +546,7 @@ export default function ChatPage() {
     setLoadingConversations(false);
   }
 
-  async function joinConversation(conversationId: string, isManual = false) {
+  async function joinConversation(conversationId: string, isManual = false, convOverride?: ChatConversation) {
     if (!socket) return;
     currentConversationIdRef.current = conversationId;
     setLockStatus(null);
@@ -509,7 +555,7 @@ export default function ChatPage() {
 
     socket.emit("join_room", { conversationId });
     previousConversationIdRef.current = conversationId;
-    const conv = conversations.find((c) => c.id === conversationId) ?? null;
+    const conv = convOverride ?? conversations.find((c) => c.id === conversationId) ?? null;
     
     setSelectedConversation(conv);
     setStaffCanReply(false);
@@ -710,12 +756,9 @@ export default function ChatPage() {
   if (!isStaff) {
     return null; // hoặc loading, vì redirect effect sẽ chạy
   }
-return (
-  <StaffPortalShell
-    active="chat"
-    title="Hộp thư CSKH"
-    subtitle="Chat 1-1 với khách hàng theo thời gian thực."
-  >
+
+const chatContent = (
+  <>
     {/* HEADER STATUS (giữ lại nếu muốn) */}
     <div className="mb-4 flex justify-end">
       <div className="rounded-lg bg-white px-5 py-2 text-sm text-stone-700 shadow-sm border border-sand">
@@ -757,6 +800,31 @@ return (
       failedMessages={failedMessages}
       onRetryMessage={retrySendMessage}
     />
+  </>
+);
+
+if (isManager) {
+  return (
+    <ManagerPortalShell
+      active="chat"
+      title="Hộp thư CSKH"
+      subtitle="Chat 1-1 với khách hàng — trao đổi thông tin chuyển khoản hoàn cọc."
+      managerName={session?.user.fullName ?? session?.user.email?.split("@")[0] ?? "Quản lý cửa hàng"}
+      managerEmail={session?.user.email ?? null}
+      onTabChange={(key) => router.push(`/dashboard/manager#${key}`)}
+    >
+      {chatContent}
+    </ManagerPortalShell>
+  );
+}
+
+return (
+  <StaffPortalShell
+    active="chat"
+    title="Hộp thư CSKH"
+    subtitle="Chat 1-1 với khách hàng theo thời gian thực."
+  >
+    {chatContent}
   </StaffPortalShell>
 );
 }

@@ -27,6 +27,7 @@ export const STATUS_LABELS: Record<string, StatusLabel> = {
   renting:              { label: "Đang thuê",            color: "bg-lotus/10 text-lotus" },
   returned:             { label: "Đã trả",               color: "bg-stone-100 text-stone-600" },
   inspection_pending:   { label: "Chờ kiểm tra",        color: "bg-amber-50 text-amber-700" },
+  refund_pending:       { label: "Chờ hoàn cọc",        color: "bg-amber-50 text-amber-700" },
   completed:            { label: "Hoàn tất",             color: "bg-jade/10 text-jade" },
   cancelled:            { label: "Đã hủy",               color: "bg-stone-100 text-stone-500" },
   rejected:             { label: "Bị từ chối",           color: "bg-red-50 text-red-600" },
@@ -38,12 +39,19 @@ export const STATUS_LABELS: Record<string, StatusLabel> = {
  * Every badge gets: rounded-full, small text, uppercase, letter-spacing.
  */
 export function statusBadgeClass(color: string): string {
-  return `rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${color}`;
+  return `inline-block whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${color}`;
 }
 
 /** Lookup status by key, with fallback. */
 export function statusOf(status: string): StatusLabel {
   return STATUS_LABELS[status] ?? { label: status, color: "bg-stone-100 text-stone-600" };
+}
+
+const STATUS_KEYS = Object.keys(STATUS_LABELS).sort((a, b) => b.length - a.length);
+const STATUS_RE = new RegExp(`\\b(${STATUS_KEYS.join("|")})\\b`, "g");
+
+export function normalizeStatusInText(text: string): string {
+  return text.replace(STATUS_RE, (match) => STATUS_LABELS[match]?.label ?? match);
 }
 
 export const ACTIVE_BOOKING_STATUSES = new Set([

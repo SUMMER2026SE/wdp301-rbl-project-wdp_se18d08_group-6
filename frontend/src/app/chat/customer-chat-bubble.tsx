@@ -90,6 +90,13 @@ export function CustomerChatBubble({
     window.localStorage.setItem(CHAT_BUBBLE_OPEN_KEY, isOpen ? "true" : "false");
   }, [isOpen]);
 
+  // Cho phép các màn khác (vd dashboard khách) ra hiệu mở khung chat.
+  useEffect(() => {
+    const openChat = () => setIsOpen(true);
+    window.addEventListener("chat:open", openChat);
+    return () => window.removeEventListener("chat:open", openChat);
+  }, []);
+
   useEffect(() => {
     if (messagesEndRef.current?.scrollIntoView) {
       messagesEndRef.current.scrollIntoView({ block: "end", behavior: "smooth" });
@@ -178,7 +185,7 @@ export function CustomerChatBubble({
                           (() => {
                             const data = getBookingCardData(message);
                             return data?.booking ? (
-                              <BookingCard booking={data.booking} />
+                              <BookingCard booking={data.booking} viewerRole="customer" />
                             ) : (
                               <div className="text-xs text-stone-500">Không thể hiển thị đơn hàng</div>
                             );
@@ -266,7 +273,23 @@ export function CustomerChatBubble({
               </>
             )}
 
-            {typingEntries.length > 0 && (
+            {typingUsers["ai-assistant"] && (
+              <div className="flex justify-start">
+                <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800">
+                  <span className="inline-block">🤖 AI đang chuẩn bị câu trả lời</span>
+                  <span className="ml-1 inline-block">
+                    <span className="animate-bounce">·</span>
+                    <span className="animate-bounce" style={{ animationDelay: "0.2s" }}>
+                      ·
+                    </span>
+                    <span className="animate-bounce" style={{ animationDelay: "0.4s" }}>
+                      ·
+                    </span>
+                  </span>
+                </div>
+              </div>
+            )}
+            {typingEntries.some((id) => id !== "ai-assistant") && (
               <div className="flex justify-start">
                 <div className="bg-white border border-sand/70 rounded-lg px-3 py-2 text-xs text-stone-600">
                   <span className="inline-block">Nhân viên đang nhập</span>
